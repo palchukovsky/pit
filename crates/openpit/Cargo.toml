@@ -1,0 +1,20 @@
+[package]
+name = "openpit"
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.75"
+license = "Apache-2.0"
+repository = "https://github.com/openpitkit/pit"
+description = "Embeddable pre-trade risk SDK"
+readme = "README.md"
+keywords = ["pre-trade", "risk-management", "trading", "algotrading", "fintech"]
+categories = ["finance"]
+
+[features]
+default = []
+serde = ["dep:serde", "rust_decimal/serde", "smol_str/serde"]
+
+[dependencies]
+rust_decimal = "1.34"
+serde = { version = "1", features = ["derive"], optional = true }
+smol_str = "0.3"

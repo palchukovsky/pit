@@ -1,14 +1,37 @@
 :root {
+  color-scheme: dark;
   --accent: #ff7a00;
   --accent-2: #ffb347;
   --accent-dim: rgba(255, 122, 0, 0.12);
-  --bg: #0b0f14;
-  --surface: #121722;
-  --border: rgba(255, 255, 255, 0.06);
+  --bg: #0a0d12;
+  --surface: #11151c;
+  --border: rgba(231, 226, 213, 0.08);
   --border-hover: #ff7a00;
-  --text: #e6e6e6;
-  --muted: #6c748c;
-  --muted-lt: #98a2b3;
+  --card-hover-bg: rgba(255, 122, 0, 0.06);
+  --card-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --tag-border: rgba(231, 226, 213, 0.12);
+  --text: #e8e6df;
+  --muted: #6f6e68;
+  --muted-lt: #a4a39c;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --accent: #c25400;
+    --accent-2: #8a3e00;
+    --accent-dim: rgba(194, 84, 0, 0.08);
+    --bg: #f6f3ec;
+    --surface: #fffdf8;
+    --border: #d8d3c4;
+    --border-hover: #c25400;
+    --card-hover-bg: #fcf6ec;
+    --card-shadow: 0 10px 28px rgba(40, 30, 15, 0.10);
+    --tag-border: #d8d3c4;
+    --text: #1a1a1a;
+    --muted: #6b6a64;
+    --muted-lt: #4a4944;
+  }
 }
 
 *,
@@ -144,7 +167,7 @@ a:hover {
   letter-spacing: 0.07em;
   text-transform: uppercase;
   padding: 2px 8px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--tag-border);
   border-radius: 3px;
   color: var(--muted);
 }

@@ -21,6 +21,10 @@
 build:
     cargo build --workspace
 
+# Build Go.
+build-go:
+    cd bindings/go && go build
+
 # Format, generate, and lint and test the result.
 check: fmt-all gen-api-c lint-all test-all
 

@@ -18,63 +18,134 @@
 package policies
 
 import (
+	"runtime"
+
 	"go.openpit.dev/openpit/internal/native"
 	"go.openpit.dev/openpit/param"
 	"go.openpit.dev/openpit/pkg/optional"
-	"go.openpit.dev/openpit/pretrade"
 )
 
-// PnlBoundsBarrier defines one settlement-specific P&L bounds barrier.
-type PnlBoundsBarrier struct {
-	// SettlementAsset selects the settlement asset being monitored.
+// PnlBoundsBrokerBarrier defines broker-level P&L bounds applied across all
+// accounts for one settlement asset.
+type PnlBoundsBrokerBarrier struct {
 	SettlementAsset param.Asset
-	// LowerBound is typically negative; it represents the loss limit.
+	// LowerBound is typically negative and represents the loss limit.
 	LowerBound optional.Option[param.Pnl]
-	// UpperBound is typically positive; it represents the profit-taking limit.
+	// UpperBound is typically positive and represents the profit-taking
+	// limit.
 	UpperBound optional.Option[param.Pnl]
-	// InitialPnl is the initial accumulated P&L for this settlement asset.
+}
+
+// PnlBoundsAccountAssetBarrier defines per-(account, settlement asset) P&L
+// bounds with an initial P&L seed.
+type PnlBoundsAccountAssetBarrier struct {
+	AccountID       param.AccountID
+	SettlementAsset param.Asset
+	// LowerBound is typically negative and represents the loss limit for
+	// this account.
+	LowerBound optional.Option[param.Pnl]
+	// UpperBound is typically positive and represents the profit-taking
+	// limit for this account.
+	UpperBound optional.Option[param.Pnl]
+	// InitialPnl is pre-loaded into storage at construction; accumulation
+	// starts from this value.
 	InitialPnl param.Pnl
 }
 
-// NewPnlBoundsKillSwitchPolicy creates a P&L bounds kill-switch policy.
-//
-// The constructor does not validate signs of LowerBound/UpperBound, does not
-// validate LowerBound <= UpperBound, and does not validate InitialPnl is
-// inside the configured band.
-//
-// Notes:
-//   - if InitialPnl is already outside bounds, first start_pre_trade is rejected
-//     with PnlKillSwitchTriggered;
-//   - if LowerBound > UpperBound, start_pre_trade rejects until accumulated P&L
-//     returns inside bounds or engine is rebuilt.
-//
-// Must be closed with Close.
-func NewPnlBoundsKillSwitchPolicy(
-	barriers ...PnlBoundsBarrier,
-) (pretrade.BuiltinPolicy, error) {
-	params := make([]native.PretradePoliciesPnlBoundsBarrier, len(barriers))
-	for i, barrier := range barriers {
-		lower := native.ParamPnlOptional{}
-		if value, ok := barrier.LowerBound.Get(); ok {
-			lower = native.NewParamPnlOptional(value.Handle())
-		}
+//------------------------------------------------------------------------------
+// PnlBoundsKillswitchBuilder
 
-		upper := native.ParamPnlOptional{}
-		if value, ok := barrier.UpperBound.Get(); ok {
-			upper = native.NewParamPnlOptional(value.Handle())
-		}
+// PnlBoundsKillswitchBuilder is the entry point for the P&L bounds
+// kill-switch policy. Each axis method returns a
+// PnlBoundsKillswitchReadyBuilder on which additional axes and Build are
+// available.
+type PnlBoundsKillswitchBuilder struct {
+	builder *PnlBoundsKillswitchReadyBuilder
+}
 
-		params[i] = native.NewPretradePoliciesPnlBoundsBarrier(
-			barrier.SettlementAsset.Handle(),
-			lower,
-			upper,
-			barrier.InitialPnl.Handle(),
+// PnlBoundsKillswitchReadyBuilder holds a fully-configured P&L bounds
+// kill-switch policy.
+type PnlBoundsKillswitchReadyBuilder struct {
+	brokerBarriers  []native.PretradePoliciesPnlBoundsBarrier
+	accountBarriers []native.PretradePoliciesPnlBoundsAccountBarrier
+}
+
+// BuildPnlBoundsKillswitch returns a new P&L bounds kill-switch policy
+// builder.
+func BuildPnlBoundsKillswitch() *PnlBoundsKillswitchBuilder {
+	return &PnlBoundsKillswitchBuilder{
+		builder: &PnlBoundsKillswitchReadyBuilder{},
+	}
+}
+
+// BrokerBarriers adds broker-level P&L bounds barriers and returns a
+// ready builder.
+func (b *PnlBoundsKillswitchBuilder) BrokerBarriers(
+	barriers ...PnlBoundsBrokerBarrier,
+) *PnlBoundsKillswitchReadyBuilder {
+	b.builder.BrokerBarriers(barriers...)
+	return b.builder
+}
+
+// BrokerBarriers appends broker-level P&L bounds barriers.
+func (b *PnlBoundsKillswitchReadyBuilder) BrokerBarriers(
+	barriers ...PnlBoundsBrokerBarrier,
+) *PnlBoundsKillswitchReadyBuilder {
+	for _, barrier := range barriers {
+		b.brokerBarriers = append(
+			b.brokerBarriers,
+			native.NewPretradePoliciesPnlBoundsBarrier(
+				barrier.SettlementAsset.Handle(),
+				newParamPnlOptionalFromOptional(barrier.LowerBound),
+				newParamPnlOptionalFromOptional(barrier.UpperBound),
+			),
 		)
 	}
+	return b
+}
 
-	return newCheckPreTradeStartPolicyWithError(
-		func() (native.PretradeCheckPreTradeStartPolicy, error) {
-			return native.CreatePretradePoliciesPnlBoundsKillSwitchPolicy(params)
-		},
+// AccountBarriers adds per-(account, settlement-asset) P&L bounds
+// barriers and returns a ready builder.
+func (b *PnlBoundsKillswitchBuilder) AccountBarriers(
+	barriers ...PnlBoundsAccountAssetBarrier,
+) *PnlBoundsKillswitchReadyBuilder {
+	b.builder.AccountBarriers(barriers...)
+	return b.builder
+}
+
+// AccountBarriers appends per-(account, settlement-asset) P&L bounds
+// barriers.
+func (b *PnlBoundsKillswitchReadyBuilder) AccountBarriers(
+	barriers ...PnlBoundsAccountAssetBarrier,
+) *PnlBoundsKillswitchReadyBuilder {
+	for _, barrier := range barriers {
+		b.accountBarriers = append(
+			b.accountBarriers,
+			native.NewPretradePoliciesPnlBoundsAccountBarrier(
+				barrier.AccountID.Handle(),
+				barrier.SettlementAsset.Handle(),
+				newParamPnlOptionalFromOptional(barrier.LowerBound),
+				newParamPnlOptionalFromOptional(barrier.UpperBound),
+				barrier.InitialPnl.Handle(),
+			),
+		)
+	}
+	return b
+}
+
+// Build registers the built-in P&L bounds kill-switch policy on the
+// given engine builder.
+func (b *PnlBoundsKillswitchReadyBuilder) Build(builder native.EngineBuilder) error {
+	err := native.EngineBuilderAddBuiltinPnlBoundsKillswitch(
+		builder, b.brokerBarriers, b.accountBarriers,
 	)
+	runtime.KeepAlive(b)
+	return err
+}
+
+func newParamPnlOptionalFromOptional(value optional.Option[param.Pnl]) native.ParamPnlOptional {
+	if v, has := value.Get(); has {
+		return native.NewParamPnlOptional(v.Handle())
+	}
+	return native.ParamPnlOptional{}
 }

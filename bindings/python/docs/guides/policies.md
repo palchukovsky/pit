@@ -113,9 +113,9 @@ outcome is known.
 
 ## Built-in policies
 
-- `OrderValidationPolicy`: validates required order fields and basic shape.
-- `RateLimitPolicy`: rejects requests after a sliding-window limit is reached.
-- `PnlBoundsKillSwitchPolicy`: blocks accounts when accumulated P&L is outside
-  configured bounds.
-- `OrderSizeLimitPolicy`: enforces per-settlement-asset quantity and notional
-  limits.
+- `build_order_validation()`: validates required order fields and basic shape.
+- `build_rate_limit()`: rejects requests after a configured limit is reached.
+- `build_pnl_bounds_killswitch()`: blocks accounts when accumulated P&L is
+  outside configured bounds.
+- `build_order_size_limit()`: enforces per-settlement-asset quantity and
+  notional limits.

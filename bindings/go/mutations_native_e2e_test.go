@@ -152,13 +152,7 @@ func newEngineWithPreTradePolicyForNativeE2E(
 ) *Engine {
 	t.Helper()
 
-	builder, err := NewEngineBuilder()
-	if err != nil {
-		t.Fatalf("NewEngineBuilder() error = %v", err)
-	}
-	builder.PreTradePolicy(policy)
-
-	engine, err := builder.Build()
+	engine, err := NewEngineBuilder().WithFullSync().PreTradePolicy(policy).Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}

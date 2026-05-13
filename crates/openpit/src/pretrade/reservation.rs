@@ -61,7 +61,11 @@ use super::PreTradeLock;
 /// use openpit::{Engine, Instrument, OrderOperation};
 /// use openpit::param::TradeAmount;
 ///
-/// let engine = Engine::<OrderOperation>::builder().build()?;
+/// use openpit::pretrade::policies::OrderValidationPolicy;
+/// let engine = Engine::<OrderOperation>::builder()
+///     .with_local_sync()
+///     .check_pre_trade_start_policy(OrderValidationPolicy::new())
+///     .build()?;
 /// let order = OrderOperation {
 ///     instrument: Instrument::new(
 ///         Asset::new("AAPL")?,

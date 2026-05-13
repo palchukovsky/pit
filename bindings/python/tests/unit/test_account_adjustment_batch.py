@@ -97,6 +97,7 @@ class MutatingAdjustmentPolicy(openpit.AccountAdjustmentPolicy):
 def test_account_adjustment_policy_passes_when_none_returned() -> None:
     engine = (
         openpit.Engine.builder()
+        .with_local_sync()
         .account_adjustment_policy(policy=PassAdjustmentPolicy())
         .build()
     )
@@ -116,6 +117,7 @@ def test_account_adjustment_policy_passes_when_none_returned() -> None:
 def test_account_adjustment_policy_rejects_batch() -> None:
     engine = (
         openpit.Engine.builder()
+        .with_local_sync()
         .account_adjustment_policy(policy=RejectOnPendingPolicy())
         .build()
     )
@@ -136,7 +138,12 @@ def test_account_adjustment_policy_rejects_batch() -> None:
 @pytest.mark.unit
 def test_account_adjustment_batch_stops_on_first_reject() -> None:
     policy = RejectOnPendingPolicy()
-    engine = openpit.Engine.builder().account_adjustment_policy(policy=policy).build()
+    engine = (
+        openpit.Engine.builder()
+        .with_local_sync()
+        .account_adjustment_policy(policy=policy)
+        .build()
+    )
 
     result = engine.apply_account_adjustment(
         account_id=openpit.param.AccountId.from_u64(99224416),
@@ -156,6 +163,7 @@ def test_account_adjustment_batch_stops_on_first_reject() -> None:
 def test_account_adjustment_policy_passes_with_mutations() -> None:
     engine = (
         openpit.Engine.builder()
+        .with_local_sync()
         .account_adjustment_policy(policy=MutatingAdjustmentPolicy())
         .build()
     )
@@ -173,6 +181,7 @@ def test_account_adjustment_policy_none_and_mutations_interleaved() -> None:
     """First policy returns None, second returns mutations. Batch passes."""
     engine = (
         openpit.Engine.builder()
+        .with_local_sync()
         .account_adjustment_policy(policy=PassAdjustmentPolicy())
         .account_adjustment_policy(policy=MutatingAdjustmentPolicy())
         .build()
@@ -191,6 +200,7 @@ def test_account_adjustment_mutations_do_not_prevent_reject() -> None:
     """First policy returns mutations, second rejects. Batch rejected."""
     engine = (
         openpit.Engine.builder()
+        .with_local_sync()
         .account_adjustment_policy(policy=MutatingAdjustmentPolicy())
         .account_adjustment_policy(policy=RejectOnPendingPolicy())
         .build()
@@ -208,7 +218,12 @@ def test_account_adjustment_mutations_do_not_prevent_reject() -> None:
 
 @pytest.mark.unit
 def test_account_adjustment_rejects_raw_account_id_int() -> None:
-    engine = openpit.Engine.builder().build()
+    engine = (
+        openpit.Engine.builder()
+        .with_local_sync()
+        .builtin(openpit.pretrade.policies.build_order_validation())
+        .build()
+    )
 
     with pytest.raises(TypeError, match="account_id must be openpit.param.AccountId"):
         engine.apply_account_adjustment(
@@ -219,7 +234,12 @@ def test_account_adjustment_rejects_raw_account_id_int() -> None:
 
 @pytest.mark.unit
 def test_account_adjustment_rejects_raw_account_id_str() -> None:
-    engine = openpit.Engine.builder().build()
+    engine = (
+        openpit.Engine.builder()
+        .with_local_sync()
+        .builtin(openpit.pretrade.policies.build_order_validation())
+        .build()
+    )
 
     with pytest.raises(TypeError, match="account_id must be openpit.param.AccountId"):
         engine.apply_account_adjustment(

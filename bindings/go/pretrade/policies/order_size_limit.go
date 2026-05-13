@@ -18,43 +18,155 @@
 package policies
 
 import (
+	"runtime"
+
 	"go.openpit.dev/openpit/internal/native"
 	"go.openpit.dev/openpit/param"
-	"go.openpit.dev/openpit/pretrade"
+	"go.openpit.dev/openpit/pkg/ptr"
 )
 
-// OrderSizeLimit defines per-settlement order size limits.
+// OrderSizeLimit defines maximum quantity and notional for a single order.
 type OrderSizeLimit struct {
-	// SettlementAsset is the settlement asset the limit applies to.
-	SettlementAsset param.Asset
-	// MaxQuantity is the maximum allowed order quantity for the settlement asset.
+	// MaxQuantity is the maximum allowed order quantity.
 	MaxQuantity param.Quantity
-	// MaxNotional is the maximum allowed order notional for the settlement asset.
+	// MaxNotional is the maximum allowed order notional.
 	MaxNotional param.Volume
 }
 
-// NewOrderSizeLimitPolicy creates an order-size policy.
-//
-// OrderSizeLimitPolicy is a start-stage policy enforcing per-settlement order
-// size limits.
-//
-// Limits are configured per settlement asset. Orders for assets without a
-// configured limit are rejected.
-//
-// Must be closed with Close.
-func NewOrderSizeLimitPolicy(limits ...OrderSizeLimit) (pretrade.BuiltinPolicy, error) {
-	params := make([]native.PretradePoliciesOrderSizeLimitParam, len(limits))
-	for i, limit := range limits {
-		params[i] = native.NewPretradePoliciesOrderSizeLimitParam(
-			limit.SettlementAsset.Handle(),
-			limit.MaxQuantity.Handle(),
-			limit.MaxNotional.Handle(),
+// OrderSizeBrokerBarrier applies an order size limit across the entire
+// broker.
+type OrderSizeBrokerBarrier struct {
+	Limit OrderSizeLimit
+}
+
+// OrderSizeAssetBarrier applies an order size limit per settlement asset.
+type OrderSizeAssetBarrier struct {
+	Limit           OrderSizeLimit
+	SettlementAsset param.Asset
+}
+
+// OrderSizeAccountAssetBarrier applies an order size limit per
+// (account, settlement asset) pair.
+type OrderSizeAccountAssetBarrier struct {
+	Limit           OrderSizeLimit
+	AccountID       param.AccountID
+	SettlementAsset param.Asset
+}
+
+//------------------------------------------------------------------------------
+// OrderSizeLimitBuilder
+
+// OrderSizeLimitBuilder is the entry point for the order-size-limit policy.
+// Call BrokerBarrier to obtain an OrderSizeLimitReadyBuilder on which
+// additional axes and Build are available.
+type OrderSizeLimitBuilder struct {
+	builder *OrderSizeLimitReadyBuilder
+}
+
+// OrderSizeLimitReadyBuilder holds a fully-configured order-size-limit
+// policy.
+type OrderSizeLimitReadyBuilder struct {
+	broker               *native.PretradePoliciesOrderSizeBrokerBarrier
+	assetBarriers        []native.PretradePoliciesOrderSizeAssetBarrier
+	accountAssetBarriers []native.PretradePoliciesOrderSizeAccountAssetBarrier
+}
+
+// BuildOrderSizeLimit returns a new order-size-limit policy builder.
+func BuildOrderSizeLimit() *OrderSizeLimitBuilder {
+	return &OrderSizeLimitBuilder{builder: &OrderSizeLimitReadyBuilder{}}
+}
+
+// BrokerBarrier sets the broker-wide size limit and returns a ready
+// builder.
+func (b *OrderSizeLimitBuilder) BrokerBarrier(
+	barrier OrderSizeBrokerBarrier,
+) *OrderSizeLimitReadyBuilder {
+	b.builder.BrokerBarrier(barrier)
+	return b.builder
+}
+
+// BrokerBarrier sets or replaces the broker-wide size limit.
+func (b *OrderSizeLimitReadyBuilder) BrokerBarrier(
+	barrier OrderSizeBrokerBarrier,
+) *OrderSizeLimitReadyBuilder {
+	b.broker = ptr.New(
+		native.NewPretradePoliciesOrderSizeBrokerBarrier(
+			native.NewPretradePoliciesOrderSizeLimit(
+				barrier.Limit.MaxQuantity.Handle(),
+				barrier.Limit.MaxNotional.Handle(),
+			),
+		),
+	)
+	return b
+}
+
+// AssetBarriers adds per-settlement-asset barriers and returns a ready
+// builder.
+func (b *OrderSizeLimitBuilder) AssetBarriers(
+	barriers ...OrderSizeAssetBarrier,
+) *OrderSizeLimitReadyBuilder {
+	b.builder.AssetBarriers(barriers...)
+	return b.builder
+}
+
+// AssetBarriers appends per-settlement-asset order-size barriers.
+func (b *OrderSizeLimitReadyBuilder) AssetBarriers(
+	barriers ...OrderSizeAssetBarrier,
+) *OrderSizeLimitReadyBuilder {
+	for _, barrier := range barriers {
+		b.assetBarriers = append(
+			b.assetBarriers,
+			native.NewPretradePoliciesOrderSizeAssetBarrier(
+				native.NewPretradePoliciesOrderSizeLimit(
+					barrier.Limit.MaxQuantity.Handle(),
+					barrier.Limit.MaxNotional.Handle(),
+				),
+				barrier.SettlementAsset.Handle(),
+			),
 		)
 	}
+	return b
+}
 
-	return newCheckPreTradeStartPolicyWithError(
-		func() (native.PretradeCheckPreTradeStartPolicy, error) {
-			return native.CreatePretradePoliciesOrderSizeLimitPolicy(params)
-		},
+// AccountAssetBarriers adds per-(account, settlement-asset) barriers and
+// returns a ready builder.
+func (b *OrderSizeLimitBuilder) AccountAssetBarriers(
+	barriers ...OrderSizeAccountAssetBarrier,
+) *OrderSizeLimitReadyBuilder {
+	b.builder.AccountAssetBarriers(barriers...)
+	return b.builder
+}
+
+// AccountAssetBarriers appends per-(account, settlement-asset) order-size
+// barriers.
+func (b *OrderSizeLimitReadyBuilder) AccountAssetBarriers(
+	barriers ...OrderSizeAccountAssetBarrier,
+) *OrderSizeLimitReadyBuilder {
+	for _, barrier := range barriers {
+		b.accountAssetBarriers = append(
+			b.accountAssetBarriers,
+			native.NewPretradePoliciesOrderSizeAccountAssetBarrier(
+				native.NewPretradePoliciesOrderSizeLimit(
+					barrier.Limit.MaxQuantity.Handle(),
+					barrier.Limit.MaxNotional.Handle(),
+				),
+				barrier.AccountID.Handle(),
+				barrier.SettlementAsset.Handle(),
+			),
+		)
+	}
+	return b
+}
+
+// Build marshals the configuration and registers the built-in
+// order-size-limit policy on the given engine builder.
+func (b *OrderSizeLimitReadyBuilder) Build(builder native.EngineBuilder) error {
+	err := native.EngineBuilderAddBuiltinOrderSizeLimit(
+		builder,
+		b.broker,
+		b.assetBarriers,
+		b.accountAssetBarriers,
 	)
+	runtime.KeepAlive(b)
+	return err
 }

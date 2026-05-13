@@ -20,12 +20,12 @@
 ``openpit`` evaluates orders through a deterministic two-stage pipeline
 before they leave the application. The package provides:
 
-- :class:`Engine` — single-threaded pre-trade risk engine.
-- :mod:`~openpit.param` — typed financial values (Price, Pnl, Quantity, etc.)
+- :class:`Engine` - pre-trade risk engine.
+- :mod:`~openpit.param` - typed financial values (Price, Pnl, Quantity, etc.)
   with exact decimal arithmetic.
-- :mod:`~openpit.pretrade` — pluggable policy interfaces, standard reject
+- :mod:`~openpit.pretrade` - pluggable policy interfaces, standard reject
   codes, deferred requests, and reservations.
-- :mod:`~openpit.core` — order, execution-report, and account-adjustment group models.
+- :mod:`~openpit.core` - order, execution-report, and account-adjustment group models.
 
 Quickstart::
 
@@ -33,9 +33,8 @@ Quickstart::
 
     engine = (
         openpit.Engine.builder()
-        .check_pre_trade_start_policy(
-            policy=openpit.pretrade.policies.OrderValidationPolicy(),
-        )
+        .with_local_sync()
+        .builtin(openpit.pretrade.policies.build_order_validation())
         .build()
     )
 
@@ -53,16 +52,29 @@ Quickstart::
 
 Threading:
 The SDK never spawns OS threads: each public method runs on the OS thread that
-invoked it. Concurrent invocation of public methods on the same engine handle
-is undefined behavior and must be prevented by the caller. Sequential calls on
-the same handle from different OS threads are supported by the SDK contract.
+invoked it. The engine handle's threading capability depends on the sync policy
+selected at builder time:
+
+- `with_full_sync()` - concurrent invocation on the same handle is safe;
+  sequential cross-thread invocation is also safe.
+- `with_local_sync()` - the handle stays on the OS thread that created the
+  engine.
+- `with_account_sync()` - concurrent invocation on the same handle is safe when
+  the caller pins each account to a single chain (one queue or one worker at a
+  time), so calls for the same account are never concurrent.
 """
 
 from contextlib import suppress
 
 from . import core as core
 from . import param, pretrade
-from ._openpit import Engine, EngineBuilder, RejectError
+from ._openpit import (
+    Engine,
+    EngineBuilder,
+    ReadyEngineBuilder,
+    RejectError,
+    SyncedEngineBuilder,
+)
 from .account_adjustment import AccountAdjustmentPolicy
 from .core import (
     AccountAdjustment,
@@ -86,23 +98,29 @@ from .core import (
 from .param import AdjustmentAmount, Leverage, PositionMode
 from .pretrade import PostTradeResult
 
-Engine.__doc__ = """
-Single-threaded pre-trade risk engine.
+EngineBuilder.__doc__ = """
+First stage of the engine builder. Select a synchronization policy via
+`with_full_sync()`, `with_local_sync()`, or `with_account_sync()`.
 
-The engine evaluates orders through an explicit two-stage pipeline and accepts
-post-trade execution reports to update cumulative policy state.
-
-Snapshot semantics:
-Inputs passed to ``start_pre_trade``, ``apply_execution_report``, and
-``apply_account_adjustment`` are snapshotted at call time for evaluation.
-Mutating the same objects after submission does not affect
-the in-flight engine operation.
+Prefer `with_local_sync()` when you do not explicitly work with multiple threads
+yourself: it has zero synchronization overhead and is the right default for
+embeddings that drive the engine from a single thread (synchronous code or one
+asyncio loop). Use `with_full_sync()` when sharing the engine across threads
+concurrently. Use `with_account_sync()` for sharded sequential workloads where
+each account is pinned to one processing chain. Storage owned by built-in or
+custom policies is always account-keyed regardless of sync mode.
 """
 
-EngineBuilder.__doc__ = """
-Builder used to register start-stage and main-stage policies before engine creation.
+SyncedEngineBuilder.__doc__ = """
+Second stage of the engine builder (sync policy already chosen). Add at least one
+policy to obtain a :class:`ReadyEngineBuilder`.
+"""
 
-Policy names must be unique across both stages in a single engine instance.
+ReadyEngineBuilder.__doc__ = """
+Third stage of the engine builder (at least one policy registered). Accepts additional
+policies and builds the engine via :meth:`build`.
+
+Policy names must be unique across start-stage and main-stage pre-trade policies.
 """
 
 RejectError.__doc__ = """
@@ -118,6 +136,46 @@ def _set_doc(obj, doc: str) -> None:
         obj.__doc__ = doc
 
 
+_CHECK_PRE_TRADE_START_POLICY_DOC = """Register a start-stage policy.
+
+Start policies run during ``Engine.start_pre_trade`` before the deferred
+main-stage request exists. They return normal business rejects directly and
+do not participate in main-stage rollback.
+    """
+_set_doc(
+    SyncedEngineBuilder.check_pre_trade_start_policy, _CHECK_PRE_TRADE_START_POLICY_DOC
+)
+_set_doc(
+    ReadyEngineBuilder.check_pre_trade_start_policy, _CHECK_PRE_TRADE_START_POLICY_DOC
+)
+
+_PRE_TRADE_POLICY_DOC = """Register a main-stage pre-trade policy.
+
+Main-stage policies run when ``PreTradeRequest.execute`` is called. They may
+return rejects and mutations; the engine rolls mutations back when the main
+stage fails.
+    """
+_set_doc(SyncedEngineBuilder.pre_trade_policy, _PRE_TRADE_POLICY_DOC)
+_set_doc(ReadyEngineBuilder.pre_trade_policy, _PRE_TRADE_POLICY_DOC)
+
+_ACCOUNT_ADJUSTMENT_POLICY_DOC = """Register an account-adjustment policy.
+
+Account-adjustment policies validate batches passed to
+``Engine.apply_account_adjustment`` and may return rejects or rollback
+mutations.
+    """
+_set_doc(SyncedEngineBuilder.account_adjustment_policy, _ACCOUNT_ADJUSTMENT_POLICY_DOC)
+_set_doc(ReadyEngineBuilder.account_adjustment_policy, _ACCOUNT_ADJUSTMENT_POLICY_DOC)
+
+_set_doc(
+    ReadyEngineBuilder.build,
+    """Build an engine from the registered policies.
+
+Returns:
+    Engine: Engine instance. Policy names must be unique across start-stage
+    and main-stage pre-trade policies.
+    """,
+)
 _set_doc(
     Engine.builder,
     """Create a new :class:`EngineBuilder`.
@@ -188,46 +246,12 @@ The batch is atomic from the policy contract perspective: mutation rollbacks
 are invoked when a later policy or adjustment rejects.
     """,
 )
-_set_doc(
-    EngineBuilder.check_pre_trade_start_policy,
-    """Register a start-stage policy.
-
-Start policies run during ``Engine.start_pre_trade`` before the deferred
-main-stage request exists. They return normal business rejects directly and
-do not participate in main-stage rollback.
-    """,
-)
-_set_doc(
-    EngineBuilder.pre_trade_policy,
-    """Register a main-stage pre-trade policy.
-
-Main-stage policies run when ``PreTradeRequest.execute`` is called. They may
-return rejects and mutations; the engine rolls mutations back when the main
-stage fails.
-    """,
-)
-_set_doc(
-    EngineBuilder.account_adjustment_policy,
-    """Register an account-adjustment policy.
-
-Account-adjustment policies validate batches passed to
-``Engine.apply_account_adjustment`` and may return rejects or rollback
-mutations.
-    """,
-)
-_set_doc(
-    EngineBuilder.build,
-    """Build an engine from the registered policies.
-
-Returns:
-    Engine: Single-threaded engine instance. Policy names must be unique
-    across start-stage and main-stage pre-trade policies.
-    """,
-)
 
 __all__ = [
     "Engine",
     "EngineBuilder",
+    "SyncedEngineBuilder",
+    "ReadyEngineBuilder",
     "AccountAdjustment",
     "AccountAdjustmentAmount",
     "AccountAdjustmentBalanceOperation",

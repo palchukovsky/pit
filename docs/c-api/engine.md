@@ -1,6 +1,34 @@
 # Engine
 
+<!-- markdownlint-disable MD013 MD024 -->
+
 [Back to index](index.md)
+
+## `PitSyncPolicy`
+
+Runtime selector for the engine's storage synchronization policy.
+
+```c
+typedef uint8_t PitSyncPolicy;
+/**
+ * Concurrent invocation of public methods on the same handle is safe.
+ * Sequential cross-thread access is also safe. Use this when the engine is
+ * shared across threads.
+ */
+#define PitSyncPolicy_Full ((PitSyncPolicy) 0)
+/**
+ * The handle stays on the OS thread that created it. Use this for
+ * single-threaded embeddings where synchronization overhead must be zero.
+ */
+#define PitSyncPolicy_Local ((PitSyncPolicy) 1)
+/**
+ * Sequential cross-thread access on the same handle is safe; the caller pins
+ * each account to a single processing chain (one queue or one worker at a
+ * time). Concurrent invocation on the same handle is not supported in this
+ * mode.
+ */
+#define PitSyncPolicy_Account ((PitSyncPolicy) 2)
+```
 
 ## `PitEngineBuilder`
 
@@ -20,8 +48,8 @@ typedef struct PitEngineBuilder PitEngineBuilder;
 
 Opaque engine pointer.
 
-The engine stores policies and mutable risk state. The caller owns the
-pointer until `pit_destroy_engine`.
+The engine stores policies and mutable risk state. The caller owns the pointer
+until `pit_destroy_engine`.
 
 ```c
 typedef struct PitEngine PitEngine;
@@ -31,8 +59,8 @@ typedef struct PitEngine PitEngine;
 
 Opaque pointer for a deferred pre-trade request.
 
-This is returned by `pit_engine_start_pre_trade`. It can be executed once
-with `pit_pretrade_pre_trade_request_execute` or discarded with
+This is returned by `pit_engine_start_pre_trade`. It can be executed once with
+`pit_pretrade_pre_trade_request_execute` or discarded with
 `pit_destroy_pretrade_pre_trade_request`.
 
 ```c
@@ -43,8 +71,8 @@ typedef struct PitPretradePreTradeRequest PitPretradePreTradeRequest;
 
 Opaque reservation pointer returned by a successful pre-trade check.
 
-A reservation represents resources that have been tentatively locked. The
-caller must resolve it exactly once by calling
+A reservation represents resources that have been tentatively locked. The caller
+must resolve it exactly once by calling
 `pit_pretrade_pre_trade_reservation_commit`,
 `pit_pretrade_pre_trade_reservation_rollback`, or
 `pit_destroy_pretrade_pre_trade_reservation`.
@@ -99,25 +127,31 @@ typedef struct PitAccountAdjustmentBatchError PitAccountAdjustmentBatchError;
 
 ## `pit_create_engine_builder`
 
-Creates a new engine builder.
+Creates a new engine builder with the chosen synchronization policy.
 
-Contract:
+Success:
 
-- returns a new caller-owned builder object;
-- this function always succeeds.
+- returns a non-null caller-owned builder object.
+
+Error:
+
+- returns null when `sync_policy` is not one of `PitSyncPolicy_Full` (0),
+  `PitSyncPolicy_Local` (1), or `PitSyncPolicy_Account` (2);
+- if `out_error` is not null, writes a caller-owned `PitSharedString` error
+  handle that MUST be released with `pit_destroy_shared_string`.
 
 Cleanup:
 
 - release the pointer with `pit_destroy_engine_builder` if you stop before
-
-building;
-
-- after a successful build the builder is consumed and must still be
-
-released with `pit_destroy_engine_builder`.
+  building;
+- after a successful build the builder is consumed and must still be released
+  with `pit_destroy_engine_builder`.
 
 ```c
-PitEngineBuilder * pit_create_engine_builder(void);
+PitEngineBuilder * pit_create_engine_builder(
+    uint8_t sync_policy,
+    PitOutError out_error
+);
 ```
 
 ## `pit_destroy_engine_builder`
@@ -147,19 +181,14 @@ Success:
 Error:
 
 - returns null when `builder` is null, the builder was already consumed, or
-
-configuration is invalid;
-
-- if `out_error` is not null, writes a caller-owned `PitSharedString`
-
-error handle that MUST be released with `pit_destroy_shared_string`.
+  configuration is invalid;
+- if `out_error` is not null, writes a caller-owned `PitSharedString` error
+  handle that MUST be released with `pit_destroy_shared_string`.
 
 Ownership:
 
 - on success the returned engine pointer is owned by the caller and must be
-
-released with `pit_destroy_engine`;
-
+  released with `pit_destroy_engine`;
 - the builder becomes consumed regardless of success and must not be reused.
 
 ```c
@@ -176,10 +205,8 @@ Releases an engine pointer owned by the caller.
 Contract:
 
 - passing null is allowed;
-- destroying the engine also releases any state and policies retained by
-
-that engine instance;
-
+- destroying the engine also releases any state and policies retained by that
+  engine instance;
 - this function always succeeds.
 
 ```c
@@ -198,52 +225,37 @@ Success:
 
 - returns `Passed` when the order passed this stage; read `out_request`;
 - returns `Rejected` when the order was rejected; read `out_rejects` if not
-
-null.
+  null.
 
 Error:
 
-- returns `Error` when input pointers are invalid or the order payload
-
-cannot be decoded;
-
-- on `Error`, if `out_error` is not null, it is filled with a
-
-caller-owned `PitSharedString` that MUST be destroyed by the caller.
+- returns `Error` when input pointers are invalid or the order payload cannot
+  be decoded;
+- on `Error`, if `out_error` is not null, it is filled with a caller-owned
+  `PitSharedString` that MUST be destroyed by the caller.
 
 Cleanup:
 
 - release a successful request with `pit_pretrade_pre_trade_request_execute`
-  or
-
-`pit_destroy_pretrade_pre_trade_request`.
+  or `pit_destroy_pretrade_pre_trade_request`.
 
 Reject ownership contract:
 
 - on `Rejected`, a non-null `PitRejectList` pointer is written to
-  `out_rejects`
-
-if it is not null;
-
+  `out_rejects` if it is not null;
 - the caller takes ownership and MUST release it with
-
-`pit_destroy_reject_list`; failing to do so leaks the heap allocation made
-inside this call;
-
-- no thread-local state is involved, and the returned pointer is safe to
-
-read on any thread;
-
+  `pit_destroy_reject_list`; failing to do so leaks the heap allocation made
+  inside this call;
+- no thread-local state is involved, and the returned pointer is safe to read
+  on any thread;
 - on `Passed` and `Error`, null is written to `out_rejects`, and the caller
-
-must not call destroy in those cases.
+  must not call destroy in those cases.
 
 Order lifetime contract:
 
 - `order` is read as a borrowed view during this call;
-- the operation snapshots that payload before returning, because the
-
-deferred request may outlive the source buffers.
+- the operation snapshots that payload before returning, because the deferred
+  request may outlive the source buffers.
 
 ```c
 PitPretradeStatus pit_engine_start_pre_trade(
@@ -263,52 +275,39 @@ Success:
 
 - returns `Passed` when the order passed this stage; read `out_reservation`;
 - returns `Rejected` when the order was rejected is not null; read
-
-`out_rejects`.
+  `out_rejects`.
 
 Error:
 
-- returns `Error` when input pointers are invalid or the order payload
-
-cannot be decoded;
-
-- on `Error`, if `out_error` is not null, it is filled with a
-
-caller-owned `PitSharedString` that MUST be destroyed by the caller.
+- returns `Error` when input pointers are invalid or the order payload cannot
+  be decoded;
+- on `Error`, if `out_error` is not null, it is filled with a caller-owned
+  `PitSharedString` that MUST be destroyed by the caller.
 
 Cleanup:
 
 - release a successful reservation with
   `pit_pretrade_pre_trade_reservation_commit`,
-
-`pit_pretrade_pre_trade_reservation_rollback`, or
-`pit_destroy_pretrade_pre_trade_reservation`.
+  `pit_pretrade_pre_trade_reservation_rollback`, or
+  `pit_destroy_pretrade_pre_trade_reservation`.
 
 Reject ownership contract:
 
 - on `Rejected`, a non-null `PitRejectList` pointer is written to
-
-`out_rejects` if it is not null;
-
+  `out_rejects` if it is not null;
 - the caller takes ownership and MUST release it with
-
-`pit_destroy_reject_list`; failing to do so leaks the heap allocation made
-inside this call;
-
-- no thread-local state is involved, and the returned pointer is safe to
-
-read on any thread;
-
+  `pit_destroy_reject_list`; failing to do so leaks the heap allocation made
+  inside this call;
+- no thread-local state is involved, and the returned pointer is safe to read
+  on any thread;
 - on `Passed` and `Error`, null is written to `out_rejects`, and the caller
-
-must not call destroy in those cases.
+  must not call destroy in those cases.
 
 Order lifetime contract:
 
 - `order` is read as a borrowed view during this call only;
 - the operation does not retain any pointer into source memory after this
-
-function returns.
+  function returns.
 
 ```c
 PitPretradeStatus pit_engine_execute_pre_trade(
@@ -328,45 +327,33 @@ Success:
 
 - returns `Passed` when the order passed this stage; read `out_reservation`;
 - returns `Rejected` when the order was rejected and `out_rejects` is not
-
-null; read `out_rejects`.
+  null; read `out_rejects`.
 
 Error:
 
-- returns `Error` when input pointers are invalid or the order payload
-
-cannot be decoded;
-
-- on `Error`, if `out_error` is not null, it is filled with a
-
-caller-owned `PitSharedString` that MUST be destroyed by the caller.
+- returns `Error` when input pointers are invalid or the order payload cannot
+  be decoded;
+- on `Error`, if `out_error` is not null, it is filled with a caller-owned
+  `PitSharedString` that MUST be destroyed by the caller.
 
 Ownership:
 
 - this call consumes the request object's content exactly once;
-- after a successful or failed execute, the object itself may still
-
-be released with `pit_destroy_pretrade_pre_trade_request`, but it cannot be
-executed again.
+- after a successful or failed execute, the object itself may still be
+  released with `pit_destroy_pretrade_pre_trade_request`, but it cannot be
+  executed again.
 
 Reject ownership contract:
 
 - on `Rejected`, a non-null `PitRejectList` pointer is written to
-
-`out_rejects` if it is not null;
-
+  `out_rejects` if it is not null;
 - the caller takes ownership and MUST release it with
-
-`pit_destroy_reject_list`; failing to do so leaks the heap allocation made
-inside this call;
-
-- no thread-local state is involved, and the returned pointer is safe to
-
-read on any thread;
-
+  `pit_destroy_reject_list`; failing to do so leaks the heap allocation made
+  inside this call;
+- no thread-local state is involved, and the returned pointer is safe to read
+  on any thread;
 - on `Passed` and `Error`, null is written to `out_rejects`, and the caller
-
-must not call destroy in those cases.
+  must not call destroy in those cases.
 
 ```c
 PitPretradeStatus pit_pretrade_pre_trade_request_execute(
@@ -384,10 +371,7 @@ Releases a deferred request pointer owned by the caller.
 Contract:
 
 - passing null is allowed;
-- destroying an unexecuted request abandons it without creating a
-
-reservation;
-
+- destroying an unexecuted request abandons it without creating a reservation;
 - this function always succeeds.
 
 ```c
@@ -460,13 +444,8 @@ Contract:
 
 - passing null is allowed;
 - destroying an unresolved reservation triggers rollback of any pending
-
-mutations;
-
-- callers that need explicit resolution should call commit or rollback
-
-first;
-
+  mutations;
+- callers that need explicit resolution should call commit or rollback first;
 - this function always succeeds.
 
 ```c
@@ -496,25 +475,18 @@ Success:
 
 Error:
 
-- returns `PitEngineApplyExecutionReportResult { is_error = true,
-  post_trade_result = { kill_switch_triggered = false } }`
-
-when input pointers are invalid or the report payload cannot be decoded;
-
-- if `out_error` is not null, writes a caller-owned `PitSharedString`
-
-error handle that MUST be released with `pit_destroy_shared_string`;
-
+- returns `PitEngineApplyExecutionReportResult { is_error = true, post_trade_result = { kill_switch_triggered = false } }` when input pointers
+  are invalid or the report payload cannot be decoded;
+- if `out_error` is not null, writes a caller-owned `PitSharedString` error
+  handle that MUST be released with `pit_destroy_shared_string`;
 - when `is_error` is `true`, do not trust any other fields beyond the fact
-
-that the call failed.
+  that the call failed.
 
 Lifetime contract:
 
 - `report` is read as a borrowed view during this call only;
 - the operation does not retain any pointer into source memory after this
-
-function returns.
+  function returns.
 
 ```c
 PitEngineApplyExecutionReportResult pit_engine_apply_execution_report(
@@ -579,48 +551,34 @@ Applies a batch of account adjustments to one account.
 Success:
 
 - returns `PitAccountAdjustmentApplyStatus::Applied` when the batch was
-
-accepted and applied;
-
+  accepted and applied;
 - returns `PitAccountAdjustmentApplyStatus::Rejected` when the call itself
-
-completed normally but a policy rejected the batch; read `out_reject`.
+  completed normally but a policy rejected the batch; read `out_reject`.
 
 Error:
 
 - returns `PitAccountAdjustmentApplyStatus::Error` when input pointers are
-
-invalid or some adjustment payload cannot be decoded;
-
-- on `Error`, if `out_error` is not null, it is filled with a
-
-caller-owned `PitSharedString` that MUST be destroyed by the caller.
+  invalid or some adjustment payload cannot be decoded;
+- on `Error`, if `out_error` is not null, it is filled with a caller-owned
+  `PitSharedString` that MUST be destroyed by the caller.
 
 Result handling:
 
 - `Applied` means there is no reject object to clean up;
 - `Rejected` stores batch error details in `out_reject`, the caller must
-
-release a returned object with `pit_destroy_account_adjustment_batch_error`;
-
-- rejects returned by `pit_account_adjustment_batch_error_get_rejects`
-
-contain string views borrowed from the batch error and must not be used
-after the batch error is destroyed;
-
-- when `Error` is returned, do not use any pointer from a previous
-
-unrelated call as if it belonged to this failure.
+  release a returned object with `pit_destroy_account_adjustment_batch_error`;
+- rejects returned by `pit_account_adjustment_batch_error_get_rejects` contain
+  string views borrowed from the batch error and must not be used after the
+  batch error is destroyed;
+- when `Error` is returned, do not use any pointer from a previous unrelated
+  call as if it belonged to this failure.
 
 Lifetime contract:
 
 - every `adjustment` entry from the contiguous input array is read as a
-
-borrowed view during this call only;
-
+  borrowed view during this call only;
 - release a returned batch error with
-
-`pit_destroy_account_adjustment_batch_error`.
+  `pit_destroy_account_adjustment_batch_error`.
 
 ```c
 PitAccountAdjustmentApplyStatus pit_engine_apply_account_adjustment(

@@ -21,7 +21,7 @@ use std::ffi::c_void;
 
 use openpit::param::AccountId;
 use openpit::{
-    HasInstrument, HasOrderPrice, HasTradeAmount, OrderMargin, OrderPosition,
+    HasAccountId, HasInstrument, HasOrderPrice, HasTradeAmount, OrderMargin, OrderPosition,
     RequestFieldAccessError,
 };
 use pit_interop::{OrderOperationAccess, PopulatedOrderOperation};
@@ -308,6 +308,12 @@ impl HasTradeAmount for Order {
 impl HasOrderPrice for Order {
     fn price(&self) -> Result<Option<openpit::param::Price>, RequestFieldAccessError> {
         self.operation.price()
+    }
+}
+
+impl HasAccountId for Order {
+    fn account_id(&self) -> Result<AccountId, RequestFieldAccessError> {
+        self.operation.account_id()
     }
 }
 

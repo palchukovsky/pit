@@ -68,6 +68,37 @@ func TestRequestExecuteReturnsErrorOnSecondCall(t *testing.T) {
 	}
 }
 
+func TestRequestExecuteAfterCloseReturnsError(t *testing.T) {
+	engine := newNativeEngineForPreTradeTests(t)
+
+	requestHandle, rejects, err := native.EngineStartPreTrade(
+		engine,
+		newValidOrderForPreTradeTests(t).Handle(),
+	)
+	if err != nil {
+		t.Fatalf("EngineStartPreTrade() error = %v", err)
+	}
+	if rejects != nil {
+		native.DestroyRejectList(rejects)
+		t.Fatalf("EngineStartPreTrade() rejects = %v, want nil", rejects)
+	}
+
+	request := NewRequestFromHandle(requestHandle)
+	request.Close()
+
+	reservation, executeRejects, err := request.Execute()
+	if reservation != nil {
+		reservation.Close()
+		t.Fatal("Execute() reservation != nil, want nil")
+	}
+	if executeRejects != nil {
+		t.Fatalf("Execute() rejects = %v, want nil", executeRejects)
+	}
+	if err == nil {
+		t.Fatal("Execute() error = nil, want non-nil")
+	}
+}
+
 func TestReservationCommit(t *testing.T) {
 	reservation := newReservationForPreTradeTests(t, newValidOrderForPreTradeTests(t))
 	reservation.Commit()
@@ -130,7 +161,14 @@ func TestReservationLockOnFreshReservationReturnsUnsetPrice(t *testing.T) {
 func newNativeEngineForPreTradeTests(t *testing.T) native.Engine {
 	t.Helper()
 
-	builder := native.CreateEngineBuilder()
+	builder, err := native.CreateEngineBuilder(native.SyncPolicyFull)
+	if err != nil {
+		t.Fatalf("CreateEngineBuilder() error = %v", err)
+	}
+	if err := native.EngineBuilderAddBuiltinOrderValidation(builder); err != nil {
+		native.DestroyEngineBuilder(builder)
+		t.Fatalf("EngineBuilderAddBuiltinOrderValidation() error = %v", err)
+	}
 	engine, err := native.EngineBuilderBuild(builder)
 	native.DestroyEngineBuilder(builder)
 	if err != nil {

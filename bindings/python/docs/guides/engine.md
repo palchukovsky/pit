@@ -1,18 +1,20 @@
 # Engine lifecycle
 
 The engine owns the policy instances registered by the builder. Build one engine
-per independent risk-control state and keep calls sequential for each engine
-object.
+per independent risk-control state and choose the synchronization policy that
+matches the host's call pattern.
 
 ## Build an engine
 
 ```python
 import openpit
+import openpit.pretrade.policies
 
 engine = (
     openpit.Engine.builder()
-    .check_pre_trade_start_policy(
-        policy=openpit.pretrade.policies.OrderValidationPolicy(),
+    .with_local_sync()
+    .builtin(
+        openpit.pretrade.policies.build_order_validation(),
     )
     .pre_trade_policy(policy=MyMainStagePolicy())
     .account_adjustment_policy(policy=MyAccountAdjustmentPolicy())
@@ -22,6 +24,10 @@ engine = (
 
 Policy names must be unique within one engine configuration for start-stage and
 main-stage pre-trade policies.
+
+Use `with_full_sync()` when the same engine is called concurrently from multiple
+OS threads. Use `with_account_sync()` only when calls are serialized on one
+engine handle and each account is pinned to one processing chain.
 
 ## Run the explicit two-stage flow
 

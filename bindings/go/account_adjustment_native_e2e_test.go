@@ -31,13 +31,7 @@ import (
 func TestAccountAdjustmentNativeE2E_BatchAppliesAndInvokesPolicyPerItem(t *testing.T) {
 	policy := &accountAdjustmentCountingPolicy{name: "count-adjustments"}
 
-	builder, err := NewEngineBuilder()
-	if err != nil {
-		t.Fatalf("NewEngineBuilder() error = %v", err)
-	}
-	builder.AccountAdjustmentPolicy(policy)
-
-	engine, err := builder.Build()
+	engine, err := NewEngineBuilder().WithFullSync().AccountAdjustmentPolicy(policy).Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}

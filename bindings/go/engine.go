@@ -18,10 +18,18 @@
 // Package pit exposes the Go binding for the OpenPit engine.
 //
 // Threading:
-// The SDK never spawns OS threads: each public method call runs on the OS
-// thread that invoked it. Concurrent invocation of public methods on the same
-// engine handle is undefined behavior and must be prevented by the caller.
-// Sequential calls on the same handle from different OS threads are supported.
+// The SDK never spawns OS threads: each public method runs on the OS thread
+// that invoked it. The engine handle's threading capability depends on the sync
+// policy selected at builder time:
+//
+//   - WithFullSync - concurrent invocation of public methods on the same handle
+//     is safe. Sequential cross-thread invocation is also safe.
+//   - WithLocalSync - the handle must stay on the OS thread that created the
+//     engine.
+//   - WithAccountSync - concurrent invocation on the same handle is safe when
+//     the caller pins each account to a single chain (one queue or one worker
+//     at a time), so calls for the same account are never concurrent.
+//
 // Goroutine migration between OS threads during one SDK call is supported.
 // Callbacks invoked by the SDK back into Go may run on a different OS thread
 // than the goroutine that initiated the call, so callback code must not rely
@@ -30,7 +38,6 @@
 package openpit
 
 import (
-	"errors"
 	"fmt"
 	"runtime"
 
@@ -109,7 +116,9 @@ func (e *Engine) StartPreTrade(order model.Order) (*pretrade.Request, []reject.R
 //     implicitly);
 //   - on reject, returns a non-nil []reject.Reject; no Reservation is produced;
 //   - on transport error, returns a Go error; no Reservation is produced.
-func (e *Engine) ExecutePreTrade(order model.Order) (*pretrade.Reservation, []reject.Reject, error) {
+func (e *Engine) ExecutePreTrade(
+	order model.Order,
+) (*pretrade.Reservation, []reject.Reject, error) {
 	reservation, execRejects, err := native.EngineExecutePreTrade(e.handle, order.Handle())
 	runtime.KeepAlive(order)
 	if err != nil {
@@ -179,29 +188,116 @@ func (e *Engine) ApplyAccountAdjustment(
 //------------------------------------------------------------------------------
 // EngineBuilder
 
+// EngineBuilder is the initial stage of the engine builder. It only exposes
+// sync-policy selection methods. Call one of With*Sync to advance to
+// SyncedEngineBuilder where policies can be registered.
 type EngineBuilder struct {
-	handle native.EngineBuilder
-	err    error
-
-	// Policies that were accepted by the builder but never handed off to the
-	// engine. The builder must close them on Close to release their resources.
-	unfinished []interface{ Close() }
+	err error
 }
 
 // NewEngineBuilder returns a new engine builder.
-// The returned builder must be released by calling either Close or Build
-// after use.
-func NewEngineBuilder() (*EngineBuilder, error) {
-	if err := loader.EnsureRuntimeLoaded(); err != nil {
-		return nil, err
+// Call WithFullSync, WithLocalSync, or WithAccountSync to obtain a
+// SyncedEngineBuilder on which policies can be registered.
+func NewEngineBuilder() *EngineBuilder {
+	return &EngineBuilder{err: loader.EnsureRuntimeLoaded()}
+}
+
+// WithFullSync configures full thread-safety synchronization and returns a
+// SyncedEngineBuilder ready to accept policies. The resulting engine handle is
+// safe for concurrent invocation from multiple goroutines as well as sequential
+// cross-thread access. Use this when the engine is shared across multiple
+// goroutines or when goroutine migration patterns make sequential thread
+// pinning impractical.
+func (b *EngineBuilder) WithFullSync() *SyncedEngineBuilder {
+	return &SyncedEngineBuilder{syncPolicy: native.SyncPolicyFull, err: b.err}
+}
+
+// WithLocalSync configures single-thread synchronization and returns a
+// SyncedEngineBuilder ready to accept policies. The resulting engine handle
+// must stay on the OS thread that created it; calls from any other OS thread
+// are undefined behavior. Use this for single-threaded embeddings where
+// synchronization overhead must be zero.
+func (b *EngineBuilder) WithLocalSync() *SyncedEngineBuilder {
+	return &SyncedEngineBuilder{syncPolicy: native.SyncPolicyLocal, err: b.err}
+}
+
+// WithAccountSync configures account-sharded synchronization and returns a
+// SyncedEngineBuilder ready to accept policies. The resulting engine handle is
+// safe for concurrent invocation when the caller pins each account to a single
+// processing chain (one queue or one worker at a time), so calls for the same
+// account are never concurrent.
+func (b *EngineBuilder) WithAccountSync() *SyncedEngineBuilder {
+	return &SyncedEngineBuilder{syncPolicy: native.SyncPolicyAccount, err: b.err}
+}
+
+//------------------------------------------------------------------------------
+// SyncedEngineBuilder
+
+// SyncedEngineBuilder is the second stage of the engine builder chain,
+// returned by EngineBuilder.With*Sync. Add at least one policy to advance to
+// ReadyEngineBuilder where Build is available.
+type SyncedEngineBuilder struct {
+	syncPolicy native.SyncPolicy
+	err        error
+}
+
+func (b *SyncedEngineBuilder) CheckPreTradeStartPolicy(
+	policy ...pretrade.CheckStartPolicy,
+) *ReadyEngineBuilder {
+	rb := newReadyEngineBuilder(b)
+	for _, p := range policy {
+		rb.addCheckPreTradeStartPolicy(p)
 	}
-	return &EngineBuilder{handle: native.CreateEngineBuilder()}, nil
+	return rb
+}
+
+func (b *SyncedEngineBuilder) PreTradePolicy(policy ...pretrade.Policy) *ReadyEngineBuilder {
+	rb := newReadyEngineBuilder(b)
+	for _, p := range policy {
+		rb.addPreTradePolicy(p)
+	}
+	return rb
+}
+
+func (b *SyncedEngineBuilder) AccountAdjustmentPolicy(
+	policy ...accountadjustment.Policy,
+) *ReadyEngineBuilder {
+	rb := newReadyEngineBuilder(b)
+	for _, p := range policy {
+		rb.addAccountAdjustmentPolicy(p)
+	}
+	return rb
+}
+
+// Builtin registers a built-in entity on the builder.
+func (b *SyncedEngineBuilder) Builtin(builtinReadyBuilder builtinReadyBuilder) *ReadyEngineBuilder {
+	return newReadyEngineBuilder(b).Builtin(builtinReadyBuilder)
+}
+
+// ReadyEngineBuilder is the third stage of the engine builder chain, obtained
+// by calling a policy-add method on SyncedEngineBuilder. Accepts additional
+// policies, and builds the engine via Build.
+type ReadyEngineBuilder struct {
+	handle     native.EngineBuilder
+	err        error
+	unfinished []interface{ Close() }
+}
+
+func newReadyEngineBuilder(sb *SyncedEngineBuilder) *ReadyEngineBuilder {
+	if sb.err != nil {
+		return &ReadyEngineBuilder{err: sb.err}
+	}
+	handle, err := native.CreateEngineBuilder(sb.syncPolicy)
+	if err != nil {
+		return &ReadyEngineBuilder{err: err}
+	}
+	return &ReadyEngineBuilder{handle: handle}
 }
 
 // Close releases the builder and any policies that were handed to it but
 // never transferred to the engine. Safe to call more than once and safe to
 // call after Build; subsequent calls are no-ops.
-func (b *EngineBuilder) Close() {
+func (b *ReadyEngineBuilder) Close() {
 	{
 		for _, entity := range b.unfinished {
 			entity.Close()
@@ -221,7 +317,7 @@ func (b *EngineBuilder) Close() {
 // of the returned engine passes to the caller, who must release it by
 // calling Stop. Behavior is undefined if Build is called more than once on
 // the same builder.
-func (b *EngineBuilder) Build() (*Engine, error) {
+func (b *ReadyEngineBuilder) Build() (*Engine, error) {
 	defer b.Close()
 
 	if b.err != nil {
@@ -235,9 +331,9 @@ func (b *EngineBuilder) Build() (*Engine, error) {
 	return newEngineFromHandle(handle), nil
 }
 
-func (b *EngineBuilder) CheckPreTradeStartPolicy(
+func (b *ReadyEngineBuilder) CheckPreTradeStartPolicy(
 	policy ...pretrade.CheckStartPolicy,
-) *EngineBuilder {
+) *ReadyEngineBuilder {
 	for _, p := range policy {
 		// Every policy must go through addPolicy even after a previous failure
 		// so that the builder takes responsibility for releasing it.
@@ -246,16 +342,7 @@ func (b *EngineBuilder) CheckPreTradeStartPolicy(
 	return b
 }
 
-func (b *EngineBuilder) BuiltinCheckPreTradeStartPolicy(
-	policy ...pretrade.BuiltinPolicy,
-) *EngineBuilder {
-	for _, p := range policy {
-		b.addBuiltinCheckPreTradeStartPolicy(p)
-	}
-	return b
-}
-
-func (b *EngineBuilder) PreTradePolicy(policy ...pretrade.Policy) *EngineBuilder {
+func (b *ReadyEngineBuilder) PreTradePolicy(policy ...pretrade.Policy) *ReadyEngineBuilder {
 	for _, p := range policy {
 		// Every policy must go through addPolicy even after a previous failure
 		// so that the builder takes responsibility for releasing it.
@@ -264,7 +351,9 @@ func (b *EngineBuilder) PreTradePolicy(policy ...pretrade.Policy) *EngineBuilder
 	return b
 }
 
-func (b *EngineBuilder) AccountAdjustmentPolicy(policy ...accountadjustment.Policy) *EngineBuilder {
+func (b *ReadyEngineBuilder) AccountAdjustmentPolicy(
+	policy ...accountadjustment.Policy,
+) *ReadyEngineBuilder {
 	for _, p := range policy {
 		// Every policy must go through addPolicy even after a previous failure
 		// so that the builder takes responsibility for releasing it.
@@ -273,7 +362,7 @@ func (b *EngineBuilder) AccountAdjustmentPolicy(policy ...accountadjustment.Poli
 	return b
 }
 
-func (b *EngineBuilder) addCheckPreTradeStartPolicy(policy pretrade.CheckStartPolicy) {
+func (b *ReadyEngineBuilder) addCheckPreTradeStartPolicy(policy pretrade.CheckStartPolicy) {
 	addPolicy(
 		b,
 		policy,
@@ -283,17 +372,18 @@ func (b *EngineBuilder) addCheckPreTradeStartPolicy(policy pretrade.CheckStartPo
 	)
 }
 
-func (b *EngineBuilder) addBuiltinCheckPreTradeStartPolicy(policy pretrade.BuiltinPolicy) {
-	addPolicy(
-		b,
-		policy,
-		nil,
-		native.DestroyPretradeCheckPreTradeStartPolicy,
-		native.EngineBuilderAddCheckPreTradeStartPolicy,
-	)
+// Builtin registers a built-in entity on the builder.
+func (b *ReadyEngineBuilder) Builtin(builtinReadyBuilder builtinReadyBuilder) *ReadyEngineBuilder {
+	if b.err != nil {
+		return b
+	}
+	if err := builtinReadyBuilder.Build(b.handle); err != nil {
+		b.err = err
+	}
+	return b
 }
 
-func (b *EngineBuilder) addPreTradePolicy(policy pretrade.Policy) {
+func (b *ReadyEngineBuilder) addPreTradePolicy(policy pretrade.Policy) {
 	addPolicy(
 		b,
 		policy,
@@ -303,7 +393,7 @@ func (b *EngineBuilder) addPreTradePolicy(policy pretrade.Policy) {
 	)
 }
 
-func (b *EngineBuilder) addAccountAdjustmentPolicy(policy accountadjustment.Policy) {
+func (b *ReadyEngineBuilder) addAccountAdjustmentPolicy(policy accountadjustment.Policy) {
 	addPolicy(
 		b,
 		policy,
@@ -313,6 +403,10 @@ func (b *EngineBuilder) addAccountAdjustmentPolicy(policy accountadjustment.Poli
 	)
 }
 
+func (b *ReadyEngineBuilder) scheduleClose(entity interface{ Close() }) {
+	b.unfinished = append(b.unfinished, entity)
+}
+
 func addPolicy[
 	Policy interface {
 		Name() string
@@ -320,7 +414,7 @@ func addPolicy[
 	},
 	Handle any,
 ](
-	builder *EngineBuilder,
+	builder *ReadyEngineBuilder,
 	policy Policy,
 	startCustomPolicy func(Policy) (Handle, error),
 	destroyPolicyHandle func(Handle),
@@ -331,26 +425,11 @@ func addPolicy[
 		return
 	}
 
-	var handle Handle
-	if builtinPolicy, isBuiltin := any(policy).(builtinPolicyWithNative[Handle]); isBuiltin {
-		// Ownership of the native handle is transferred out of the built-in
-		// wrapper; after this point a later Close on the wrapper is a no-op.
-		handle = builtinPolicy.TakeHandle()
-	} else {
-		if startCustomPolicy == nil {
-			builder.err = newEngineBuilderPolicyAddError(
-				errors.New("policy is not a recognized built-in"),
-				policy.Name(),
-			)
-			builder.scheduleClose(policy)
-			return
-		}
-		var err error
-		if handle, err = startCustomPolicy(policy); err != nil {
-			builder.err = newEngineBuilderPolicyAddError(err, policy.Name())
-			builder.scheduleClose(policy)
-			return
-		}
+	handle, err := startCustomPolicy(policy)
+	if err != nil {
+		builder.err = newEngineBuilderPolicyAddError(err, policy.Name())
+		builder.scheduleClose(policy)
+		return
 	}
 	// The caller-owned reference must always be released. On success, the
 	// engine keeps its own reference and will drive the eventual destruction
@@ -367,10 +446,6 @@ func addPolicy[
 	}
 }
 
-func (b *EngineBuilder) scheduleClose(entity interface{ Close() }) {
-	b.unfinished = append(b.unfinished, entity)
-}
-
 type engineBuilderPolicyAddError struct {
 	err        error
 	policyName string
@@ -384,8 +459,8 @@ func (e engineBuilderPolicyAddError) Error() string {
 	return fmt.Sprintf("failed to add policy %q: %v", e.policyName, e.err)
 }
 
-type builtinPolicyWithNative[Handle any] interface {
-	TakeHandle() Handle
+type builtinReadyBuilder interface {
+	Build(native.EngineBuilder) error
 }
 
 //------------------------------------------------------------------------------

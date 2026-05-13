@@ -96,40 +96,65 @@ The Python binding follows the same SDK threading contract.
 Public methods acquire the GIL when needed; the SDK does not release the GIL
 across callback boundaries, so Python policies execute on the calling thread.
 
+Custom policies that need internal state across calls can use the
+built-in [Storage](https://github.com/openpitkit/pit/wiki/Storage)
+abstraction. In typical Python usage - synchronous code or an asyncio
+loop pinned to one thread - the no-sync policy is sufficient and the
+storage compiles down to direct dictionary access. A synchronizing
+policy is needed only when the engine is genuinely shared across OS
+threads.
+
 ## Usage
 
 ```python
+import datetime
 import openpit
+import openpit.pretrade.policies
 
 # 1. Configure policies.
-pnl_policy = openpit.pretrade.policies.PnlBoundsKillSwitchPolicy(
-    settlement_asset="USD",
-    lower_bound=openpit.param.Pnl("-1000"),
-    initial_pnl=openpit.param.Pnl("0"),
+pnl_policy = (
+    openpit.pretrade.policies.build_pnl_bounds_killswitch()
+    .broker_barriers(
+        openpit.pretrade.policies.PnlBoundsBrokerBarrier(
+            settlement_asset="USD",
+            lower_bound=openpit.param.Pnl("-1000"),
+        ),
+    )
 )
 
-rate_limit_policy = openpit.pretrade.policies.RateLimitPolicy(
-    max_orders=100,
-    window_seconds=1,
+rate_limit_policy = (
+    openpit.pretrade.policies.build_rate_limit()
+    .broker_barrier(
+        openpit.pretrade.policies.RateLimitBrokerBarrier(
+            limit=openpit.pretrade.policies.RateLimit(
+                max_orders=100,
+                window=datetime.timedelta(seconds=1),
+            ),
+        ),
+    )
 )
 
-order_size_policy = openpit.pretrade.policies.OrderSizeLimitPolicy(
-    limit=openpit.pretrade.policies.OrderSizeLimit(
-        settlement_asset="USD",
-        max_quantity=openpit.param.Quantity("500"),
-        max_notional=openpit.param.Volume("100000"),
-    ),
+order_size_policy = (
+    openpit.pretrade.policies.build_order_size_limit()
+    .asset_barriers(
+        openpit.pretrade.policies.OrderSizeAssetBarrier(
+            limit=openpit.pretrade.policies.OrderSizeLimit(
+                max_quantity=openpit.param.Quantity("500"),
+                max_notional=openpit.param.Volume("100000"),
+            ),
+            settlement_asset="USD",
+        ),
+    )
 )
 
 # 2. Build the engine (one time at the platform initialization).
 engine = (
     openpit.Engine.builder()
-    .check_pre_trade_start_policy(
-        policy=openpit.pretrade.policies.OrderValidationPolicy(),
-    )
-    .check_pre_trade_start_policy(policy=pnl_policy)
-    .check_pre_trade_start_policy(policy=rate_limit_policy)
-    .check_pre_trade_start_policy(policy=order_size_policy)
+    .with_local_sync()
+    .builtin(openpit.pretrade.policies.build_order_validation())
+    .builtin(pnl_policy)
+    .builtin(rate_limit_policy)
+    .builtin(order_size_policy)
     .build()
 )
 

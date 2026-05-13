@@ -1,5 +1,7 @@
 # Execution Reports
 
+<!-- markdownlint-disable MD013 MD024 -->
+
 [Back to index](index.md)
 
 ## `PitExecutionReportOperation`

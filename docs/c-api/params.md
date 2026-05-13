@@ -1,5 +1,7 @@
 # Parameter Types
 
+<!-- markdownlint-disable MD013 MD024 -->
+
 [Back to index](index.md)
 
 ## `PitParamLeverage`
@@ -14,8 +16,7 @@ Uses fixed-point scale `10` in integer units:
 
 Valid range: `10..=30000`.
 
-A value of `PIT_PARAM_LEVERAGE_NOT_SET` (`0`) means leverage is not
-specified.
+A value of `PIT_PARAM_LEVERAGE_NOT_SET` (`0`) means leverage is not specified.
 
 ```c
 typedef uint16_t PitParamLeverage;
@@ -65,8 +66,7 @@ Supported leverage increment step.
 
 Stable account identifier type for FFI payloads.
 
-WARNING:
-Use exactly one account-id source model per runtime:
+WARNING: Use exactly one account-id source model per runtime:
 
 - either purely numeric IDs (`pit_create_param_account_id_from_u64`),
 - or purely string-derived IDs (`pit_create_param_account_id_from_str`).
@@ -2988,8 +2988,7 @@ Constructs an account identifier from a 64-bit integer.
 
 This is a direct numeric mapping with no collision risk.
 
-WARNING:
-Do not mix IDs produced by this function with IDs produced by
+WARNING: Do not mix IDs produced by this function with IDs produced by
 `pit_create_param_account_id_from_str` in the same runtime state.
 
 Contract:
@@ -3007,25 +3006,21 @@ PitParamAccountId pit_create_param_account_id_from_u64(
 
 Constructs an account identifier from a UTF-8 byte sequence.
 
-The bytes are read only for the duration of the call. No trailing zero byte
-is required.
+The bytes are read only for the duration of the call. No trailing zero byte is
+required.
 
 Collision note:
 
 - different account strings can map to the same identifier;
 - for `n` distinct account strings the probability of at least one collision
-
-is approximately `n^2 / 2^65`.
-
+  is approximately `n^2 / 2^65`.
 - if collision risk is unacceptable, keep your own collision-free
-
-string-to-integer mapping and use `pit_create_param_account_id_from_u64`.
+  string-to-integer mapping and use `pit_create_param_account_id_from_u64`.
 
 The previous sentence is why this helper is suitable for stable adapter-side
 mapping, but not for workflows that require guaranteed uniqueness.
 
-WARNING:
-Do not mix IDs produced by this function with IDs produced by
+WARNING: Do not mix IDs produced by this function with IDs produced by
 `pit_create_param_account_id_from_u64` in the same runtime state.
 
 Contract:
@@ -3035,8 +3030,8 @@ Contract:
 
 ### Safety
 
-`value.ptr` must be non-null and point to at least `value.len` readable
-UTF-8 bytes.
+`value.ptr` must be non-null and point to at least `value.len` readable UTF-8
+bytes.
 
 ```c
 bool pit_create_param_account_id_from_str(

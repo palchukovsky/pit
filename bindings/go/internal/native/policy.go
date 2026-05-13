@@ -23,32 +23,103 @@ package native
 import "C"
 
 import (
-	"errors"
 	"unsafe"
 )
 
 //------------------------------------------------------------------------------
-// OrderValidationPolicy
+// BuiltinRateLimitPolicy
 
-func CreatePretradePoliciesOrderValidationPolicy() PretradeCheckPreTradeStartPolicy {
-	return C.pit_create_pretrade_policies_order_validation_policy()
+func NewPretradePoliciesRateLimitBrokerBarrier(
+	maxOrders uint,
+	windowNanoseconds uint64,
+) PretradePoliciesRateLimitBrokerBarrier {
+	return PretradePoliciesRateLimitBrokerBarrier{
+		max_orders:         C.size_t(maxOrders),
+		window_nanoseconds: C.uint64_t(windowNanoseconds),
+	}
+}
+
+func NewPretradePoliciesRateLimitAssetBarrier(
+	maxOrders uint,
+	windowNanoseconds uint64,
+	settlementAsset string,
+) PretradePoliciesRateLimitAssetBarrier {
+	return PretradePoliciesRateLimitAssetBarrier{
+		max_orders:         C.size_t(maxOrders),
+		window_nanoseconds: C.uint64_t(windowNanoseconds),
+		settlement_asset:   importString(settlementAsset),
+	}
+}
+
+func NewPretradePoliciesRateLimitAccountBarrier(
+	accountID ParamAccountID,
+	maxOrders uint,
+	windowNanoseconds uint64,
+) PretradePoliciesRateLimitAccountBarrier {
+	return PretradePoliciesRateLimitAccountBarrier{
+		account_id:         accountID,
+		max_orders:         C.size_t(maxOrders),
+		window_nanoseconds: C.uint64_t(windowNanoseconds),
+	}
+}
+
+func NewPretradePoliciesRateLimitAccountAssetBarrier(
+	accountID ParamAccountID,
+	maxOrders uint,
+	windowNanoseconds uint64,
+	settlementAsset string,
+) PretradePoliciesRateLimitAccountAssetBarrier {
+	return PretradePoliciesRateLimitAccountAssetBarrier{
+		account_id:         accountID,
+		max_orders:         C.size_t(maxOrders),
+		window_nanoseconds: C.uint64_t(windowNanoseconds),
+		settlement_asset:   importString(settlementAsset),
+	}
 }
 
 //------------------------------------------------------------------------------
-// RateLimitPolicy
+// BuiltinOrderSizeLimitPolicy
 
-func CreatePretradePoliciesRateLimitPolicy(
-	maxOrders int,
-	windowSeconds uint64,
-) PretradeCheckPreTradeStartPolicy {
-	return C.pit_create_pretrade_policies_rate_limit_policy(
-		C.size_t(maxOrders),
-		C.uint64_t(windowSeconds),
-	)
+func NewPretradePoliciesOrderSizeLimit(
+	maxQuantity ParamQuantity,
+	maxNotional ParamVolume,
+) PretradePoliciesOrderSizeLimit {
+	return PretradePoliciesOrderSizeLimit{
+		max_quantity: maxQuantity,
+		max_notional: maxNotional,
+	}
+}
+
+func NewPretradePoliciesOrderSizeBrokerBarrier(
+	limit PretradePoliciesOrderSizeLimit,
+) PretradePoliciesOrderSizeBrokerBarrier {
+	return PretradePoliciesOrderSizeBrokerBarrier{limit: limit}
+}
+
+func NewPretradePoliciesOrderSizeAssetBarrier(
+	limit PretradePoliciesOrderSizeLimit,
+	settlementAsset string,
+) PretradePoliciesOrderSizeAssetBarrier {
+	return PretradePoliciesOrderSizeAssetBarrier{
+		limit:            limit,
+		settlement_asset: importString(settlementAsset),
+	}
+}
+
+func NewPretradePoliciesOrderSizeAccountAssetBarrier(
+	limit PretradePoliciesOrderSizeLimit,
+	accountID ParamAccountID,
+	settlementAsset string,
+) PretradePoliciesOrderSizeAccountAssetBarrier {
+	return PretradePoliciesOrderSizeAccountAssetBarrier{
+		limit:            limit,
+		account_id:       accountID,
+		settlement_asset: importString(settlementAsset),
+	}
 }
 
 //------------------------------------------------------------------------------
-// PnlBoundsKillSwitchPolicy
+// BuiltinPnlBoundsKillswitchPolicy
 
 func NewParamPnlOptional(value ParamPnl) ParamPnlOptional {
 	var out ParamPnlOptional
@@ -61,75 +132,28 @@ func NewPretradePoliciesPnlBoundsBarrier(
 	settlementAsset string,
 	lowerBound ParamPnlOptional,
 	upperBound ParamPnlOptional,
-	initialPnl ParamPnl,
 ) PretradePoliciesPnlBoundsBarrier {
 	return PretradePoliciesPnlBoundsBarrier{
 		settlement_asset: importString(settlementAsset),
 		lower_bound:      lowerBound,
 		upper_bound:      upperBound,
+	}
+}
+
+func NewPretradePoliciesPnlBoundsAccountBarrier(
+	accountID ParamAccountID,
+	settlementAsset string,
+	lowerBound ParamPnlOptional,
+	upperBound ParamPnlOptional,
+	initialPnl ParamPnl,
+) PretradePoliciesPnlBoundsAccountBarrier {
+	return PretradePoliciesPnlBoundsAccountBarrier{
+		account_id:       accountID,
+		settlement_asset: importString(settlementAsset),
+		lower_bound:      lowerBound,
+		upper_bound:      upperBound,
 		initial_pnl:      initialPnl,
 	}
-}
-
-func CreatePretradePoliciesPnlBoundsKillSwitchPolicy(
-	params []PretradePoliciesPnlBoundsBarrier,
-) (PretradeCheckPreTradeStartPolicy, error) {
-	if len(params) == 0 {
-		return nil, errors.New("parameter list is empty")
-	}
-
-	var outError SharedString
-	p := C.pit_create_pretrade_policies_pnl_bounds_killswitch_policy(
-		(*PretradePoliciesPnlBoundsBarrier)(unsafe.Pointer(&params[0])),
-		C.size_t(len(params)),
-		C.PitOutError(&outError), //nolint:gocritic
-	)
-	if p == nil {
-		return nil,
-			consumeSharedStringAsError(
-				outError,
-				"pit_create_pretrade_policies_pnl_bounds_killswitch_policy failed",
-			)
-	}
-	return p, nil
-}
-
-//------------------------------------------------------------------------------
-// OrderSizeLimitPolicy
-
-func NewPretradePoliciesOrderSizeLimitParam(
-	settlementAsset string,
-	maxQuantity ParamQuantity,
-	maxNotional ParamVolume,
-) PretradePoliciesOrderSizeLimitParam {
-	return PretradePoliciesOrderSizeLimitParam{
-		settlement_asset: importString(settlementAsset),
-		max_quantity:     maxQuantity,
-		max_notional:     maxNotional,
-	}
-}
-
-func CreatePretradePoliciesOrderSizeLimitPolicy(
-	params []PretradePoliciesOrderSizeLimitParam,
-) (PretradeCheckPreTradeStartPolicy, error) {
-	if len(params) == 0 {
-		return nil, errors.New("parameter list is empty")
-	}
-
-	var outError SharedString
-	p := C.pit_create_pretrade_policies_order_size_limit_policy(
-		(*PretradePoliciesOrderSizeLimitParam)(unsafe.Pointer(&params[0])),
-		C.size_t(len(params)),
-		C.PitOutError(&outError), //nolint:gocritic
-	)
-	if p == nil {
-		return nil,
-			consumeSharedStringAsError(
-				outError,
-				"pit_create_pretrade_policies_order_size_limit_policy failed",
-			)
-	}
-	return p, nil
 }
 
 //------------------------------------------------------------------------------

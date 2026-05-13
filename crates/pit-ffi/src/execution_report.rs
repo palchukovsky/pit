@@ -22,7 +22,9 @@ use std::ffi::c_void;
 use openpit::param::{AccountId, Quantity, Trade};
 use openpit::pretrade::PreTradeLock;
 use openpit::ExecutionReportPositionImpact;
-use openpit::{HasExecutionReportIsFinal, HasFee, HasInstrument, HasPnl, RequestFieldAccessError};
+use openpit::{
+    HasAccountId, HasExecutionReportIsFinal, HasFee, HasInstrument, HasPnl, RequestFieldAccessError,
+};
 use pit_interop::{
     ExecutionReportOperationAccess, FinancialImpactAccess, PopulatedExecutionReportOperation,
     PopulatedFinancialImpact,
@@ -464,6 +466,12 @@ impl HasPnl for ExecutionReport {
 impl HasFee for ExecutionReport {
     fn fee(&self) -> Result<openpit::param::Fee, RequestFieldAccessError> {
         self.financial_impact.fee()
+    }
+}
+
+impl HasAccountId for ExecutionReport {
+    fn account_id(&self) -> Result<openpit::param::AccountId, RequestFieldAccessError> {
+        self.operation.account_id()
     }
 }
 

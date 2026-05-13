@@ -77,6 +77,13 @@ when automatic order submission must be halted until the situation is analyzed.
 
 Canonical contract: [Threading Contract](https://github.com/openpitkit/pit/wiki/Threading-Contract).
 
+Custom policies that need internal state across calls use the built-in
+[Storage](https://github.com/openpitkit/pit/wiki/Storage) abstraction.
+The synchronization policy - no-sync, full-sync, or caller-sharded for
+per-key parallelism - is selected once at engine construction and applied
+transparently. The policy code never names a lock primitive; misuse is
+prevented at compile time.
+
 1. The SDK never spawns OS threads. Every public method runs on the OS thread
    that invoked that method.
 2. Concurrent invocation of any public method on the same SDK handle is the
@@ -85,11 +92,7 @@ Canonical contract: [Threading Contract](https://github.com/openpitkit/pit/wiki/
 3. Sequential calls to public methods on the same handle from different OS
    threads are supported. Handles, contexts, and callbacks are not pinned to a
    specific thread.
-4. Go binding addendum: goroutine migration between OS threads during a single
-   SDK call is supported. SDK callbacks into Go may run on a different OS
-   thread than the goroutine that started the call; callback code must not rely
-   on thread-local OS state.
-5. `Reject.user_data` / `Order.user_data` / `ExecutionReport.user_data` /
+4. `Reject.user_data` / `Order.user_data` / `ExecutionReport.user_data` /
    `AccountAdjustment.user_data` are opaque caller tokens. The SDK never
    inspects, dereferences, or frees them. Lifetime, thread-safety, and meaning
    are entirely caller-managed.
@@ -106,39 +109,57 @@ use openpit::{
 use openpit::param::{
     AccountId, Asset, Fee, Pnl, Price, Quantity, Side, TradeAmount, Volume,
 };
-use openpit::pretrade::policies::{OrderSizeLimit, OrderSizeLimitPolicy};
-use openpit::pretrade::policies::OrderValidationPolicy;
-use openpit::pretrade::policies::{PnlBoundsBarrier, PnlBoundsKillSwitchPolicy};
-use openpit::pretrade::policies::RateLimitPolicy;
+use openpit::pretrade::policies::{
+    OrderSizeAssetBarrier, OrderSizeLimit, OrderSizeLimitPolicy,
+    OrderValidationPolicy,
+    PnlBoundsBrokerBarrier, PnlBoundsKillSwitchPolicy,
+    RateLimit, RateLimitBrokerBarrier, RateLimitPolicy,
+};
 use openpit::{Engine, Instrument};
 
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 let usd = Asset::new("USD")?;
 
 // 1. Configure policies.
+let builder = Engine::builder().with_local_sync();
+
 let pnl_policy = PnlBoundsKillSwitchPolicy::new(
-    PnlBoundsBarrier {
+    [PnlBoundsBrokerBarrier {
         settlement_asset: usd.clone(),
         lower_bound: Some(Pnl::from_str("-1000")?),
         upper_bound: None,
-        initial_pnl: Pnl::ZERO,
-    },
+    }],
+    [],
+    builder.storage_builder(),
+)?;
+
+let rate_limit_policy = RateLimitPolicy::new(
+    Some(RateLimitBrokerBarrier {
+        limit: RateLimit {
+            max_orders: 100,
+            window: Duration::from_secs(1),
+        },
+    }),
+    [],
+    [],
+    [],
+    builder.storage_builder(),
+)?;
+
+let size_policy = OrderSizeLimitPolicy::new(
+    None,
+    [OrderSizeAssetBarrier {
+        limit: OrderSizeLimit {
+            max_quantity: Quantity::from_str("500")?,
+            max_notional: Volume::from_str("100000")?,
+        },
+        settlement_asset: usd.clone(),
+    }],
     [],
 )?;
 
-let rate_limit_policy = RateLimitPolicy::new(100, Duration::from_secs(1));
-
-let size_policy = OrderSizeLimitPolicy::new(
-    OrderSizeLimit {
-        settlement_asset: usd.clone(),
-        max_quantity: Quantity::from_str("500")?,
-        max_notional: Volume::from_str("100000")?,
-    },
-    [],
-);
-
 // 2. Build the engine (one time at the platform initialization).
-let engine = Engine::builder()
+let engine = builder
     .check_pre_trade_start_policy(OrderValidationPolicy::new())
     .check_pre_trade_start_policy(pnl_policy)
     .check_pre_trade_start_policy(rate_limit_policy)
@@ -169,7 +190,7 @@ let request = engine.start_pre_trade(order)?;
 // holding the request object.
 
 // 5. Real pre-trade and risk control.
-let reservation = request.execute()?;
+let mut reservation = request.execute()?;
 
 // Optional shortcut for the same two-stage flow:
 // let reservation = engine.execute_pre_trade(order)?;

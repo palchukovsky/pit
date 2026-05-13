@@ -17,14 +17,20 @@
 
 package policies
 
-import (
-	"go.openpit.dev/openpit/internal/native"
-	"go.openpit.dev/openpit/pretrade"
-)
+import "go.openpit.dev/openpit/internal/native"
 
-// NewOrderValidation creates a new order-validation policy.
-// Start-stage policy for basic order field validation. Must be closed with
-// Close.
-func NewOrderValidation() pretrade.BuiltinPolicy {
-	return newCheckStartPolicy(native.CreatePretradePoliciesOrderValidationPolicy)
+// OrderValidationBuilder configures the built-in order-validation
+// policy. No parameters are required; the engine accepts it directly.
+type OrderValidationBuilder struct{}
+
+// BuildOrderValidation returns an order-validation policy builder ready
+// to be passed to the engine.
+func BuildOrderValidation() OrderValidationBuilder {
+	return OrderValidationBuilder{}
+}
+
+// Build registers the built-in order-validation policy on the given
+// engine builder.
+func (OrderValidationBuilder) Build(builder native.EngineBuilder) error {
+	return native.EngineBuilderAddBuiltinOrderValidation(builder)
 }

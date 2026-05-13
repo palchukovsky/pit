@@ -47,21 +47,17 @@ type clientEngineTestAdjustment struct {
 }
 
 func TestClientEnginePassesClientOrderThroughDeferredRequest(t *testing.T) {
-	builder, err := NewClientEngineBuilder[
+	startPolicy := &clientEngineTestStartPolicy{}
+	mainPolicy := &clientEngineTestMainPolicy{}
+	engine, err := NewClientEngineBuilder[
 		clientEngineTestOrder,
 		clientEngineTestReport,
 		clientEngineTestAdjustment,
-	]()
-	if err != nil {
-		t.Fatalf("NewClientEngineBuilder() error = %v", err)
-	}
-
-	startPolicy := &clientEngineTestStartPolicy{}
-	mainPolicy := &clientEngineTestMainPolicy{}
-	builder.CheckPreTradeStartPolicy(startPolicy)
-	builder.PreTradePolicy(mainPolicy)
-
-	engine, err := builder.Build()
+	]().
+		WithFullSync().
+		CheckPreTradeStartPolicy(startPolicy).
+		PreTradePolicy(mainPolicy).
+		Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -96,19 +92,15 @@ func TestClientEnginePassesClientOrderThroughDeferredRequest(t *testing.T) {
 }
 
 func TestClientEnginePassesClientExecutionReport(t *testing.T) {
-	builder, err := NewClientEngineBuilder[
+	policy := &clientEngineTestStartPolicy{killSwitch: true}
+	engine, err := NewClientEngineBuilder[
 		clientEngineTestOrder,
 		clientEngineTestReport,
 		clientEngineTestAdjustment,
-	]()
-	if err != nil {
-		t.Fatalf("NewClientEngineBuilder() error = %v", err)
-	}
-
-	policy := &clientEngineTestStartPolicy{killSwitch: true}
-	builder.CheckPreTradeStartPolicy(policy)
-
-	engine, err := builder.Build()
+	]().
+		WithFullSync().
+		CheckPreTradeStartPolicy(policy).
+		Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -135,17 +127,14 @@ func TestClientEnginePassesClientExecutionReport(t *testing.T) {
 }
 
 func TestClientEngineExecutePreTradeReleasesPayloadAfterCall(t *testing.T) {
-	builder, err := NewClientEngineBuilder[
+	engine, err := NewClientEngineBuilder[
 		clientEngineTestOrder,
 		clientEngineTestReport,
 		clientEngineTestAdjustment,
-	]()
-	if err != nil {
-		t.Fatalf("NewClientEngineBuilder() error = %v", err)
-	}
-	builder.PreTradePolicy(&clientEngineTestMainPolicy{})
-
-	engine, err := builder.Build()
+	]().
+		WithFullSync().
+		PreTradePolicy(&clientEngineTestMainPolicy{}).
+		Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -164,19 +153,15 @@ func TestClientEngineExecutePreTradeReleasesPayloadAfterCall(t *testing.T) {
 }
 
 func TestClientEnginePassesClientAccountAdjustment(t *testing.T) {
-	builder, err := NewClientEngineBuilder[
+	policy := &clientEngineTestAccountAdjustmentPolicy{}
+	engine, err := NewClientEngineBuilder[
 		clientEngineTestOrder,
 		clientEngineTestReport,
 		clientEngineTestAdjustment,
-	]()
-	if err != nil {
-		t.Fatalf("NewClientEngineBuilder() error = %v", err)
-	}
-
-	policy := &clientEngineTestAccountAdjustmentPolicy{}
-	builder.AccountAdjustmentPolicy(policy)
-
-	engine, err := builder.Build()
+	]().
+		WithFullSync().
+		AccountAdjustmentPolicy(policy).
+		Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -206,17 +191,14 @@ func TestClientEnginePassesClientAccountAdjustment(t *testing.T) {
 }
 
 func TestClientEngineStartPreTradeRejectReleasesPayload(t *testing.T) {
-	builder, err := NewClientEngineBuilder[
+	engine, err := NewClientEngineBuilder[
 		clientEngineTestOrder,
 		clientEngineTestReport,
 		clientEngineTestAdjustment,
-	]()
-	if err != nil {
-		t.Fatalf("NewClientEngineBuilder() error = %v", err)
-	}
-	builder.CheckPreTradeStartPolicy(&clientEngineTestRejectingStartPolicy{})
-
-	engine, err := builder.Build()
+	]().
+		WithFullSync().
+		CheckPreTradeStartPolicy(&clientEngineTestRejectingStartPolicy{}).
+		Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -248,17 +230,14 @@ func TestClientEngineStartPreTradeRejectReleasesPayload(t *testing.T) {
 }
 
 func TestClientEngineExecutePreTradeRejectReleasesPayload(t *testing.T) {
-	builder, err := NewClientEngineBuilder[
+	engine, err := NewClientEngineBuilder[
 		clientEngineTestOrder,
 		clientEngineTestReport,
 		clientEngineTestAdjustment,
-	]()
-	if err != nil {
-		t.Fatalf("NewClientEngineBuilder() error = %v", err)
-	}
-	builder.PreTradePolicy(&clientEngineTestRejectingMainPolicy{})
-
-	engine, err := builder.Build()
+	]().
+		WithFullSync().
+		PreTradePolicy(&clientEngineTestRejectingMainPolicy{}).
+		Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -279,19 +258,15 @@ func TestClientEngineExecutePreTradeRejectReleasesPayload(t *testing.T) {
 }
 
 func TestClientEngineApplyAccountAdjustmentBatchHandlesMultipleAdjustments(t *testing.T) {
-	builder, err := NewClientEngineBuilder[
+	policy := &clientEngineTestAccountAdjustmentPolicy{}
+	engine, err := NewClientEngineBuilder[
 		clientEngineTestOrder,
 		clientEngineTestReport,
 		clientEngineTestAdjustment,
-	]()
-	if err != nil {
-		t.Fatalf("NewClientEngineBuilder() error = %v", err)
-	}
-
-	policy := &clientEngineTestAccountAdjustmentPolicy{}
-	builder.AccountAdjustmentPolicy(policy)
-
-	engine, err := builder.Build()
+	]().
+		WithFullSync().
+		AccountAdjustmentPolicy(policy).
+		Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -332,17 +307,14 @@ func TestClientEngineApplyAccountAdjustmentBatchHandlesMultipleAdjustments(t *te
 }
 
 func TestClientEngineUnsafeFastPanicsOnMismatchedPayload(t *testing.T) {
-	builder, err := NewClientEngineBuilder[
+	engine, err := NewClientEngineBuilder[
 		clientEngineTestOrder,
 		clientEngineTestReport,
 		clientEngineTestAdjustment,
-	](UnsafeFastClientPayloadCallbacks())
-	if err != nil {
-		t.Fatalf("NewClientEngineBuilder() error = %v", err)
-	}
-	builder.CheckPreTradeStartPolicy(&clientEngineTestStartPolicy{})
-
-	engine, err := builder.Build()
+	](UnsafeFastClientPayloadCallbacks()).
+		WithFullSync().
+		CheckPreTradeStartPolicy(&clientEngineTestStartPolicy{}).
+		Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -494,43 +466,33 @@ func orderWithMismatchedPayload(t *testing.T, payload any) model.Order {
 	return model.NewOrderFromHandle(nativeOrder)
 }
 
-func TestNewClientPreTradeEngineBuilder(t *testing.T) {
-	builder, err := NewClientPreTradeEngineBuilder[clientEngineTestOrder, clientEngineTestReport]()
-	if err != nil {
-		t.Fatalf("NewClientPreTradeEngineBuilder() error = %v", err)
-	}
-	builder.Close()
+func TestNewClientPreTradeEngineBuilder(*testing.T) {
+	_ = NewClientPreTradeEngineBuilder[clientEngineTestOrder, clientEngineTestReport]()
 }
 
-func TestNewClientAccountAdjustmentEngineBuilder(t *testing.T) {
-	builder, err := NewClientAccountAdjustmentEngineBuilder[clientEngineTestAdjustment]()
-	if err != nil {
-		t.Fatalf("NewClientAccountAdjustmentEngineBuilder() error = %v", err)
-	}
-	builder.Close()
+func TestNewClientAccountAdjustmentEngineBuilder(*testing.T) {
+	_ = NewClientAccountAdjustmentEngineBuilder[clientEngineTestAdjustment]()
 }
 
 func TestClientEngineBuilderCloseIsIdempotent(t *testing.T) {
-	builder, err := NewClientEngineBuilder[
+	builder := NewClientEngineBuilder[
 		clientEngineTestOrder,
 		clientEngineTestReport,
 		clientEngineTestAdjustment,
-	]()
-	if err != nil {
-		t.Fatalf("NewClientEngineBuilder() error = %v", err)
-	}
+	]().
+		WithFullSync().
+		CheckPreTradeStartPolicy(&clientEngineTestStartPolicy{})
 
 	builder.Close()
 	builder.Close()
 
-	builtBuilder, err := NewClientEngineBuilder[
+	builtBuilder := NewClientEngineBuilder[
 		clientEngineTestOrder,
 		clientEngineTestReport,
 		clientEngineTestAdjustment,
-	]()
-	if err != nil {
-		t.Fatalf("NewClientEngineBuilder() error = %v", err)
-	}
+	]().
+		WithFullSync().
+		CheckPreTradeStartPolicy(&clientEngineTestStartPolicy{})
 	engine, err := builtBuilder.Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
@@ -542,14 +504,13 @@ func TestClientEngineBuilderCloseIsIdempotent(t *testing.T) {
 }
 
 func TestClientEngineBuilderBuildReturnsErrorAfterClose(t *testing.T) {
-	builder, err := NewClientEngineBuilder[
+	builder := NewClientEngineBuilder[
 		clientEngineTestOrder,
 		clientEngineTestReport,
 		clientEngineTestAdjustment,
-	]()
-	if err != nil {
-		t.Fatalf("NewClientEngineBuilder() error = %v", err)
-	}
+	]().
+		WithFullSync().
+		CheckPreTradeStartPolicy(&clientEngineTestStartPolicy{})
 
 	builder.Close()
 	engine, err := builder.Build()
@@ -563,19 +524,15 @@ func TestClientEngineBuilderBuildReturnsErrorAfterClose(t *testing.T) {
 }
 
 func TestClientEngineUnsafeFastPreTradePolicyUsesFastAdapter(t *testing.T) {
-	builder, err := NewClientEngineBuilder[
+	policy := &clientEngineTestMainPolicy{}
+	engine, err := NewClientEngineBuilder[
 		clientEngineTestOrder,
 		clientEngineTestReport,
 		clientEngineTestAdjustment,
-	](UnsafeFastClientPayloadCallbacks())
-	if err != nil {
-		t.Fatalf("NewClientEngineBuilder() error = %v", err)
-	}
-
-	policy := &clientEngineTestMainPolicy{}
-	builder.PreTradePolicy(policy)
-
-	engine, err := builder.Build()
+	](UnsafeFastClientPayloadCallbacks()).
+		WithFullSync().
+		PreTradePolicy(policy).
+		Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -596,19 +553,15 @@ func TestClientEngineUnsafeFastPreTradePolicyUsesFastAdapter(t *testing.T) {
 }
 
 func TestClientEngineUnsafeFastAccountAdjustmentPolicyUsesFastAdapter(t *testing.T) {
-	builder, err := NewClientEngineBuilder[
+	policy := &clientEngineTestAccountAdjustmentPolicy{}
+	engine, err := NewClientEngineBuilder[
 		clientEngineTestOrder,
 		clientEngineTestReport,
 		clientEngineTestAdjustment,
-	](UnsafeFastClientPayloadCallbacks())
-	if err != nil {
-		t.Fatalf("NewClientEngineBuilder() error = %v", err)
-	}
-
-	policy := &clientEngineTestAccountAdjustmentPolicy{}
-	builder.AccountAdjustmentPolicy(policy)
-
-	engine, err := builder.Build()
+	](UnsafeFastClientPayloadCallbacks()).
+		WithFullSync().
+		AccountAdjustmentPolicy(policy).
+		Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}

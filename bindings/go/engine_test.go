@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"go.openpit.dev/openpit/accountadjustment"
+	"go.openpit.dev/openpit/internal/native"
 	"go.openpit.dev/openpit/model"
 	"go.openpit.dev/openpit/param"
 	"go.openpit.dev/openpit/pretrade"
@@ -30,21 +31,19 @@ import (
 	"go.openpit.dev/openpit/tx"
 )
 
-func TestEngineBuilderCloseIsIdempotent(t *testing.T) {
-	builder, err := NewEngineBuilder()
-	if err != nil {
-		t.Fatalf("NewEngineBuilder() error = %v", err)
-	}
+func TestEngineBuilderCloseIsIdempotent(*testing.T) {
+	builder := NewEngineBuilder().
+		WithFullSync().
+		CheckPreTradeStartPolicy(&engineTestStartPolicy{name: "p"})
 
 	builder.Close()
 	builder.Close()
 }
 
 func TestEngineBuilderBuildFailsAfterClose(t *testing.T) {
-	builder, err := NewEngineBuilder()
-	if err != nil {
-		t.Fatalf("NewEngineBuilder() error = %v", err)
-	}
+	builder := NewEngineBuilder().
+		WithFullSync().
+		CheckPreTradeStartPolicy(&engineTestStartPolicy{name: "p"})
 
 	builder.Close()
 	engine, err := builder.Build()
@@ -58,28 +57,28 @@ func TestEngineBuilderBuildFailsAfterClose(t *testing.T) {
 }
 
 func TestEngineBuilderScheduleCloseAfterPolicyAddFailure(t *testing.T) {
-	builder, err := NewEngineBuilder()
-	if err != nil {
-		t.Fatalf("NewEngineBuilder() error = %v", err)
-	}
-
-	builder.Close()
-
-	first := &engineTestStartPolicy{name: "first"}
 	second := &engineTestStartPolicy{name: "second"}
-	builder.CheckPreTradeStartPolicy(first)
+
+	// A forced-failure applier triggers an error on the first Builtin call.
+	// Subsequent policy adds must see the error and schedule policies for
+	// cleanup.
+	builder := NewEngineBuilder().WithFullSync().
+		Builtin(&engineTestFailingBuilder{})
 	builder.CheckPreTradeStartPolicy(second)
 
 	if second.closeCalls != 0 {
 		t.Fatalf("second closeCalls before Build() = %d, want 0", second.closeCalls)
 	}
 
-	_, err = builder.Build()
+	_, err := builder.Build()
 	if err == nil {
 		t.Fatal("Build() error = nil, want non-nil")
 	}
-	if !strings.Contains(err.Error(), `failed to add policy "first"`) {
-		t.Fatalf("Build() error = %q, want to contain %q", err.Error(), `failed to add policy "first"`)
+	if !strings.Contains(err.Error(), "forced") {
+		t.Fatalf(
+			"Build() error = %q, want to contain %q",
+			err.Error(), "forced",
+		)
 	}
 	if second.closeCalls != 1 {
 		t.Fatalf("second closeCalls after Build() = %d, want 1", second.closeCalls)
@@ -127,30 +126,24 @@ func TestEngineExecutePreTradeReturnsErrorAfterStop(t *testing.T) {
 	}
 }
 
-func TestEngineApplyAccountAdjustmentReturnsErrorForEmptyBatch(t *testing.T) {
+func TestEngineApplyAccountAdjustmentEmptyBatchIsNoop(t *testing.T) {
 	engine := newEngineForTests(t)
 	defer engine.Stop()
 
 	rejects, err := engine.ApplyAccountAdjustment(param.NewAccountIDFromInt(1), nil)
+	if err != nil {
+		t.Fatalf("ApplyAccountAdjustment() error = %v, want nil", err)
+	}
 	if rejects.IsSet() {
 		t.Fatalf("ApplyAccountAdjustment() rejects = %v, want none", rejects)
-	}
-	if err == nil {
-		t.Fatal("ApplyAccountAdjustment() error = nil, want non-nil")
-	}
-	if !strings.Contains(err.Error(), "adjustment list is empty") {
-		t.Fatalf("ApplyAccountAdjustment() error = %q, want to contain %q", err.Error(), "adjustment list is empty")
 	}
 }
 
 func TestEngineApplyAccountAdjustmentReturnsBatchReject(t *testing.T) {
-	builder, err := NewEngineBuilder()
-	if err != nil {
-		t.Fatalf("NewEngineBuilder() error = %v", err)
-	}
-	builder.AccountAdjustmentPolicy(&engineTestRejectingAdjustmentPolicy{name: "adjustment-reject"})
-
-	engine, err := builder.Build()
+	engine, err := NewEngineBuilder().
+		WithFullSync().
+		AccountAdjustmentPolicy(&engineTestRejectingAdjustmentPolicy{name: "adjustment-reject"}).
+		Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -184,12 +177,10 @@ func TestEngineApplyAccountAdjustmentReturnsBatchReject(t *testing.T) {
 func newEngineForTests(t *testing.T) *Engine {
 	t.Helper()
 
-	builder, err := NewEngineBuilder()
-	if err != nil {
-		t.Fatalf("NewEngineBuilder() error = %v", err)
-	}
-
-	engine, err := builder.Build()
+	engine, err := NewEngineBuilder().
+		WithFullSync().
+		CheckPreTradeStartPolicy(&engineTestNoopStartPolicy{}).
+		Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -217,30 +208,19 @@ func (engineTestStartPolicy) ApplyExecutionReport(model.ExecutionReport) bool {
 	return false
 }
 
-func TestBuiltinCheckPreTradeStartPolicyRejectsUnknownBuiltin(t *testing.T) {
-	builder, err := NewEngineBuilder()
-	if err != nil {
-		t.Fatalf("NewEngineBuilder() error = %v", err)
-	}
+type engineTestNoopStartPolicy struct{}
 
-	builder.BuiltinCheckPreTradeStartPolicy(&engineTestFakeBuiltinPolicy{name: "fake-builtin"})
+func (engineTestNoopStartPolicy) Close() {}
 
-	_, err = builder.Build()
-	if err == nil {
-		t.Fatal("Build() error = nil, want non-nil")
-	}
-	if !strings.Contains(err.Error(), "not a recognized built-in") {
-		t.Fatalf("Build() error = %q, want to contain %q", err.Error(), "not a recognized built-in")
-	}
+func (engineTestNoopStartPolicy) Name() string { return "noop" }
+
+func (engineTestNoopStartPolicy) CheckPreTradeStart(pretrade.Context, model.Order) []reject.Reject {
+	return nil
 }
 
-type engineTestFakeBuiltinPolicy struct {
-	name string
+func (engineTestNoopStartPolicy) ApplyExecutionReport(model.ExecutionReport) bool {
+	return false
 }
-
-func (engineTestFakeBuiltinPolicy) Close() {}
-
-func (p engineTestFakeBuiltinPolicy) Name() string { return p.name }
 
 type engineTestRejectingAdjustmentPolicy struct {
 	name string
@@ -265,4 +245,10 @@ func (p *engineTestRejectingAdjustmentPolicy) ApplyAccountAdjustment(
 		"rejected in test policy",
 		reject.ScopeAccount,
 	)
+}
+
+type engineTestFailingBuilder struct{}
+
+func (*engineTestFailingBuilder) Build(_ native.EngineBuilder) error {
+	return errors.New("forced")
 }

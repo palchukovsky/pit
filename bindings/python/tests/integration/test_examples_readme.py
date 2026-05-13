@@ -15,6 +15,8 @@
 #
 # Please see https://github.com/openpitkit and the OWNERS file for details.
 
+import datetime
+
 import openpit
 import pytest
 
@@ -62,39 +64,56 @@ def test_readme_quickstart() -> None:
     # Shared with: pit.wiki/Getting-Started.md
     # Keep README and wiki versions of this example in sync.
 
-    # 1. Configure policies.
-    pnl_policy = openpit.pretrade.policies.PnlBoundsKillSwitchPolicy(
-        settlement_asset="USD",
-        lower_bound=openpit.param.Pnl("-1000"),
-        initial_pnl=openpit.param.Pnl("0"),
-    )
-
-    rate_limit_policy = openpit.pretrade.policies.RateLimitPolicy(
-        max_orders=100,
-        window_seconds=1,
-    )
-
-    order_size_policy = openpit.pretrade.policies.OrderSizeLimitPolicy(
-        limit=openpit.pretrade.policies.OrderSizeLimit(
-            settlement_asset="USD",
-            max_quantity=openpit.param.Quantity("500"),
-            max_notional=openpit.param.Volume("100000"),
-        ),
-    )
-
-    # 2. Build the engine (one time at the platform initialization).
+    # 1. Build the engine (one time at the platform initialization).
+    policies = openpit.pretrade.policies
+    max_qty = openpit.param.Quantity("500")
+    max_notional = openpit.param.Volume("100000")
     engine = (
         openpit.Engine.builder()
-        .check_pre_trade_start_policy(
-            policy=openpit.pretrade.policies.OrderValidationPolicy(),
+        .with_local_sync()
+        .builtin(policies.build_order_validation())
+        .builtin(
+            policies.build_pnl_bounds_killswitch().broker_barriers(
+                policies.PnlBoundsBrokerBarrier(
+                    settlement_asset="USD",
+                    lower_bound=openpit.param.Pnl("-1000"),
+                )
+            )
         )
-        .check_pre_trade_start_policy(policy=pnl_policy)
-        .check_pre_trade_start_policy(policy=rate_limit_policy)
-        .check_pre_trade_start_policy(policy=order_size_policy)
+        .builtin(
+            policies.build_rate_limit().broker_barrier(
+                policies.RateLimitBrokerBarrier(
+                    limit=policies.RateLimit(
+                        max_orders=100,
+                        window=datetime.timedelta(seconds=1),
+                    )
+                )
+            )
+        )
+        .builtin(
+            policies.build_order_size_limit()
+            .broker_barrier(
+                policies.OrderSizeBrokerBarrier(
+                    limit=policies.OrderSizeLimit(
+                        max_quantity=max_qty,
+                        max_notional=max_notional,
+                    )
+                )
+            )
+            .asset_barriers(
+                policies.OrderSizeAssetBarrier(
+                    limit=policies.OrderSizeLimit(
+                        max_quantity=max_qty,
+                        max_notional=max_notional,
+                    ),
+                    settlement_asset="USD",
+                )
+            )
+        )
         .build()
     )
 
-    # 3. Check an order.
+    # 2. Check an order.
     order = openpit.Order(
         operation=openpit.OrderOperation(
             instrument=openpit.Instrument(
@@ -119,13 +138,13 @@ def test_readme_quickstart() -> None:
 
     request = start_result.request
 
-    # 4. Quick, lightweight checks, such as fat-finger scope or enabled kill
+    # 3. Quick, lightweight checks, such as fat-finger scope or enabled kill
     # switch, were performed during pre-trade request creation. The system state
     # has not yet changed, except in cases where each request, even rejected ones,
     # must be considered. Before the heavy-duty checks, other work on the request
     # can be performed simply by holding the request object.
 
-    # 5. Real pre-trade and risk control.
+    # 4. Real pre-trade and risk control.
     execute_result = request.execute()
 
     # Optional shortcut for the same two-stage flow:
@@ -140,7 +159,7 @@ def test_readme_quickstart() -> None:
 
     reservation = execute_result.reservation
 
-    # 6. If the request is successfully sent to the venue, it must be committed.
+    # 5. If the request is successfully sent to the venue, it must be committed.
     # The rollback must be called otherwise to revert all performed reservations.
     try:
         send_order_to_venue(order)
@@ -150,7 +169,7 @@ def test_readme_quickstart() -> None:
 
     reservation.commit()
 
-    # 7. The order goes to the venue and returns with an execution report.
+    # 6. The order goes to the venue and returns with an execution report.
     report = openpit.ExecutionReport(
         operation=openpit.ExecutionReportOperation(
             instrument=openpit.Instrument(
@@ -168,7 +187,7 @@ def test_readme_quickstart() -> None:
 
     result = engine.apply_execution_report(report=report)
 
-    # 8. After each execution report is applied, the system may report that it has
+    # 7. After each execution report is applied, the system may report that it has
     # been determined in advance that all subsequent requests will be rejected if
     # the account status does not change.
     assert result.kill_switch_triggered is False
@@ -285,6 +304,7 @@ def test_docs_guides_policies_start_stage_policy() -> None:
     # Source: bindings/python/docs/guides/policies.md — Start-stage policies
     engine = (
         openpit.Engine.builder()
+        .with_local_sync()
         .check_pre_trade_start_policy(policy=BlockedAccountPolicy())
         .build()
     )
@@ -306,6 +326,7 @@ def test_docs_guides_policies_main_stage_policy() -> None:
     # Source: bindings/python/docs/guides/policies.md — Main-stage policies
     engine = (
         openpit.Engine.builder()
+        .with_local_sync()
         .pre_trade_policy(
             policy=DocsNotionalCapPolicy(
                 max_notional=openpit.param.Volume("1000"),
@@ -332,9 +353,8 @@ def test_docs_guides_engine_build_engine() -> None:
     # Source: bindings/python/docs/guides/engine.md — Build an engine
     engine = (
         openpit.Engine.builder()
-        .check_pre_trade_start_policy(
-            policy=openpit.pretrade.policies.OrderValidationPolicy(),
-        )
+        .with_local_sync()
+        .builtin(openpit.pretrade.policies.build_order_validation())
         .pre_trade_policy(policy=MyMainStagePolicy())
         .account_adjustment_policy(policy=MyAccountAdjustmentPolicy())
         .build()
@@ -348,9 +368,8 @@ def test_docs_guides_engine_explicit_two_stage_flow() -> None:
     # Source: bindings/python/docs/guides/engine.md — Run the explicit two-stage flow
     engine = (
         openpit.Engine.builder()
-        .check_pre_trade_start_policy(
-            policy=openpit.pretrade.policies.OrderValidationPolicy(),
-        )
+        .with_local_sync()
+        .builtin(openpit.pretrade.policies.build_order_validation())
         .build()
     )
     order = _aapl_usd_order()
@@ -372,7 +391,12 @@ def test_docs_guides_engine_explicit_two_stage_flow() -> None:
 @pytest.mark.integration
 def test_docs_guides_engine_shortcut_flow() -> None:
     # Source: bindings/python/docs/guides/engine.md — Run the shortcut flow
-    engine = openpit.Engine.builder().build()
+    engine = (
+        openpit.Engine.builder()
+        .with_local_sync()
+        .builtin(openpit.pretrade.policies.build_order_validation())
+        .build()
+    )
     order = _aapl_usd_order()
 
     execute_result = engine.execute_pre_trade(order=order)
@@ -384,7 +408,12 @@ def test_docs_guides_engine_shortcut_flow() -> None:
 @pytest.mark.integration
 def test_docs_guides_engine_finalize_reservations() -> None:
     # Source: bindings/python/docs/guides/engine.md — Finalize reservations
-    engine = openpit.Engine.builder().build()
+    engine = (
+        openpit.Engine.builder()
+        .with_local_sync()
+        .builtin(openpit.pretrade.policies.build_order_validation())
+        .build()
+    )
     order = _aapl_usd_order()
     execute_result = engine.execute_pre_trade(order=order)
 
@@ -407,7 +436,12 @@ def test_docs_guides_engine_finalize_reservations() -> None:
 @pytest.mark.integration
 def test_docs_guides_engine_apply_post_trade_reports() -> None:
     # Source: bindings/python/docs/guides/engine.md — Apply post-trade reports
-    engine = openpit.Engine.builder().build()
+    engine = (
+        openpit.Engine.builder()
+        .with_local_sync()
+        .builtin(openpit.pretrade.policies.build_order_validation())
+        .build()
+    )
     report = _aapl_usd_report()
 
     post_trade = engine.apply_execution_report(report=report)

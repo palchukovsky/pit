@@ -1,25 +1,24 @@
 # Examples
 
-The examples on this page are adapted from the runnable integration tests and
-wiki-backed examples in the repository. Each snippet is intended to be copied
-into a Python file after installing `openpit`.
+The examples on this page cover common OpenPit integration flows. Each snippet
+is intended to be copied into a Python file after installing `openpit`.
 
 <!-- markdownlint-disable MD013 -->
 
-| Example | Scenario | Source |
-| --- | --- | --- |
-| [Full order lifecycle](#full-order-lifecycle) | Configure policies, reserve, commit, and apply a report | [`test_examples_readme.py`](https://github.com/openpitkit/pit/blob/main/bindings/python/tests/integration/test_examples_readme.py) |
-| [Domain value types](#domain-value-types) | Build validated financial values | [`test_examples_wiki.py`](https://github.com/openpitkit/pit/blob/main/bindings/python/tests/integration/test_examples_wiki.py) |
-| [Directional helpers](#directional-helpers) | Use side and position-side enums | [`test_examples_wiki.py`](https://github.com/openpitkit/pit/blob/main/bindings/python/tests/integration/test_examples_wiki.py) |
-| [Leverage values](#leverage-values) | Construct leverage multipliers | [`test_examples_wiki.py`](https://github.com/openpitkit/pit/blob/main/bindings/python/tests/integration/test_examples_wiki.py) |
-| [Start-stage reject handling](#start-stage-reject-handling) | Inspect start-stage rejects | [`test_examples_wiki.py`](https://github.com/openpitkit/pit/blob/main/bindings/python/tests/integration/test_examples_wiki.py) |
-| [Main-stage finalization](#main-stage-finalization) | Execute a request and commit or inspect rejects | [`test_examples_wiki.py`](https://github.com/openpitkit/pit/blob/main/bindings/python/tests/integration/test_examples_wiki.py) |
-| [Shortcut flow](#shortcut-flow) | Run start and main stages together | [`test_examples_wiki.py`](https://github.com/openpitkit/pit/blob/main/bindings/python/tests/integration/test_examples_wiki.py) |
-| [Account-adjustment batch](#account-adjustment-batch) | Apply balance and position adjustments | [`test_examples_wiki.py`](https://github.com/openpitkit/pit/blob/main/bindings/python/tests/integration/test_examples_wiki.py) |
-| [Account-adjustment policy](#account-adjustment-policy) | Validate account adjustments with a custom policy | [`test_examples_wiki.py`](https://github.com/openpitkit/pit/blob/main/bindings/python/tests/integration/test_examples_wiki.py) |
-| [Rollback-safe main policy](#rollback-safe-main-policy) | Register a mutation and rely on rollback | [`test_examples_wiki.py`](https://github.com/openpitkit/pit/blob/main/bindings/python/tests/integration/test_examples_wiki.py) |
-| [Custom notional-cap policy](#custom-notional-cap-policy) | Reject orders above a strategy cap | [`test_examples_wiki.py`](https://github.com/openpitkit/pit/blob/main/bindings/python/tests/integration/test_examples_wiki.py) |
-| [Custom order models](#custom-order-models) | Preserve project metadata through callbacks | [`test_examples_wiki.py`](https://github.com/openpitkit/pit/blob/main/bindings/python/tests/integration/test_examples_wiki.py) |
+| Example | Scenario |
+| --- | --- |
+| [Full order lifecycle](#full-order-lifecycle) | Configure policies, reserve, commit, and apply a report |
+| [Domain value types](#domain-value-types) | Build validated financial values |
+| [Directional helpers](#directional-helpers) | Use side and position-side enums |
+| [Leverage values](#leverage-values) | Construct leverage multipliers |
+| [Start-stage reject handling](#start-stage-reject-handling) | Inspect start-stage rejects |
+| [Main-stage finalization](#main-stage-finalization) | Execute a request and commit or inspect rejects |
+| [Shortcut flow](#shortcut-flow) | Run start and main stages together |
+| [Account-adjustment batch](#account-adjustment-batch) | Apply balance and position adjustments |
+| [Account-adjustment policy](#account-adjustment-policy) | Validate account adjustments with a custom policy |
+| [Rollback-safe main policy](#rollback-safe-main-policy) | Register a mutation and rely on rollback |
+| [Custom notional-cap policy](#custom-notional-cap-policy) | Reject orders above a strategy cap |
+| [Custom order models](#custom-order-models) | Preserve project metadata through callbacks |
 
 <!-- markdownlint-enable MD013 -->
 
@@ -29,38 +28,55 @@ Use this when integrating OpenPit around a real order-submission path. The
 reservation is committed only after the downstream send succeeds.
 
 ```python
+import datetime
 import openpit
+import openpit.pretrade.policies
 
 
 def send_order_to_venue(order: openpit.Order) -> None:
     _ = order
 
 
-pnl_policy = openpit.pretrade.policies.PnlBoundsKillSwitchPolicy(
-    settlement_asset="USD",
-    lower_bound=openpit.param.Pnl("-1000"),
-    initial_pnl=openpit.param.Pnl("0"),
+pnl_policy = (
+    openpit.pretrade.policies.build_pnl_bounds_killswitch()
+    .broker_barriers(
+        openpit.pretrade.policies.PnlBoundsBrokerBarrier(
+            settlement_asset="USD",
+            lower_bound=openpit.param.Pnl("-1000"),
+        ),
+    )
 )
-rate_limit_policy = openpit.pretrade.policies.RateLimitPolicy(
-    max_orders=100,
-    window_seconds=1,
+rate_limit_policy = (
+    openpit.pretrade.policies.build_rate_limit()
+    .broker_barrier(
+        openpit.pretrade.policies.RateLimitBrokerBarrier(
+            limit=openpit.pretrade.policies.RateLimit(
+                max_orders=100,
+                window=datetime.timedelta(seconds=1),
+            ),
+        ),
+    )
 )
-size_policy = openpit.pretrade.policies.OrderSizeLimitPolicy(
-    limit=openpit.pretrade.policies.OrderSizeLimit(
-        settlement_asset="USD",
-        max_quantity=openpit.param.Quantity("500"),
-        max_notional=openpit.param.Volume("100000"),
-    ),
+size_policy = (
+    openpit.pretrade.policies.build_order_size_limit()
+    .asset_barriers(
+        openpit.pretrade.policies.OrderSizeAssetBarrier(
+            limit=openpit.pretrade.policies.OrderSizeLimit(
+                max_quantity=openpit.param.Quantity("500"),
+                max_notional=openpit.param.Volume("100000"),
+            ),
+            settlement_asset="USD",
+        ),
+    )
 )
 
 engine = (
     openpit.Engine.builder()
-    .check_pre_trade_start_policy(
-        policy=openpit.pretrade.policies.OrderValidationPolicy(),
-    )
-    .check_pre_trade_start_policy(policy=pnl_policy)
-    .check_pre_trade_start_policy(policy=rate_limit_policy)
-    .check_pre_trade_start_policy(policy=size_policy)
+    .with_local_sync()
+    .builtin(openpit.pretrade.policies.build_order_validation())
+    .builtin(pnl_policy)
+    .builtin(rate_limit_policy)
+    .builtin(size_policy)
     .build()
 )
 
@@ -157,11 +173,13 @@ main stage.
 
 ```python
 import openpit
+import openpit.pretrade.policies
 
 engine = (
     openpit.Engine.builder()
-    .check_pre_trade_start_policy(
-        policy=openpit.pretrade.policies.OrderValidationPolicy(),
+    .with_local_sync()
+    .builtin(
+        openpit.pretrade.policies.build_order_validation(),
     )
     .build()
 )
@@ -519,6 +537,7 @@ class StrategyTagPolicy(openpit.pretrade.CheckPreTradeStartPolicy):
 
 engine = (
     openpit.Engine.builder()
+    .with_local_sync()
     .check_pre_trade_start_policy(policy=StrategyTagPolicy())
     .build()
 )

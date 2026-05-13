@@ -18,12 +18,15 @@
 pub(crate) mod account_adjustment;
 pub(crate) mod account_adjustment_context;
 pub(crate) mod account_adjustment_policy;
+pub(crate) mod account_key;
 pub(crate) mod engine;
+mod engine_locking;
 pub(crate) mod execution_report;
 pub(crate) mod instrument;
 pub(crate) mod mutation;
 pub(crate) mod order;
 pub(crate) mod request_trait;
+pub(crate) mod sync_policy;
 
 mod macros;
 
@@ -35,6 +38,11 @@ pub use account_adjustment::{
 };
 pub use account_adjustment_context::AccountAdjustmentContext;
 pub use account_adjustment_policy::AccountAdjustmentPolicy;
+pub use account_key::{AccountKey, AccountKeyConstraint};
+pub use engine::{ReadyEngineBuilder, SyncedEngineBuilder};
+pub use engine_locking::{
+    EngineLockingPolicy, LocalEngineLocking, SequentialEngineLocking, SyncedEngineLocking,
+};
 pub use execution_report::{
     ExecutionReportFillDetails, ExecutionReportOperation, ExecutionReportPositionImpact,
     FinancialImpact, WithExecutionReportFillDetails, WithExecutionReportOperation,
@@ -59,3 +67,4 @@ pub use request_trait::{
     HasOrderPositionSide, HasOrderPrice, HasPnl, HasPositionInstrument, HasPositionMode,
     HasReduceOnly, HasSide, HasTradeAmount, RequestFieldAccessError,
 };
+pub use sync_policy::{AccountSyncPolicy, FullSyncPolicy, LocalSyncPolicy, SyncPolicy};

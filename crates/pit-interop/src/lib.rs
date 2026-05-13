@@ -29,6 +29,10 @@
 //
 // Please see https://github.com/openpitkit and the OWNERS file for details.
 
+pub mod sync_policy;
+
+pub use sync_policy::{EngineHandle, EngineHandleWeak, EngineLocking, SyncMode, SyncPolicy};
+
 pub mod account_adjustment_amount;
 pub mod account_adjustment_bounds;
 pub mod account_adjustment_operation;

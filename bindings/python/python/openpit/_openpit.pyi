@@ -1236,106 +1236,69 @@ class PreTradeContext:
 class AccountAdjustmentContext:
     """Context of the current account-adjustment operation."""
 
-class PnlBoundsKillSwitchPolicy:
-    """Built-in start-stage kill-switch policy based on PnL bounds."""
-
-    NAME: typing.ClassVar[str]
-
-    def __init__(
-        self,
-        *,
-        settlement_asset: param.Asset,
-        lower_bound: param.Pnl | None = None,
-        upper_bound: param.Pnl | None = None,
-        initial_pnl: param.Pnl,
-    ) -> None:
-        """Create policy with the first per-settlement bounds barrier."""
-        _ = (settlement_asset, lower_bound, upper_bound, initial_pnl)
-
-    def set_barrier(
-        self,
-        *,
-        settlement_asset: param.Asset,
-        lower_bound: param.Pnl | None = None,
-        upper_bound: param.Pnl | None = None,
-        initial_pnl: param.Pnl,
-    ) -> None:
-        """Add or update bounds for a settlement asset."""
-        _ = (settlement_asset, lower_bound, upper_bound, initial_pnl)
-
-    def reset_pnl(self, settlement_asset: param.Asset) -> None:
-        """Reset accumulated PnL for a settlement asset."""
-        _ = settlement_asset
-
-class RateLimitPolicy:
-    """Built-in start-stage rate limit policy."""
-
-    NAME: typing.ClassVar[str]
-
-    def __init__(self, max_orders: int, window_seconds: int) -> None:
-        """Create a rate limit policy."""
-        _ = (max_orders, window_seconds)
-
-class OrderValidationPolicy:
-    """Built-in start-stage order schema/field validation policy."""
-
-    NAME: typing.ClassVar[str]
-
-    def __init__(self) -> None:
-        """Create the order validation policy."""
-
 class OrderSizeLimit:
-    """Order size limits for one settlement asset."""
+    """Order size limits."""
 
     def __init__(
         self,
         *,
-        settlement_asset: param.Asset,
         max_quantity: param.Quantity,
         max_notional: param.Volume,
     ) -> None:
         """Create order size limits."""
-        _ = (settlement_asset, max_quantity, max_notional)
+        _ = (max_quantity, max_notional)
 
-class OrderSizeLimitPolicy:
-    """Built-in start-stage order size limit policy."""
-
-    NAME: typing.ClassVar[str]
-
-    def __init__(self, limit: OrderSizeLimit) -> None:
-        """Create policy with the first limit."""
-        _ = limit
-
-    def set_limit(self, limit: OrderSizeLimit) -> None:
-        """Add or update a limit for settlement asset."""
-        _ = limit
-
-class EngineBuilder:
-    """Engine configuration builder."""
+class SyncedEngineBuilder:
+    """Second stage of the engine builder (sync policy already chosen). Add at least one
+    policy to obtain a ReadyEngineBuilder."""
 
     def check_pre_trade_start_policy(
         self,
-        policy: (
-            CheckPreTradeStartPolicy
-            | OrderValidationPolicy
-            | PnlBoundsKillSwitchPolicy
-            | RateLimitPolicy
-            | OrderSizeLimitPolicy
-        ),
-    ) -> EngineBuilder:
+        policy: CheckPreTradeStartPolicy,
+    ) -> ReadyEngineBuilder:
         """Register a start-stage policy."""
         _ = policy
 
-    def pre_trade_policy(self, policy: PreTradePolicy) -> EngineBuilder:
+    def pre_trade_policy(self, policy: PreTradePolicy) -> ReadyEngineBuilder:
         """Register a main-stage policy."""
         _ = policy
 
     def account_adjustment_policy(
         self,
         policy: AccountAdjustmentPolicy,
-    ) -> EngineBuilder:
+    ) -> ReadyEngineBuilder:
         """Register an account-adjustment policy."""
         _ = policy
+
+    def builtin(self, builtinReadyBuilder: typing.Any) -> ReadyEngineBuilder:
+        """Register a built-in policy via its ready builder."""
+        _ = builtinReadyBuilder
+
+class ReadyEngineBuilder:
+    """Third stage of the engine builder (at least one policy registered). Accepts more
+    policies and builds the engine."""
+
+    def check_pre_trade_start_policy(
+        self,
+        policy: CheckPreTradeStartPolicy,
+    ) -> ReadyEngineBuilder:
+        """Register an additional start-stage policy."""
+        _ = policy
+
+    def pre_trade_policy(self, policy: PreTradePolicy) -> ReadyEngineBuilder:
+        """Register an additional main-stage policy."""
+        _ = policy
+
+    def account_adjustment_policy(
+        self,
+        policy: AccountAdjustmentPolicy,
+    ) -> ReadyEngineBuilder:
+        """Register an additional account-adjustment policy."""
+        _ = policy
+
+    def builtin(self, builtinReadyBuilder: typing.Any) -> ReadyEngineBuilder:
+        """Register a built-in policy via its ready builder."""
+        _ = builtinReadyBuilder
 
     def build(self) -> Engine:
         """Build an engine instance."""
@@ -1345,24 +1308,27 @@ class Engine:
 
     @staticmethod
     def builder() -> EngineBuilder:
-        """Create a new engine builder."""
+        """Create a new EngineBuilder."""
 
-    def start_pre_trade(self, order: Order) -> StartPreTradeResult:
-        """Run start-stage pre-trade checks."""
-        _ = order
-
-    def execute_pre_trade(self, order: Order) -> ExecuteResult:
-        """Run start-stage and main-stage checks in one call."""
-        _ = order
-
-    def apply_execution_report(self, report: ExecutionReport) -> PostTradeResult:
-        """Apply post-trade report to policy state."""
-        _ = report
-
+    def start_pre_trade(self, order: object) -> StartPreTradeResult: ...
+    def execute_pre_trade(self, order: object) -> ExecuteResult: ...
+    def apply_execution_report(self, report: object) -> PostTradeResult: ...
     def apply_account_adjustment(
         self,
-        account_id: param.AccountId,
-        adjustments: typing.Iterable[AccountAdjustment],
-    ) -> AccountAdjustmentBatchResult:
-        """Validate a batch of account adjustments."""
-        _ = account_id, adjustments
+        account_id: object,
+        adjustments: object,
+    ) -> AccountAdjustmentBatchResult: ...
+
+class EngineBuilder:
+    """First stage of the engine builder."""
+
+    def with_full_sync(self) -> SyncedEngineBuilder:
+        """Use full synchronization (concurrent cross-thread calls safe)."""
+
+    def with_local_sync(self) -> SyncedEngineBuilder:
+        """Use local synchronization (zero overhead; handle stays on creating
+        thread)."""
+
+    def with_account_sync(self) -> SyncedEngineBuilder:
+        """Use account synchronization (concurrent when caller pins each account to one
+        chain)."""

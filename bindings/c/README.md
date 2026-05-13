@@ -116,6 +116,12 @@ There are two types of rejections: a full kill switch for the account and a
 rejection of only the current request. This is useful in algorithmic trading
 when automatic order submission must be halted until the situation is analyzed.
 
+Built-in policies that need to maintain state across calls use the SDK's
+[Storage](https://github.com/openpitkit/pit/wiki/Storage) abstraction
+internally. The runtime library performs the necessary memory
+synchronization for policy state itself; the C consumer is responsible
+only for the threading contract on the SDK handle.
+
 ## Usage
 
 ```c

@@ -19,6 +19,7 @@ package openpit
 
 import (
 	"testing"
+	"time"
 
 	"go.openpit.dev/openpit/model"
 	"go.openpit.dev/openpit/param"
@@ -47,45 +48,52 @@ func TestReadmeQuickstart(t *testing.T) {
 		t.Fatalf("NewVolumeFromString() error = %v", err)
 	}
 
-	// 1. Configure policies.
-	pnlPolicy, err := policies.NewPnlBoundsKillSwitchPolicy(policies.PnlBoundsBarrier{
-		SettlementAsset: usd,
-		LowerBound:      optional.Some(lowerBound),
-		InitialPnl:      param.PnlZero,
-	})
-	if err != nil {
-		t.Fatalf("NewPnlBoundsKillSwitchPolicy() error = %v", err)
-	}
-	defer pnlPolicy.Close()
-
-	sizePolicy, err := policies.NewOrderSizeLimitPolicy(policies.OrderSizeLimit{
-		SettlementAsset: usd,
-		MaxQuantity:     maxQty,
-		MaxNotional:     maxNotional,
-	})
-	if err != nil {
-		t.Fatalf("NewOrderSizeLimitPolicy() error = %v", err)
-	}
-	defer sizePolicy.Close()
-
-	// 2. Build the engine (one time at the platform initialization).
-	builder, err := NewEngineBuilder()
-	if err != nil {
-		t.Fatalf("NewEngineBuilder() error = %v", err)
-	}
-	builder.BuiltinCheckPreTradeStartPolicy(
-		policies.NewOrderValidation(),
-		pnlPolicy,
-		policies.NewRateLimitPolicy(100, 1),
-		sizePolicy,
-	)
-	engine, err := builder.Build()
+	// 1. Configure and build the engine.
+	engine, err := NewEngineBuilder().
+		WithFullSync().
+		Builtin(policies.BuildOrderValidation()).
+		Builtin(
+			policies.BuildPnlBoundsKillswitch().BrokerBarriers(
+				policies.PnlBoundsBrokerBarrier{
+					SettlementAsset: usd,
+					LowerBound:      optional.Some(lowerBound),
+				},
+			),
+		).
+		Builtin(
+			policies.BuildRateLimit().BrokerBarrier(
+				policies.RateLimitBrokerBarrier{
+					Limit: policies.RateLimit{MaxOrders: 100, Window: time.Second},
+				},
+			),
+		).
+		Builtin(
+			policies.BuildOrderSizeLimit().
+				BrokerBarrier(
+					policies.OrderSizeBrokerBarrier{
+						Limit: policies.OrderSizeLimit{
+							MaxQuantity: maxQty,
+							MaxNotional: maxNotional,
+						},
+					},
+				).
+				AssetBarriers(
+					policies.OrderSizeAssetBarrier{
+						SettlementAsset: usd,
+						Limit: policies.OrderSizeLimit{
+							MaxQuantity: maxQty,
+							MaxNotional: maxNotional,
+						},
+					},
+				),
+		).
+		Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
 	defer engine.Stop()
 
-	// 3. Check an order.
+	// 2. Check an order.
 	order := model.NewOrder()
 	op := order.EnsureOperationView()
 	aapl, err := param.NewAsset("AAPL")
@@ -109,7 +117,7 @@ func TestReadmeQuickstart(t *testing.T) {
 	}
 	defer request.Close()
 
-	// 5. Real pre-trade and risk control.
+	// 3. Real pre-trade and risk control.
 	reservation, rejects, err := request.Execute()
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
@@ -119,13 +127,10 @@ func TestReadmeQuickstart(t *testing.T) {
 	}
 	defer reservation.Close()
 
-	// Optional shortcut for the same two-stage flow:
-	// reservation, rejects, err := engine.ExecutePreTrade(order)
-
-	// 6. Commit the reservation.
+	// 4. Commit the reservation.
 	reservation.Commit()
 
-	// 7. Apply execution report.
+	// 5. Apply execution report.
 	report := model.NewExecutionReport()
 	reportOp := model.NewExecutionReportOperation()
 	reportOp.SetInstrument(param.NewInstrument(aapl, usd))
@@ -145,7 +150,7 @@ func TestReadmeQuickstart(t *testing.T) {
 		t.Fatalf("ApplyExecutionReport() error = %v", err)
 	}
 
-	// 8. Kill switch must not be triggered after a small loss.
+	// 6. Kill switch must not be triggered after a small loss.
 	if result.KillSwitchTriggered {
 		t.Fatal("KillSwitchTriggered = true, want false")
 	}

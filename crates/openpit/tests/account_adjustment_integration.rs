@@ -144,6 +144,7 @@ fn make_engine(reject_on_asset: Option<&str>) -> EngineWithRecorders {
     let seen_ids = Rc::new(RefCell::new(Vec::new()));
     let seen_assets = Rc::new(RefCell::new(Vec::new()));
     let engine = Engine::<(), (), TestAdjustment>::builder()
+        .with_local_sync()
         .account_adjustment_policy(RecordingAdjustmentPolicy {
             name: "RecordingAdjustmentPolicy",
             seen_account_ids: Rc::clone(&seen_ids),
@@ -159,6 +160,7 @@ fn make_rollback_engine(reject_on_asset: Option<&str>) -> RollbackEngine {
     let committed = Rc::new(RefCell::new(Vec::new()));
     let rollback_order = Rc::new(RefCell::new(Vec::new()));
     let engine = Engine::<(), (), TestAdjustment>::builder()
+        .with_local_sync()
         .account_adjustment_policy(MutatingRecordingPolicy {
             name: "MutatingRecordingPolicy",
             committed_assets: Rc::clone(&committed),

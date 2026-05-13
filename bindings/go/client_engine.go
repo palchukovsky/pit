@@ -134,51 +134,48 @@ func (e *ClientEngine[Order, Report, Adjustment]) ApplyAccountAdjustment(
 	return rejects, err
 }
 
+//------------------------------------------------------------------------------
+// ClientEngineBuilder
+
+// ClientEngineBuilder is the initial stage of the client engine builder.
+// Call one of WithFullSync, WithLocalSync, or WithAccountSync to obtain a
+// ClientSyncedEngineBuilder on which policies can be registered.
 type ClientEngineBuilder[
 	Order pretrade.ClientOrder,
 	Report pretrade.ClientExecutionReport,
 	Adjustment accountadjustment.ClientAccountAdjustment,
 ] struct {
-	builder                    *EngineBuilder
 	unsafeFastPayloadCallbacks bool
 }
 
 // NewClientEngineBuilder creates a builder for strategies that use custom
 // order, execution report, and account-adjustment types.
 //
-// Policies added to this builder receive client types directly. The builder
-// adapts them to the standard engine policies and keeps payload handles entirely
-// inside the SDK boundary.
+// Call WithFullSync, WithLocalSync, or WithAccountSync to select a sync policy
+// and obtain a ClientSyncedEngineBuilder.
 func NewClientEngineBuilder[
 	Order pretrade.ClientOrder,
 	Report pretrade.ClientExecutionReport,
 	Adjustment accountadjustment.ClientAccountAdjustment,
-](options ...ClientEngineOption) (*ClientEngineBuilder[Order, Report, Adjustment], error) {
-	builder, err := NewEngineBuilder()
-	if err != nil {
-		return nil, err
-	}
-
+](options ...ClientEngineOption) *ClientEngineBuilder[Order, Report, Adjustment] {
 	config := clientEngineOptions{}
 	for _, option := range options {
 		option(&config)
 	}
-
 	return &ClientEngineBuilder[Order, Report, Adjustment]{
-		builder:                    builder,
 		unsafeFastPayloadCallbacks: config.unsafeFastPayloadCallbacks,
-	}, nil
+	}
 }
 
-// NewClientPreTradeEngineBuilder creates a client builder for custom order and
-// execution report types while keeping account adjustments on the standard SDK
-// model type.
+// NewClientPreTradeEngineBuilder creates a client builder for custom order
+// and execution report types while keeping account adjustments on the standard
+// SDK model type.
 func NewClientPreTradeEngineBuilder[
 	Order pretrade.ClientOrder,
 	Report pretrade.ClientExecutionReport,
 ](
 	options ...ClientEngineOption,
-) (*ClientEngineBuilder[Order, Report, model.AccountAdjustment], error) {
+) *ClientEngineBuilder[Order, Report, model.AccountAdjustment] {
 	return NewClientEngineBuilder[Order, Report, model.AccountAdjustment](options...)
 }
 
@@ -187,72 +184,206 @@ func NewClientPreTradeEngineBuilder[
 // standard SDK model types.
 func NewClientAccountAdjustmentEngineBuilder[
 	Adjustment accountadjustment.ClientAccountAdjustment,
-](options ...ClientEngineOption) (
-	*ClientEngineBuilder[model.Order, model.ExecutionReport, Adjustment],
-	error,
-) {
+](
+	options ...ClientEngineOption,
+) *ClientEngineBuilder[model.Order, model.ExecutionReport, Adjustment] {
 	return NewClientEngineBuilder[model.Order, model.ExecutionReport, Adjustment](options...)
 }
 
+// WithFullSync configures full thread-safety synchronization and returns a
+// ClientSyncedEngineBuilder ready to accept policies.
+func (
+	b *ClientEngineBuilder[Order, Report, Adjustment],
+) WithFullSync() *ClientSyncedEngineBuilder[Order, Report, Adjustment] {
+	return &ClientSyncedEngineBuilder[Order, Report, Adjustment]{
+		synced:                     NewEngineBuilder().WithFullSync(),
+		unsafeFastPayloadCallbacks: b.unsafeFastPayloadCallbacks,
+	}
+}
+
+// WithLocalSync configures single-thread (no-sync) synchronization and returns
+// a ClientSyncedEngineBuilder ready to accept policies.
+func (
+	b *ClientEngineBuilder[Order, Report, Adjustment],
+) WithLocalSync() *ClientSyncedEngineBuilder[Order, Report, Adjustment] {
+	return &ClientSyncedEngineBuilder[Order, Report, Adjustment]{
+		synced:                     NewEngineBuilder().WithLocalSync(),
+		unsafeFastPayloadCallbacks: b.unsafeFastPayloadCallbacks,
+	}
+}
+
+// WithAccountSync configures account-sharded synchronization and returns a
+// ClientSyncedEngineBuilder ready to accept policies. The resulting engine
+// handle is safe for concurrent invocation when the caller pins each account
+// to a single processing chain.
+func (
+	b *ClientEngineBuilder[Order, Report, Adjustment],
+) WithAccountSync() *ClientSyncedEngineBuilder[Order, Report, Adjustment] {
+	return &ClientSyncedEngineBuilder[Order, Report, Adjustment]{
+		synced:                     NewEngineBuilder().WithAccountSync(),
+		unsafeFastPayloadCallbacks: b.unsafeFastPayloadCallbacks,
+	}
+}
+
+//------------------------------------------------------------------------------
+// ClientSyncedEngineBuilder
+
+// ClientSyncedEngineBuilder is the second stage of the client engine builder
+// chain. Add at least one policy to advance to ClientReadyEngineBuilder where
+// Build is available.
+type ClientSyncedEngineBuilder[
+	Order pretrade.ClientOrder,
+	Report pretrade.ClientExecutionReport,
+	Adjustment accountadjustment.ClientAccountAdjustment,
+] struct {
+	synced                     *SyncedEngineBuilder
+	unsafeFastPayloadCallbacks bool
+}
+
+func (
+	b *ClientSyncedEngineBuilder[Order, Report, Adjustment],
+) newReady() *ClientReadyEngineBuilder[Order, Report, Adjustment] {
+	return &ClientReadyEngineBuilder[Order, Report, Adjustment]{
+		ready:                      newReadyEngineBuilder(b.synced),
+		unsafeFastPayloadCallbacks: b.unsafeFastPayloadCallbacks,
+	}
+}
+
+func (b *ClientSyncedEngineBuilder[Order, Report, Adjustment]) CheckPreTradeStartPolicy(
+	policy ...pretrade.ClientCheckPreTradeStartPolicy[Order, Report],
+) *ClientReadyEngineBuilder[Order, Report, Adjustment] {
+	rb := b.newReady()
+	for _, p := range policy {
+		rb.addCheckPreTradeStartPolicy(p)
+	}
+	return rb
+}
+
+func (b *ClientSyncedEngineBuilder[Order, Report, Adjustment]) PreTradePolicy(
+	policy ...pretrade.ClientPreTradePolicy[Order, Report],
+) *ClientReadyEngineBuilder[Order, Report, Adjustment] {
+	rb := b.newReady()
+	for _, p := range policy {
+		rb.addPreTradePolicy(p)
+	}
+	return rb
+}
+
+func (b *ClientSyncedEngineBuilder[Order, Report, Adjustment]) AccountAdjustmentPolicy(
+	policy ...accountadjustment.ClientPolicy[Adjustment],
+) *ClientReadyEngineBuilder[Order, Report, Adjustment] {
+	rb := b.newReady()
+	for _, p := range policy {
+		rb.addAccountAdjustmentPolicy(p)
+	}
+	return rb
+}
+
+// Builtin registers a built-in entity on the builder.
+func (
+	b *ClientSyncedEngineBuilder[Order, Report, Adjustment],
+) Builtin(
+	builtinReadyBuilder builtinReadyBuilder,
+) *ClientReadyEngineBuilder[Order, Report, Adjustment] {
+	return b.newReady().Builtin(builtinReadyBuilder)
+}
+
+//------------------------------------------------------------------------------
+// ClientReadyEngineBuilder
+
+// ClientReadyEngineBuilder is the third stage of the client engine builder
+// chain. Accepts additional policies and builds the engine via Build.
+type ClientReadyEngineBuilder[
+	Order pretrade.ClientOrder,
+	Report pretrade.ClientExecutionReport,
+	Adjustment accountadjustment.ClientAccountAdjustment,
+] struct {
+	ready                      *ReadyEngineBuilder
+	unsafeFastPayloadCallbacks bool
+}
+
 // Close releases the underlying builder and any policies it still owns.
-func (b *ClientEngineBuilder[Order, Report, Adjustment]) Close() {
-	b.builder.Close()
+func (b *ClientReadyEngineBuilder[Order, Report, Adjustment]) Close() {
+	b.ready.Close()
 }
 
 // Build constructs a ClientEngine and transfers ownership of policies to it.
-func (b *ClientEngineBuilder[Order, Report, Adjustment]) Build() (
+func (b *ClientReadyEngineBuilder[Order, Report, Adjustment]) Build() (
 	*ClientEngine[Order, Report, Adjustment],
 	error,
 ) {
-	engine, err := b.builder.Build()
+	engine, err := b.ready.Build()
 	if err != nil {
 		return nil, err
 	}
 	return &ClientEngine[Order, Report, Adjustment]{engine: engine}, nil
 }
 
-// CheckPreTradeStartPolicy adds client typed start policies.
-func (b *ClientEngineBuilder[Order, Report, Adjustment]) CheckPreTradeStartPolicy(
+func (b *ClientReadyEngineBuilder[Order, Report, Adjustment]) CheckPreTradeStartPolicy(
 	policy ...pretrade.ClientCheckPreTradeStartPolicy[Order, Report],
-) *ClientEngineBuilder[Order, Report, Adjustment] {
+) *ClientReadyEngineBuilder[Order, Report, Adjustment] {
 	for _, p := range policy {
-		if b.unsafeFastPayloadCallbacks {
-			b.builder.CheckPreTradeStartPolicy(
-				pretrade.NewUnsafeFastClientCheckPreTradeStartPolicy(p),
-			)
-			continue
-		}
-		b.builder.CheckPreTradeStartPolicy(pretrade.NewSafeClientCheckPreTradeStartPolicy(p))
+		b.addCheckPreTradeStartPolicy(p)
 	}
 	return b
 }
 
-// PreTradePolicy adds client typed main pre-trade policies.
-func (b *ClientEngineBuilder[Order, Report, Adjustment]) PreTradePolicy(
+func (b *ClientReadyEngineBuilder[Order, Report, Adjustment]) PreTradePolicy(
 	policy ...pretrade.ClientPreTradePolicy[Order, Report],
-) *ClientEngineBuilder[Order, Report, Adjustment] {
+) *ClientReadyEngineBuilder[Order, Report, Adjustment] {
 	for _, p := range policy {
-		if b.unsafeFastPayloadCallbacks {
-			b.builder.PreTradePolicy(pretrade.NewUnsafeFastClientPreTradePolicy(p))
-			continue
-		}
-		b.builder.PreTradePolicy(pretrade.NewSafeClientPreTradePolicy(p))
+		b.addPreTradePolicy(p)
 	}
 	return b
 }
 
-// AccountAdjustmentPolicy adds client typed account-adjustment policies.
-func (b *ClientEngineBuilder[Order, Report, Adjustment]) AccountAdjustmentPolicy(
+func (b *ClientReadyEngineBuilder[Order, Report, Adjustment]) AccountAdjustmentPolicy(
 	policy ...accountadjustment.ClientPolicy[Adjustment],
-) *ClientEngineBuilder[Order, Report, Adjustment] {
+) *ClientReadyEngineBuilder[Order, Report, Adjustment] {
 	for _, p := range policy {
-		if b.unsafeFastPayloadCallbacks {
-			b.builder.AccountAdjustmentPolicy(accountadjustment.NewUnsafeFastClientPolicy(p))
-			continue
-		}
-		b.builder.AccountAdjustmentPolicy(accountadjustment.NewSafeClientPolicy(p))
+		b.addAccountAdjustmentPolicy(p)
 	}
 	return b
+}
+
+// Builtin registers a built-in entity on the builder.
+func (
+	b *ClientReadyEngineBuilder[Order, Report, Adjustment],
+) Builtin(
+	builtinReadyBuilder builtinReadyBuilder,
+) *ClientReadyEngineBuilder[Order, Report, Adjustment] {
+	b.ready.Builtin(builtinReadyBuilder)
+	return b
+}
+
+func (b *ClientReadyEngineBuilder[Order, Report, Adjustment]) addCheckPreTradeStartPolicy(
+	p pretrade.ClientCheckPreTradeStartPolicy[Order, Report],
+) {
+	if b.unsafeFastPayloadCallbacks {
+		b.ready.CheckPreTradeStartPolicy(pretrade.NewUnsafeFastClientCheckPreTradeStartPolicy(p))
+		return
+	}
+	b.ready.CheckPreTradeStartPolicy(pretrade.NewSafeClientCheckPreTradeStartPolicy(p))
+}
+
+func (b *ClientReadyEngineBuilder[Order, Report, Adjustment]) addPreTradePolicy(
+	p pretrade.ClientPreTradePolicy[Order, Report],
+) {
+	if b.unsafeFastPayloadCallbacks {
+		b.ready.PreTradePolicy(pretrade.NewUnsafeFastClientPreTradePolicy(p))
+		return
+	}
+	b.ready.PreTradePolicy(pretrade.NewSafeClientPreTradePolicy(p))
+}
+
+func (b *ClientReadyEngineBuilder[Order, Report, Adjustment]) addAccountAdjustmentPolicy(
+	p accountadjustment.ClientPolicy[Adjustment],
+) {
+	if b.unsafeFastPayloadCallbacks {
+		b.ready.AccountAdjustmentPolicy(accountadjustment.NewUnsafeFastClientPolicy(p))
+		return
+	}
+	b.ready.AccountAdjustmentPolicy(accountadjustment.NewSafeClientPolicy(p))
 }
 
 // ClientRequest is a deferred pre-trade request that keeps the original client

@@ -28,22 +28,47 @@ use crate::last_error::{write_error, PitOutError};
 use crate::order::{import_order, Order, PitOrder};
 use crate::param::{PitParamAccountId, PitParamPrice, PitParamPriceOptional};
 use crate::reject::{rejects_to_list_owned, PitRejectList};
+use crate::write_error_format;
 use openpit::param::AccountId;
 
 //--------------------------------------------------------------------------------------------------
 
-type Engine = openpit::Engine<Order, ExecutionReport, AccountAdjustment>;
-type EngineBuilder = openpit::EngineBuilder<Order, ExecutionReport, AccountAdjustment>;
+type Engine =
+    openpit::Engine<Order, ExecutionReport, AccountAdjustment, pit_interop::EngineLocking>;
+
+pub(crate) enum BuilderState {
+    Synced(
+        openpit::SyncedEngineBuilder<
+            Order,
+            ExecutionReport,
+            AccountAdjustment,
+            pit_interop::SyncPolicy,
+        >,
+    ),
+    Ready(
+        openpit::ReadyEngineBuilder<
+            Order,
+            ExecutionReport,
+            AccountAdjustment,
+            pit_interop::SyncPolicy,
+        >,
+    ),
+}
+
+#[allow(dead_code, unused_imports)]
+pub use pit_interop::SyncMode as PitSyncPolicy;
 
 //--------------------------------------------------------------------------------------------------
 // Threading:
 // The SDK never spawns OS threads: each public call executes on the OS thread
-// that invoked it. Concurrent entry into any public method on the same engine
-// handle is undefined behavior and must be prevented by the caller. Sequential
-// calls on the same handle from different OS threads are supported. In Go
-// bindings, goroutine migration during one SDK call is supported, and callbacks
-// into Go may run on a different OS thread than the goroutine that initiated
-// the call; callback code must not rely on thread-local OS state.
+// that invoked it. Full sync permits concurrent public calls on the same
+// handle. Local sync keeps the handle on the OS thread that created it. Account
+// sync permits sequential cross-thread access, but the caller must pin each
+// account to a single processing chain and must not invoke public methods on
+// the same handle concurrently. In Go bindings, goroutine migration during one
+// SDK call is supported, and callbacks into Go may run on a different OS thread
+// than the goroutine that initiated the call; callback code must not rely on
+// thread-local OS state.
 
 /// Opaque builder pointer used to assemble an engine instance.
 ///
@@ -52,7 +77,7 @@ type EngineBuilder = openpit::EngineBuilder<Order, ExecutionReport, AccountAdjus
 /// - owned by the caller until passed to `pit_destroy_engine_builder`;
 /// - consumed by `pit_engine_builder_build`.
 pub struct PitEngineBuilder {
-    pub(crate) inner: Option<EngineBuilder>,
+    pub(crate) inner: Option<BuilderState>,
 }
 
 /// Opaque engine pointer.
@@ -116,15 +141,48 @@ pub struct PitAccountAdjustmentBatchError {
 
 //--------------------------------------------------------------------------------------------------
 
-pub(crate) fn with_builder(
+pub(crate) fn add_check_pre_trade_start_policy_to_builder(
     builder: &mut PitEngineBuilder,
-    mutate: Box<dyn FnOnce(EngineBuilder) -> EngineBuilder + '_>,
+    policy: impl openpit::pretrade::CheckPreTradeStartPolicy<Order, ExecutionReport> + Send + 'static,
 ) -> Result<(), String> {
-    let current = builder
+    let state = builder
         .inner
         .take()
         .ok_or_else(|| "engine builder is no longer available".to_string())?;
-    builder.inner = Some(mutate(current));
+    builder.inner = Some(match state {
+        BuilderState::Synced(b) => BuilderState::Ready(b.check_pre_trade_start_policy(policy)),
+        BuilderState::Ready(b) => BuilderState::Ready(b.check_pre_trade_start_policy(policy)),
+    });
+    Ok(())
+}
+
+pub(crate) fn add_pre_trade_policy_to_builder(
+    builder: &mut PitEngineBuilder,
+    policy: impl openpit::pretrade::PreTradePolicy<Order, ExecutionReport> + Send + 'static,
+) -> Result<(), String> {
+    let state = builder
+        .inner
+        .take()
+        .ok_or_else(|| "engine builder is no longer available".to_string())?;
+    builder.inner = Some(match state {
+        BuilderState::Synced(b) => BuilderState::Ready(b.pre_trade_policy(policy)),
+        BuilderState::Ready(b) => BuilderState::Ready(b.pre_trade_policy(policy)),
+    });
+    Ok(())
+}
+
+pub(crate) fn add_account_adjustment_policy_to_builder(
+    builder: &mut PitEngineBuilder,
+    policy: impl openpit::AccountAdjustmentPolicy<AccountAdjustment> + Send + 'static,
+) -> Result<(), String> {
+    let state = builder
+        .inner
+        .take()
+        .ok_or_else(|| "engine builder is no longer available".to_string())?;
+    builder.inner = Some(match state {
+        BuilderState::Synced(b) => BuilderState::Ready(b.account_adjustment_policy(policy)),
+        BuilderState::Ready(b) => BuilderState::Ready(b.account_adjustment_policy(policy)),
+    });
     Ok(())
 }
 
@@ -150,21 +208,49 @@ fn export_pre_trade_lock(lock: &openpit::pretrade::PreTradeLock) -> PitPretradeP
 }
 
 #[no_mangle]
-/// Creates a new engine builder.
+/// Creates a new engine builder with the chosen synchronization policy.
 ///
-/// Contract:
-/// - returns a new caller-owned builder object;
-/// - this function always succeeds.
+/// Success:
+/// - returns a non-null caller-owned builder object.
+///
+/// Error:
+/// - returns null when `sync_policy` is not one of `PitSyncPolicy_Full` (0),
+///   `PitSyncPolicy_Local` (1), or `PitSyncPolicy_Account` (2);
+/// - if `out_error` is not null, writes a caller-owned `PitSharedString`
+///   error handle that MUST be released with `pit_destroy_shared_string`.
 ///
 /// Cleanup:
 /// - release the pointer with `pit_destroy_engine_builder` if you stop before
 ///   building;
 /// - after a successful build the builder is consumed and must still be
 ///   released with `pit_destroy_engine_builder`.
-pub extern "C" fn pit_create_engine_builder() -> *mut PitEngineBuilder {
-    Box::into_raw(Box::new(PitEngineBuilder {
-        inner: Some(Engine::builder()),
-    }))
+pub extern "C" fn pit_create_engine_builder(
+    sync_policy: u8,
+    out_error: PitOutError,
+) -> *mut PitEngineBuilder {
+    // The argument is a raw `u8`, not `PitSyncPolicy`, on purpose. `PitSyncPolicy`
+    // is a `#[repr(u8)] enum` with only 0, 1, 2 valid; passing any other byte in
+    // a variable typed as that enum is undefined behavior at the FFI boundary,
+    // before any Rust statement of this function runs. Validating after the
+    // fact via `if x > 2` would already be too late. We accept the primitive
+    // and translate via `match` here, where the input has no invariants yet.
+    let mode = match sync_policy {
+        0 => pit_interop::SyncMode::Full,
+        1 => pit_interop::SyncMode::Local,
+        2 => pit_interop::SyncMode::Account,
+        invalid => {
+            write_error_format!(
+                out_error,
+                "pit_create_engine_builder: invalid sync_policy byte {}, expected 0..=2",
+                invalid
+            );
+            return std::ptr::null_mut();
+        }
+    };
+
+    let state =
+        BuilderState::Synced(Engine::builder().with_sync(pit_interop::SyncPolicy::new(mode)));
+    Box::into_raw(Box::new(PitEngineBuilder { inner: Some(state) }))
 }
 
 #[no_mangle]
@@ -207,14 +293,21 @@ pub extern "C" fn pit_engine_builder_build(
     }
 
     let builder = unsafe { &mut *builder };
-    let inner = match builder.inner.take() {
+    let state = match builder.inner.take() {
         Some(v) => v,
         None => {
             write_error(out_error, "engine builder already consumed");
             return std::ptr::null_mut();
         }
     };
-    match inner.build() {
+    let result = match state {
+        BuilderState::Ready(b) => b.build(),
+        BuilderState::Synced(_) => {
+            write_error(out_error, "no policies registered");
+            return std::ptr::null_mut();
+        }
+    };
+    match result {
         Ok(engine) => Box::into_raw(Box::new(PitEngine { inner: engine })),
         Err(err) => {
             write_error(out_error, &err.to_string());
@@ -299,7 +392,7 @@ pub extern "C" fn pit_engine_start_pre_trade(
         }
     };
 
-    match unsafe { &mut *engine }.inner.start_pre_trade(order) {
+    match unsafe { &*engine }.inner.start_pre_trade(order) {
         Ok(request) => {
             if !out_request.is_null() {
                 unsafe {
@@ -380,7 +473,7 @@ pub extern "C" fn pit_engine_execute_pre_trade(
         }
     };
 
-    match unsafe { &mut *engine }.inner.execute_pre_trade(order) {
+    match unsafe { &*engine }.inner.execute_pre_trade(order) {
         Ok(reservation) => {
             if !out_reservation.is_null() {
                 unsafe {
@@ -627,9 +720,7 @@ pub extern "C" fn pit_engine_apply_execution_report(
         }
     };
 
-    let report = unsafe { &mut *engine }
-        .inner
-        .apply_execution_report(&report);
+    let report = unsafe { &*engine }.inner.apply_execution_report(&report);
 
     PitEngineApplyExecutionReportResult {
         is_error: false,
@@ -750,7 +841,7 @@ pub extern "C" fn pit_engine_apply_account_adjustment(
         values
     };
 
-    match unsafe { &mut *engine }
+    match unsafe { &*engine }
         .inner
         .apply_account_adjustment(AccountId::from_u64(account_id), &adjustments)
     {
@@ -775,7 +866,7 @@ mod tests {
 
     use crate::account_adjustment::PitAccountAdjustment;
     use crate::account_adjustment::PitAccountAdjustmentApplyStatus;
-    use crate::engine::PitPretradeStatus;
+    use crate::engine::{PitPretradeStatus, PitSyncPolicy};
     use crate::execution_report::{
         PitExecutionReport, PitExecutionReportOperation, PitExecutionReportOperationOptional,
         PitExecutionReportPositionImpactOptional, PitFinancialImpactOptional,
@@ -918,7 +1009,7 @@ mod tests {
     unsafe extern "C" fn noop_free_user_data(_user_data: *mut c_void) {}
 
     fn build_engine_with_reject_policy() -> *mut super::PitEngine {
-        let builder = pit_create_engine_builder();
+        let builder = pit_create_engine_builder(PitSyncPolicy::Full as u8, std::ptr::null_mut());
         let policy_name = PitStringView::from_utf8("test_policy");
         let policy = unsafe {
             pit_create_custom_account_adjustment_policy(
@@ -940,7 +1031,7 @@ mod tests {
     }
 
     fn build_engine_with_main_reject_policy() -> *mut super::PitEngine {
-        let builder = pit_create_engine_builder();
+        let builder = pit_create_engine_builder(PitSyncPolicy::Full as u8, std::ptr::null_mut());
         let name = PitStringView::from_utf8("pretrade.reject");
         let policy = unsafe {
             crate::policy::pit_create_pretrade_custom_pre_trade_policy(
@@ -966,7 +1057,7 @@ mod tests {
     }
 
     fn build_engine_with_start_reject_policy() -> *mut super::PitEngine {
-        let builder = pit_create_engine_builder();
+        let builder = pit_create_engine_builder(PitSyncPolicy::Full as u8, std::ptr::null_mut());
         let name = PitStringView::from_utf8("start.reject");
         let policy = unsafe {
             pit_create_pretrade_custom_check_pre_trade_start_policy(
@@ -992,7 +1083,7 @@ mod tests {
     }
 
     fn build_engine_with_start_pass_policy() -> *mut super::PitEngine {
-        let builder = pit_create_engine_builder();
+        let builder = pit_create_engine_builder(PitSyncPolicy::Full as u8, std::ptr::null_mut());
         let name = PitStringView::from_utf8("start.pass");
         let policy = unsafe {
             pit_create_pretrade_custom_check_pre_trade_start_policy(
@@ -1017,6 +1108,34 @@ mod tests {
         engine
     }
 
+    fn build_passthrough_engine() -> *mut super::PitEngine {
+        let builder = pit_create_engine_builder(PitSyncPolicy::Full as u8, std::ptr::null_mut());
+        let name = PitStringView::from_utf8("passthrough");
+        let policy = unsafe {
+            pit_create_pretrade_custom_check_pre_trade_start_policy(
+                name,
+                always_pass_start_check,
+                always_false_apply_report,
+                noop_free_user_data,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+        assert!(!policy.is_null(), "failed to create passthrough policy");
+        assert!(
+            pit_engine_builder_add_check_pre_trade_start_policy(
+                builder,
+                policy,
+                std::ptr::null_mut()
+            ),
+            "failed to add passthrough policy"
+        );
+        pit_destroy_pretrade_check_pre_trade_start_policy(policy);
+        let engine = pit_engine_builder_build(builder, std::ptr::null_mut());
+        assert!(!engine.is_null(), "engine build failed");
+        engine
+    }
+
     fn string_view_to_string(view: PitStringView) -> String {
         if view.ptr.is_null() {
             return String::new();
@@ -1030,12 +1149,69 @@ mod tests {
         assert_eq!(string_view_to_string(PitStringView::not_set()), "");
     }
 
+    fn shared_string_to_owned(handle: *mut crate::string::PitSharedString) -> String {
+        let view = crate::string::pit_shared_string_view(handle);
+        string_view_to_string(view)
+    }
+
+    #[test]
+    fn create_engine_builder_invalid_sync_policy_returns_null() {
+        let mut error: *mut crate::string::PitSharedString = std::ptr::null_mut();
+        let builder = pit_create_engine_builder(99, &mut error);
+        assert!(builder.is_null());
+        assert!(!error.is_null());
+        let msg = shared_string_to_owned(error);
+        assert!(
+            msg.contains("invalid sync_policy byte 99"),
+            "unexpected error message: {msg}"
+        );
+        crate::string::pit_destroy_shared_string(error);
+    }
+
+    #[test]
+    fn create_engine_builder_invalid_sync_policy_tolerates_null_out_error() {
+        let builder = pit_create_engine_builder(7, std::ptr::null_mut());
+        assert!(builder.is_null());
+    }
+
+    #[test]
+    fn create_engine_builder_accepts_valid_sync_policies() {
+        for byte in [
+            PitSyncPolicy::Full as u8,
+            PitSyncPolicy::Local as u8,
+            PitSyncPolicy::Account as u8,
+        ] {
+            let mut error: *mut crate::string::PitSharedString = std::ptr::null_mut();
+            let builder = pit_create_engine_builder(byte, &mut error);
+            assert!(!builder.is_null(), "byte={byte} produced null builder");
+            assert!(error.is_null(), "byte={byte} produced unexpected error");
+            pit_destroy_engine_builder(builder);
+        }
+    }
+
     #[test]
     fn engine_builder_build_reports_null_consumed_and_validation_errors() {
         let engine = pit_engine_builder_build(std::ptr::null_mut(), std::ptr::null_mut());
         assert!(engine.is_null());
 
-        let builder = pit_create_engine_builder();
+        let builder = pit_create_engine_builder(PitSyncPolicy::Full as u8, std::ptr::null_mut());
+        let pass_name = PitStringView::from_utf8("pass.build");
+        let pass_policy = unsafe {
+            pit_create_pretrade_custom_check_pre_trade_start_policy(
+                pass_name,
+                always_pass_start_check,
+                always_false_apply_report,
+                noop_free_user_data,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+        assert!(pit_engine_builder_add_check_pre_trade_start_policy(
+            builder,
+            pass_policy,
+            std::ptr::null_mut()
+        ));
+        pit_destroy_pretrade_check_pre_trade_start_policy(pass_policy);
         let built = pit_engine_builder_build(builder, std::ptr::null_mut());
         assert!(!built.is_null());
         pit_destroy_engine(built);
@@ -1043,7 +1219,8 @@ mod tests {
         assert!(consumed.is_null());
         pit_destroy_engine_builder(builder);
 
-        let dup_builder = pit_create_engine_builder();
+        let dup_builder =
+            pit_create_engine_builder(PitSyncPolicy::Full as u8, std::ptr::null_mut());
         let dup_name = PitStringView::from_utf8("dup.start");
         let first = unsafe {
             pit_create_pretrade_custom_check_pre_trade_start_policy(
@@ -1086,7 +1263,24 @@ mod tests {
 
     #[test]
     fn add_policy_on_consumed_builder_returns_error() {
-        let builder = pit_create_engine_builder();
+        let builder = pit_create_engine_builder(PitSyncPolicy::Full as u8, std::ptr::null_mut());
+        let pass_name = PitStringView::from_utf8("pass.consumed");
+        let pass_policy = unsafe {
+            pit_create_pretrade_custom_check_pre_trade_start_policy(
+                pass_name,
+                always_pass_start_check,
+                always_false_apply_report,
+                noop_free_user_data,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+        assert!(pit_engine_builder_add_check_pre_trade_start_policy(
+            builder,
+            pass_policy,
+            std::ptr::null_mut()
+        ));
+        pit_destroy_pretrade_check_pre_trade_start_policy(pass_policy);
         let engine = pit_engine_builder_build(builder, std::ptr::null_mut());
         assert!(!engine.is_null());
         pit_destroy_engine(engine);
@@ -1221,9 +1415,7 @@ mod tests {
         let order = PitOrder::default();
         let mut out_rejects = std::ptr::null_mut::<PitRejectList>();
 
-        let builder = pit_create_engine_builder();
-        let engine = pit_engine_builder_build(builder, std::ptr::null_mut());
-        assert!(!engine.is_null());
+        let engine = build_passthrough_engine();
         let status = pit_engine_execute_pre_trade(
             engine,
             std::ptr::null(),
@@ -1284,9 +1476,7 @@ mod tests {
         let order = PitOrder::default();
         let mut out_rejects = std::ptr::null_mut::<PitRejectList>();
 
-        let builder = pit_create_engine_builder();
-        let engine = pit_engine_builder_build(builder, std::ptr::null_mut());
-        assert!(!engine.is_null());
+        let engine = build_passthrough_engine();
         let mut request = std::ptr::null_mut();
         let status = pit_engine_start_pre_trade(
             engine,
@@ -1348,9 +1538,7 @@ mod tests {
 
     #[test]
     fn apply_account_adjustment_accepts_null_when_batch_is_empty() {
-        let builder = pit_create_engine_builder();
-        let engine = pit_engine_builder_build(builder, std::ptr::null_mut());
-        assert!(!engine.is_null(), "engine build failed");
+        let engine = build_passthrough_engine();
         let mut out_reject = std::ptr::null_mut();
 
         let status = pit_engine_apply_account_adjustment(
@@ -1369,9 +1557,7 @@ mod tests {
 
     #[test]
     fn apply_account_adjustment_rejects_null_when_batch_is_non_empty() {
-        let builder = pit_create_engine_builder();
-        let engine = pit_engine_builder_build(builder, std::ptr::null_mut());
-        assert!(!engine.is_null(), "engine build failed");
+        let engine = build_passthrough_engine();
         let mut out_reject = std::ptr::null_mut::<PitAccountAdjustmentBatchError>();
 
         let status = pit_engine_apply_account_adjustment(
@@ -1390,9 +1576,7 @@ mod tests {
 
     #[test]
     fn apply_account_adjustment_reports_import_error_for_incomplete_payload() {
-        let builder = pit_create_engine_builder();
-        let engine = pit_engine_builder_build(builder, std::ptr::null_mut());
-        assert!(!engine.is_null(), "engine build failed");
+        let engine = build_passthrough_engine();
 
         let invalid = crate::account_adjustment::PitAccountAdjustment {
             balance_operation:
@@ -1445,9 +1629,7 @@ mod tests {
 
     #[test]
     fn reservation_get_lock_covers_success_and_committed_paths() {
-        let builder = pit_create_engine_builder();
-        let engine = pit_engine_builder_build(builder, std::ptr::null_mut());
-        assert!(!engine.is_null());
+        let engine = build_passthrough_engine();
         let order = PitOrder::default();
         let mut out_reservation = std::ptr::null_mut();
         let mut out_rejects = std::ptr::null_mut::<PitRejectList>();
@@ -1610,9 +1792,7 @@ mod tests {
         pit_destroy_pretrade_pre_trade_reservation(std::ptr::null_mut());
         pit_pretrade_pre_trade_reservation_commit(std::ptr::null_mut());
         pit_pretrade_pre_trade_reservation_rollback(std::ptr::null_mut());
-        let builder = pit_create_engine_builder();
-        let engine = pit_engine_builder_build(builder, std::ptr::null_mut());
-        assert!(!engine.is_null());
+        let engine = build_passthrough_engine();
 
         let order = PitOrder::default();
         let mut out_request = std::ptr::null_mut();
@@ -1682,9 +1862,7 @@ mod tests {
         assert!(post.is_error);
         assert!(!post.post_trade_result.kill_switch_triggered);
 
-        let builder = pit_create_engine_builder();
-        let engine = pit_engine_builder_build(builder, std::ptr::null_mut());
-        assert!(!engine.is_null());
+        let engine = build_passthrough_engine();
 
         let post =
             pit_engine_apply_execution_report(engine, std::ptr::null(), std::ptr::null_mut());
@@ -1753,6 +1931,7 @@ mod tests {
             crate::execution_report::ExecutionReport,
             crate::account_adjustment::AccountAdjustment,
         >::builder()
+        .with_local_sync()
         .check_pre_trade_start_policy(AlwaysRejectStart)
         .build()
         .expect("engine");

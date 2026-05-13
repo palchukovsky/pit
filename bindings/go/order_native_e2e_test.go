@@ -23,6 +23,8 @@ import (
 	"go.openpit.dev/openpit/model"
 	"go.openpit.dev/openpit/param"
 	"go.openpit.dev/openpit/pkg/optional"
+	"go.openpit.dev/openpit/pretrade"
+	"go.openpit.dev/openpit/reject"
 )
 
 func TestOrderNativeE2E_ExecuteAndApplyExecutionReport(t *testing.T) {
@@ -182,13 +184,25 @@ func mustOrderNativeFee(t *testing.T, value string) param.Fee {
 
 func newEngineForOrderNativeE2ETest(t *testing.T) *Engine {
 	t.Helper()
-	builder, err := NewEngineBuilder()
-	if err != nil {
-		t.Fatalf("NewEngineBuilder() error = %v", err)
-	}
-	engine, err := builder.Build()
+	engine, err := NewEngineBuilder().WithFullSync().
+		CheckPreTradeStartPolicy(&orderNativeE2ENoopStartPolicy{}).
+		Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
 	return engine
+}
+
+type orderNativeE2ENoopStartPolicy struct{}
+
+func (orderNativeE2ENoopStartPolicy) Close() {}
+
+func (orderNativeE2ENoopStartPolicy) Name() string { return "noop" }
+
+func (orderNativeE2ENoopStartPolicy) CheckPreTradeStart(pretrade.Context, model.Order) []reject.Reject {
+	return nil
+}
+
+func (orderNativeE2ENoopStartPolicy) ApplyExecutionReport(model.ExecutionReport) bool {
+	return false
 }

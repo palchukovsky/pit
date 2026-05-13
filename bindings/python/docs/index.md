@@ -5,9 +5,10 @@ policy-driven checks before an order leaves the process. It is designed for
 trading systems, broker gateways, strategy runtimes, and test harnesses that
 want deterministic order admission logic close to the caller.
 
-The Python package is named `openpit`. It exposes a single-threaded risk engine,
-strong domain value types, order and execution-report models, built-in policies,
-and Python policy interfaces for project-specific checks.
+The Python package is named `openpit`. It exposes a risk engine with explicit
+synchronization policies, strong domain value types, order and execution-report
+models, built-in policies, and Python policy interfaces for project-specific
+checks.
 
 ## Main use case
 
@@ -42,11 +43,13 @@ business results, while invalid API usage remains an exception.
 
 ```python
 import openpit
+import openpit.pretrade.policies
 
 engine = (
     openpit.Engine.builder()
-    .check_pre_trade_start_policy(
-        policy=openpit.pretrade.policies.OrderValidationPolicy(),
+    .with_local_sync()
+    .builtin(
+        openpit.pretrade.policies.build_order_validation(),
     )
     .build()
 )

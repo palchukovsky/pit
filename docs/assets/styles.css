@@ -188,6 +188,25 @@ a:hover {
   color: var(--accent);
 }
 
+/* ── feature list ─────────────────────────────── */
+.feature-list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: baseline;
+  gap: 0 0.4em;
+}
+
+@media (max-width: 600px) {
+  .feature-list {
+    gap: 0.25rem 1rem;
+  }
+
+  .feature-sep {
+    display: none;
+  }
+}
+
 @media (min-width: 1200px) {
   .container-tight {
     padding-top: 32px !important;

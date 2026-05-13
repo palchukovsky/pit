@@ -166,6 +166,7 @@ def test_custom_order_model_reaches_start_and_main_policy_callbacks() -> None:
     main_policy = StrategyTagPolicy()
     engine = (
         openpit.Engine.builder()
+        .with_local_sync()
         .check_pre_trade_start_policy(policy=start_policy)
         .pre_trade_policy(policy=main_policy)
         .build()
@@ -194,6 +195,7 @@ def test_custom_order_model_rejects_blocked_strategy_tag() -> None:
     main_policy = StrategyTagPolicy()
     engine = (
         openpit.Engine.builder()
+        .with_local_sync()
         .check_pre_trade_start_policy(policy=start_policy)
         .pre_trade_policy(policy=main_policy)
         .build()
@@ -225,6 +227,7 @@ def test_custom_execution_report_model_reaches_start_and_main_callbacks() -> Non
     main_policy = StrategyTagPolicy()
     engine = (
         openpit.Engine.builder()
+        .with_local_sync()
         .check_pre_trade_start_policy(policy=start_policy)
         .pre_trade_policy(policy=main_policy)
         .build()

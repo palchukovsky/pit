@@ -27,12 +27,15 @@ use std::str;
 use std::sync::Arc;
 use std::time::Duration;
 
-use openpit::param::{Asset, Quantity, Volume};
+use openpit::param::{AccountId, Asset, Pnl};
 use openpit::pretrade::policies::{
-    OrderSizeLimit, OrderSizeLimitPolicy, OrderValidationPolicy, PnlBoundsBarrier,
-    PnlBoundsKillSwitchPolicy, RateLimitPolicy,
+    OrderSizeAccountAssetBarrier, OrderSizeAssetBarrier, OrderSizeBrokerBarrier, OrderSizeLimit,
+    OrderSizeLimitPolicy, OrderValidationPolicy, PnlBoundsAccountAssetBarrier,
+    PnlBoundsBrokerBarrier, PnlBoundsKillSwitchPolicy, RateLimit, RateLimitAccountAssetBarrier,
+    RateLimitAccountBarrier, RateLimitAssetBarrier, RateLimitBrokerBarrier, RateLimitPolicy,
 };
 use openpit::pretrade::{CheckPreTradeStartPolicy, PreTradeContext, PreTradePolicy, Rejects};
+use openpit::storage::StorageBuilder;
 use openpit::{AccountAdjustmentContext, AccountAdjustmentPolicy, Mutation, Mutations};
 
 use crate::account_adjustment::{export_account_adjustment, PitAccountAdjustment};
@@ -48,6 +51,47 @@ use crate::param::{
 
 use crate::last_error::{write_error, PitOutError};
 use crate::write_error_format;
+
+//--------------------------------------------------------------------------------------------------
+
+macro_rules! impl_custom_policy_send_sync {
+    ($t:ty) => {
+        // SAFETY:
+        // `$t` holds `extern "C" fn` pointers (inherently `Send + Sync`) and
+        // a `*mut c_void` user_data slot. Raw pointers are `!Send + !Sync` by
+        // default; Send and Sync are asserted manually under the following
+        // contract:
+        //
+        // - The public Pit threading contract documents that user_data slots
+        //   on custom-policy structs are opaque caller tokens. Their
+        //   lifetime, thread-safety, and meaning are entirely the caller's
+        //   responsibility (see the Threading Contract page in the SDK docs).
+        // - The SDK never inspects or dereferences user_data; it forwards it
+        //   to the registered C callbacks verbatim. Whatever synchronization
+        //   the caller attaches to user_data is the caller's contract to
+        //   uphold.
+        // - Under `SyncMode::Local` or `SyncMode::Account` the binding caller
+        //   serialises per-handle invocation; under `SyncMode::Full` the
+        //   caller is responsible for making any state reachable through
+        //   user_data safe under concurrent invocation.
+        //
+        // Violating the user_data contract is undefined behavior at the
+        // contract level.
+        unsafe impl Send for $t {}
+        unsafe impl Sync for $t {}
+    };
+}
+
+macro_rules! impl_dyn_policy_sync {
+    ($t:ty, $concrete:literal) => {
+        // SAFETY: the concrete type behind the dyn object is `$concrete`,
+        // which implements `Send + Sync` (see its unsafe impls). The Arc
+        // refcount is thread-safe. Concurrent access to `&self` methods is
+        // safe under `SyncMode::Full`; under other modes the binding caller
+        // serialises per-handle invocation per the SDK threading contract.
+        unsafe impl Sync for $t {}
+    };
+}
 
 //--------------------------------------------------------------------------------------------------
 
@@ -141,67 +185,17 @@ impl GeneralPreTradePolicy for dyn AccountAdjustmentPolicy<AccountAdjustment> {
 
 //--------------------------------------------------------------------------------------------------
 
-#[no_mangle]
-/// Creates a built-in start-stage policy that validates order input shape.
-///
-/// Why it exists:
-/// - Use it to reject structurally invalid orders before deeper checks run.
-///
-/// Success:
-/// - returns a new caller-owned pointer.
-/// - this function always succeeds.
-///
-/// Lifetime contract:
-/// - The returned pointer belongs to the caller.
-/// - If the pointer is added to the engine builder, the engine keeps its own
-///   reference to the same policy object.
-/// - The caller must still release its own pointer with
-///   `pit_destroy_pretrade_check_pre_trade_start_policy` after the pointer is no
-///   longer needed locally.
-pub extern "C" fn pit_create_pretrade_policies_order_validation_policy(
-) -> *mut PitPretradeCheckPreTradeStartPolicy {
-    PitPretradeCheckPreTradeStartPolicy::new(Arc::new(OrderValidationPolicy::new()))
-}
-
-#[no_mangle]
-/// Creates a built-in start-stage policy that limits how many orders may be
-/// accepted within a time window.
-///
-/// Arguments:
-/// - `max_orders`: maximum number of accepted orders allowed in one window.
-/// - `window_seconds`: size of the rolling window in seconds.
-///
-/// Success:
-/// - returns a new caller-owned pointer.
-/// - this function always succeeds.
-///
-/// Lifetime contract:
-/// - The returned pointer belongs to the caller.
-/// - If the pointer is added to the engine builder, the engine keeps its own
-///   reference to the same policy object.
-/// - The caller must still release its own pointer with
-///   `pit_destroy_pretrade_check_pre_trade_start_policy` after the pointer is no
-///   longer needed locally.
-pub extern "C" fn pit_create_pretrade_policies_rate_limit_policy(
-    max_orders: usize,
-    window_seconds: u64,
-) -> *mut PitPretradeCheckPreTradeStartPolicy {
-    PitPretradeCheckPreTradeStartPolicy::new(Arc::new(RateLimitPolicy::new(
-        max_orders,
-        Duration::from_secs(window_seconds),
-    )))
-}
-
-/// One barrier definition for `pit_create_pretrade_policies_pnl_bounds_killswitch_policy`.
+/// One broker barrier definition for
+/// `pit_engine_builder_add_builtin_pnl_bounds_killswitch_policy`.
 ///
 /// What it describes:
-/// - A settlement asset and its lower/upper P&L bounds.
+/// - A settlement asset and its lower/upper P&L bounds applied as a broker
+///   barrier across all accounts.
 ///
 /// Contract:
-/// - `settlement_asset` must point to a valid, null-terminated string for the
-///   duration of the call.
-/// - `initial_pnl` must contain a valid PnL value.
-/// - The array passed to the create function may contain multiple entries.
+/// - `settlement_asset` must point to a valid string for the duration of the
+///   call.
+/// - The array passed to the add function may contain multiple entries.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PitPretradePoliciesPnlBoundsBarrier {
@@ -211,263 +205,742 @@ pub struct PitPretradePoliciesPnlBoundsBarrier {
     pub lower_bound: PitParamPnlOptional,
     /// Optional upper bound for accumulated P&L.
     pub upper_bound: PitParamPnlOptional,
-    /// Initial accumulated P&L value.
+}
+
+/// Per-(account, settlement-asset) P&L bounds barrier with an initial P&L seed.
+///
+/// What it describes:
+/// - Refines P&L bounds for a specific account and settlement asset.
+/// - `initial_pnl` is pre-loaded into storage at construction; accumulation
+///   starts from this value.
+/// - Both the broker barrier (if any) and this account+asset barrier are
+///   evaluated on every check; the order passes only if neither is breached.
+///
+/// Passed to `pit_engine_builder_add_builtin_pnl_bounds_killswitch_policy` in
+/// the `account` array.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PitPretradePoliciesPnlBoundsAccountBarrier {
+    /// Account this barrier applies to.
+    pub account_id: PitParamAccountId,
+    /// Settlement asset whose accumulated P&L is being monitored.
+    pub settlement_asset: PitStringView,
+    /// Optional lower bound for accumulated P&L for this account+asset pair.
+    pub lower_bound: PitParamPnlOptional,
+    /// Optional upper bound for accumulated P&L for this account+asset pair.
+    pub upper_bound: PitParamPnlOptional,
+    /// Starting accumulated P&L pre-loaded into storage at construction.
     pub initial_pnl: PitParamPnl,
 }
 
-#[no_mangle]
-/// Creates a built-in start-stage policy that rejects new orders when
-/// accumulated P&L is outside configured bounds.
-///
-/// Why it exists:
-/// - Use it as a P&L bounds kill switch per settlement asset.
-///
-/// Arguments:
-/// - `params`: pointer to an array of barrier definitions.
-/// - `params_len`: number of elements in `params`.
-///
-/// Contract:
-/// - `params` must point to `params_len` readable entries.
-/// - `params_len` must be greater than zero.
-/// - Each `settlement_asset` pointer inside `params` must be a valid
-///   null-terminated string for the duration of the call.
-///
-/// Success:
-/// - returns a new caller-owned policy object.
-///
-/// Error:
-/// - returns null when arguments are invalid or the policy cannot be created;
-/// - if `out_error` is not null, writes a caller-owned `PitSharedString`
-///   error handle that MUST be released with `pit_destroy_shared_string`.
-///
-/// Lifetime contract:
-/// - The returned pointer belongs to the caller.
-/// - If the pointer is added to the engine builder, the engine keeps its own
-///   reference to the same policy object.
-/// - The caller must still release its own pointer with
-///   `pit_destroy_pretrade_check_pre_trade_start_policy` after the pointer is no
-///   longer needed locally.
-pub unsafe extern "C" fn pit_create_pretrade_policies_pnl_bounds_killswitch_policy(
-    params: *const PitPretradePoliciesPnlBoundsBarrier,
-    params_len: usize,
-    out_error: PitOutError,
-) -> *mut PitPretradeCheckPreTradeStartPolicy {
-    if params_len == 0 {
-        write_error(
-            out_error,
-            "pnl_bounds_killswitch_policy requires at least one barrier",
-        );
-        return std::ptr::null_mut();
-    }
-    if params.is_null() {
-        write_error(out_error, "pnl_bounds_killswitch_policy params is null");
-        return std::ptr::null_mut();
-    }
-
-    let params = unsafe { std::slice::from_raw_parts(params, params_len) };
-    let mut barriers = Vec::with_capacity(params.len());
-    for (index, param) in params.iter().enumerate() {
-        let settlement: Asset = match cstr_arg(param.settlement_asset) {
-            Some(s) => match Asset::new(s) {
-                Ok(v) => v,
-                Err(e) => {
-                    write_error_format!(
-                        out_error,
-                        "param[{index}] settlement asset is invalid: {}",
-                        e
-                    );
-                    return std::ptr::null_mut();
-                }
-            },
-            None => {
-                write_error_format!(out_error, "param[{}] settlement asset is not set", index);
-                return std::ptr::null_mut();
-            }
-        };
-
-        let lower_bound = if param.lower_bound.is_set {
-            match param.lower_bound.value.to_param() {
-                Ok(v) => Some(v),
-                Err(e) => {
-                    write_error_format!(out_error, "param[{index}] lower_bound is invalid: {}", e);
-                    return std::ptr::null_mut();
-                }
-            }
-        } else {
-            None
-        };
-        let upper_bound = if param.upper_bound.is_set {
-            match param.upper_bound.value.to_param() {
-                Ok(v) => Some(v),
-                Err(e) => {
-                    write_error_format!(out_error, "param[{index}] upper_bound is invalid: {}", e);
-                    return std::ptr::null_mut();
-                }
-            }
-        } else {
-            None
-        };
-        let initial_pnl = match param.initial_pnl.to_param() {
-            Ok(v) => v,
-            Err(e) => {
-                write_error_format!(out_error, "param[{index}] initial_pnl is invalid: {}", e);
-                return std::ptr::null_mut();
-            }
-        };
-        barriers.push(PnlBoundsBarrier {
-            settlement_asset: settlement,
-            lower_bound,
-            upper_bound,
-            initial_pnl,
-        });
-    }
-
-    let (initial_barrier, additional_barriers) = match barriers.split_first() {
-        Some(v) => v,
-        None => {
-            write_error(out_error, "required at least one barrier");
-            return std::ptr::null_mut();
-        }
-    };
-
-    let policy = match PnlBoundsKillSwitchPolicy::new(
-        initial_barrier.clone(),
-        additional_barriers.iter().cloned(),
-    ) {
-        Ok(v) => v,
-        Err(e) => {
-            write_error_format!(out_error, "policy creation failed: {}", e);
-            return std::ptr::null_mut();
-        }
-    };
-
-    PitPretradeCheckPreTradeStartPolicy::new(Arc::new(policy))
-}
-
-/// One limit definition for `pit_create_pretrade_policies_order_size_limit_policy`.
-///
-/// What it describes:
-/// - Per-settlement maximum quantity and maximum notional allowed for one order.
-///
-/// Contract:
-/// - `settlement_asset` must point to a valid, null-terminated string for the
-///   duration of the call.
-/// - `max_quantity` and `max_notional` must contain valid limit values.
+/// Broker-wide rate-limit barrier for
+/// `pit_engine_builder_add_builtin_rate_limit_policy`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct PitPretradePoliciesOrderSizeLimitParam {
-    /// Settlement asset to which the limits apply.
+pub struct PitPretradePoliciesRateLimitBrokerBarrier {
+    /// Maximum number of orders accepted within the window.
+    pub max_orders: usize,
+    /// Window duration in nanoseconds.
+    pub window_nanoseconds: u64,
+}
+
+/// Per-settlement-asset rate-limit barrier for
+/// `pit_engine_builder_add_builtin_rate_limit_policy`.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PitPretradePoliciesRateLimitAssetBarrier {
+    /// Settlement asset this barrier applies to.
     pub settlement_asset: PitStringView,
+    /// Maximum number of orders accepted within the window.
+    pub max_orders: usize,
+    /// Window duration in nanoseconds.
+    pub window_nanoseconds: u64,
+}
+
+/// Per-account rate-limit barrier for
+/// `pit_engine_builder_add_builtin_rate_limit_policy`.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PitPretradePoliciesRateLimitAccountBarrier {
+    /// Account this barrier applies to.
+    pub account_id: PitParamAccountId,
+    /// Maximum number of orders accepted within the window.
+    pub max_orders: usize,
+    /// Window duration in nanoseconds.
+    pub window_nanoseconds: u64,
+}
+
+/// Per-(account, settlement-asset) rate-limit barrier for
+/// `pit_engine_builder_add_builtin_rate_limit_policy`.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PitPretradePoliciesRateLimitAccountAssetBarrier {
+    /// Account this barrier applies to.
+    pub account_id: PitParamAccountId,
+    /// Settlement asset this barrier applies to.
+    pub settlement_asset: PitStringView,
+    /// Maximum number of orders accepted within the window.
+    pub max_orders: usize,
+    /// Window duration in nanoseconds.
+    pub window_nanoseconds: u64,
+}
+
+/// Shared order-size limits for
+/// `pit_engine_builder_add_builtin_order_size_limit_policy`.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PitPretradePoliciesOrderSizeLimit {
     /// Maximum allowed quantity for one order.
     pub max_quantity: PitParamQuantity,
     /// Maximum allowed notional for one order.
     pub max_notional: PitParamVolume,
 }
 
+/// Broker-wide order-size barrier for
+/// `pit_engine_builder_add_builtin_order_size_limit_policy`.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PitPretradePoliciesOrderSizeBrokerBarrier {
+    /// Size limits for this broker barrier.
+    pub limit: PitPretradePoliciesOrderSizeLimit,
+}
+
+/// Per-settlement-asset order-size barrier for
+/// `pit_engine_builder_add_builtin_order_size_limit_policy`.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PitPretradePoliciesOrderSizeAssetBarrier {
+    /// Size limits for this asset barrier.
+    pub limit: PitPretradePoliciesOrderSizeLimit,
+    /// Settlement asset this barrier applies to.
+    pub settlement_asset: PitStringView,
+}
+
+/// Per-(account, settlement-asset) order-size barrier for
+/// `pit_engine_builder_add_builtin_order_size_limit_policy`.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PitPretradePoliciesOrderSizeAccountAssetBarrier {
+    /// Size limits for this account+asset barrier.
+    pub limit: PitPretradePoliciesOrderSizeLimit,
+    /// Account this barrier applies to.
+    pub account_id: PitParamAccountId,
+    /// Settlement asset this barrier applies to.
+    pub settlement_asset: PitStringView,
+}
+
+fn policy_storage(
+    builder: &crate::engine::PitEngineBuilder,
+) -> Option<&StorageBuilder<pit_interop::sync_policy::StorageLockingPolicyFactory>> {
+    match builder.inner.as_ref()? {
+        crate::engine::BuilderState::Synced(builder) => Some(builder.storage_builder()),
+        crate::engine::BuilderState::Ready(builder) => Some(builder.storage_builder()),
+    }
+}
+
+unsafe fn try_slice_arg<'a, T>(
+    ptr: *const T,
+    len: usize,
+    label: &str,
+    out_error: PitOutError,
+) -> Option<&'a [T]> {
+    if len == 0 {
+        return Some(&[]);
+    }
+    if ptr.is_null() {
+        write_error_format!(out_error, "{} is null", label);
+        return None;
+    }
+    Some(unsafe { std::slice::from_raw_parts(ptr, len) })
+}
+
+fn parse_settlement_asset_or_error(
+    settlement: PitStringView,
+    label: &str,
+    index: usize,
+    out_error: PitOutError,
+) -> Option<Asset> {
+    let settlement_raw = match unsafe { cstr_arg(settlement) } {
+        Some(v) => v,
+        None => {
+            write_error_format!(
+                out_error,
+                "{}[{}] settlement_asset is not set",
+                label,
+                index
+            );
+            return None;
+        }
+    };
+    match Asset::new(settlement_raw) {
+        Ok(v) => Some(v),
+        Err(e) => {
+            write_error_format!(
+                out_error,
+                "{}[{}] settlement_asset is invalid: {}",
+                label,
+                index,
+                e
+            );
+            None
+        }
+    }
+}
+
+fn parse_optional_pnl_or_error(
+    bound: PitParamPnlOptional,
+    label: &str,
+    index: usize,
+    field: &str,
+    out_error: PitOutError,
+) -> Result<Option<Pnl>, ()> {
+    if !bound.is_set {
+        return Ok(None);
+    }
+    match bound.value.to_param() {
+        Ok(v) => Ok(Some(v)),
+        Err(e) => {
+            write_error_format!(
+                out_error,
+                "{}[{}] {} is invalid: {}",
+                label,
+                index,
+                field,
+                e
+            );
+            Err(())
+        }
+    }
+}
+
 #[no_mangle]
-/// Creates a built-in start-stage policy that rejects orders above configured
-/// size limits.
-///
-/// Why it exists:
-/// - Use it to cap order quantity and notional per settlement asset.
-///
-/// Arguments:
-/// - `params`: pointer to an array of size-limit definitions.
-/// - `params_len`: number of elements in `params`.
+/// Adds the built-in order-validation policy to the engine builder.
 ///
 /// Contract:
-/// - `params` must point to `params_len` readable entries.
-/// - `params_len` must be greater than zero.
-/// - Each `settlement_asset` pointer inside `params` must be a valid
-///   null-terminated string for the duration of the call.
+/// - `builder` must be a valid engine builder pointer.
 ///
 /// Success:
-/// - returns a new caller-owned policy object.
+/// - returns `true`; the builder retains the policy.
 ///
 /// Error:
-/// - returns null when arguments are invalid;
+/// - returns `false` when the builder is null or already consumed;
 /// - if `out_error` is not null, writes a caller-owned `PitSharedString`
 ///   error handle that MUST be released with `pit_destroy_shared_string`.
-///
-/// Lifetime contract:
-/// - The returned pointer belongs to the caller.
-/// - If the pointer is added to the engine builder, the engine keeps its own
-///   reference to the same policy object.
-/// - The caller must still release its own pointer with
-///   `pit_destroy_pretrade_check_pre_trade_start_policy` after the pointer is no
-///   longer needed locally.
-pub unsafe extern "C" fn pit_create_pretrade_policies_order_size_limit_policy(
-    params: *const PitPretradePoliciesOrderSizeLimitParam,
-    params_len: usize,
+pub extern "C" fn pit_engine_builder_add_builtin_order_validation_policy(
+    builder: *mut crate::engine::PitEngineBuilder,
     out_error: PitOutError,
-) -> *mut PitPretradeCheckPreTradeStartPolicy {
-    if params_len == 0 {
-        write_error(
+) -> bool {
+    if builder.is_null() {
+        write_error(out_error, "engine builder is null");
+        return false;
+    }
+    match crate::engine::add_check_pre_trade_start_policy_to_builder(
+        unsafe { &mut *builder },
+        OrderValidationPolicy::new(),
+    ) {
+        Ok(()) => true,
+        Err(err) => {
+            write_error(out_error, &err);
+            false
+        }
+    }
+}
+
+#[no_mangle]
+/// Adds the built-in rate-limit policy to the engine builder.
+///
+/// Contract:
+/// - `builder` must be a valid engine builder pointer.
+/// - At least one barrier axis must be configured: `broker` non-null,
+///   `asset_len > 0`, `account_len > 0`, or `account_asset_len > 0`.
+/// - When a length is greater than zero the corresponding pointer must point
+///   to that many readable entries.
+/// - Each `settlement_asset` string view inside an array entry must be valid
+///   for the duration of the call.
+///
+/// Success:
+/// - returns `true`; the builder retains the policy.
+///
+/// Error:
+/// - returns `false` when the builder is null or already consumed, when no
+///   barrier axis is configured, or when argument parsing fails;
+/// - if `out_error` is not null, writes a caller-owned `PitSharedString`
+///   error handle that MUST be released with `pit_destroy_shared_string`.
+pub unsafe extern "C" fn pit_engine_builder_add_builtin_rate_limit_policy(
+    builder: *mut crate::engine::PitEngineBuilder,
+    broker: *const PitPretradePoliciesRateLimitBrokerBarrier,
+    asset: *const PitPretradePoliciesRateLimitAssetBarrier,
+    asset_len: usize,
+    account: *const PitPretradePoliciesRateLimitAccountBarrier,
+    account_len: usize,
+    account_asset: *const PitPretradePoliciesRateLimitAccountAssetBarrier,
+    account_asset_len: usize,
+    out_error: PitOutError,
+) -> bool {
+    if builder.is_null() {
+        write_error(out_error, "engine builder is null");
+        return false;
+    }
+    let asset_slice =
+        match unsafe { try_slice_arg(asset, asset_len, "rate_limit_policy asset", out_error) } {
+            Some(v) => v,
+            None => return false,
+        };
+    let account_slice = match unsafe {
+        try_slice_arg(account, account_len, "rate_limit_policy account", out_error)
+    } {
+        Some(v) => v,
+        None => return false,
+    };
+    let account_asset_slice = match unsafe {
+        try_slice_arg(
+            account_asset,
+            account_asset_len,
+            "rate_limit_policy account_asset",
             out_error,
-            "order_size_limit_policy requires at least one limit",
-        );
-        return std::ptr::null_mut();
-    }
-    if params.is_null() {
-        write_error(out_error, "order_size_limit_policy params is null");
-        return std::ptr::null_mut();
-    }
+        )
+    } {
+        Some(v) => v,
+        None => return false,
+    };
 
-    let params = unsafe { std::slice::from_raw_parts(params, params_len) };
-    let mut limits = Vec::with_capacity(params.len());
-    for (index, param) in params.iter().enumerate() {
-        let settlement_asset: Asset = match cstr_arg(param.settlement_asset) {
-            Some(s) => match Asset::new(s) {
-                Ok(v) => v,
-                Err(e) => {
-                    write_error_format!(
-                        out_error,
-                        "param[{index}] settlement asset is invalid: {}",
-                        e
-                    );
-                    return std::ptr::null_mut();
-                }
+    let broker_opt = if !broker.is_null() {
+        let b = unsafe { &*broker };
+        Some(RateLimitBrokerBarrier {
+            limit: RateLimit {
+                max_orders: b.max_orders,
+                window: Duration::from_nanos(b.window_nanoseconds),
             },
-            None => {
-                write_error_format!(out_error, "param[{}] settlement asset is not set", index);
-                return std::ptr::null_mut();
-            }
-        };
+        })
+    } else {
+        None
+    };
 
-        let max_quantity: Quantity = match param.max_quantity.to_param() {
-            Ok(v) => v,
-            Err(e) => {
-                write_error_format!(out_error, "param[{index}] max quantity is invalid: {}", e);
-                return std::ptr::null_mut();
-            }
+    let mut asset_barriers = Vec::with_capacity(asset_slice.len());
+    for (index, entry) in asset_slice.iter().enumerate() {
+        let settlement = match parse_settlement_asset_or_error(
+            entry.settlement_asset,
+            "asset",
+            index,
+            out_error,
+        ) {
+            Some(v) => v,
+            None => return false,
         };
-
-        let max_notional: Volume = match param.max_notional.to_param() {
-            Ok(v) => v,
-            Err(e) => {
-                write_error_format!(out_error, "param[{index}] max notional is invalid: {}", e);
-                return std::ptr::null_mut();
-            }
-        };
-
-        limits.push(OrderSizeLimit {
-            settlement_asset,
-            max_quantity,
-            max_notional,
+        asset_barriers.push(RateLimitAssetBarrier {
+            limit: RateLimit {
+                max_orders: entry.max_orders,
+                window: Duration::from_nanos(entry.window_nanoseconds),
+            },
+            settlement_asset: settlement,
         });
     }
 
-    let (initial_limit, additional_limits) = match limits.split_first() {
-        Some(v) => v,
+    let account_barriers: Vec<RateLimitAccountBarrier> = account_slice
+        .iter()
+        .map(|entry| RateLimitAccountBarrier {
+            limit: RateLimit {
+                max_orders: entry.max_orders,
+                window: Duration::from_nanos(entry.window_nanoseconds),
+            },
+            account_id: AccountId::from_u64(entry.account_id),
+        })
+        .collect();
+
+    let mut account_asset_barriers = Vec::with_capacity(account_asset_slice.len());
+    for (index, entry) in account_asset_slice.iter().enumerate() {
+        let settlement = match parse_settlement_asset_or_error(
+            entry.settlement_asset,
+            "account_asset",
+            index,
+            out_error,
+        ) {
+            Some(v) => v,
+            None => return false,
+        };
+        account_asset_barriers.push(RateLimitAccountAssetBarrier {
+            limit: RateLimit {
+                max_orders: entry.max_orders,
+                window: Duration::from_nanos(entry.window_nanoseconds),
+            },
+            account_id: AccountId::from_u64(entry.account_id),
+            settlement_asset: settlement,
+        });
+    }
+
+    let builder_ref = unsafe { &mut *builder };
+    let storage = match policy_storage(builder_ref) {
+        Some(storage) => storage,
         None => {
-            write_error(out_error, "required at least one limit");
-            return std::ptr::null_mut();
+            write_error(out_error, "engine builder is no longer available");
+            return false;
         }
     };
-    let policy =
-        OrderSizeLimitPolicy::new(initial_limit.clone(), additional_limits.iter().cloned());
+    let policy = match RateLimitPolicy::new(
+        broker_opt,
+        asset_barriers,
+        account_barriers,
+        account_asset_barriers,
+        storage,
+    ) {
+        Ok(v) => v,
+        Err(e) => {
+            write_error_format!(out_error, "rate_limit_policy creation failed: {}", e);
+            return false;
+        }
+    };
+    match crate::engine::add_check_pre_trade_start_policy_to_builder(builder_ref, policy) {
+        Ok(()) => true,
+        Err(err) => {
+            write_error(out_error, &err);
+            false
+        }
+    }
+}
 
-    PitPretradeCheckPreTradeStartPolicy::new(Arc::new(policy))
+#[no_mangle]
+/// Adds the built-in order-size limit policy to the engine builder.
+///
+/// Contract:
+/// - `builder` must be a valid engine builder pointer.
+/// - At least one barrier axis must be configured: `broker` non-null,
+///   `asset_len > 0`, or `account_asset_len > 0`.
+/// - When a length is greater than zero the corresponding pointer must point
+///   to that many readable entries.
+/// - Each `settlement_asset` string view inside an array entry must be valid
+///   for the duration of the call.
+/// - `max_quantity` and `max_notional` inside each limit must be valid.
+///
+/// Success:
+/// - returns `true`; the builder retains the policy.
+///
+/// Error:
+/// - returns `false` when the builder is null or already consumed, when no
+///   barrier axis is configured, or when argument parsing fails;
+/// - if `out_error` is not null, writes a caller-owned `PitSharedString`
+///   error handle that MUST be released with `pit_destroy_shared_string`.
+pub unsafe extern "C" fn pit_engine_builder_add_builtin_order_size_limit_policy(
+    builder: *mut crate::engine::PitEngineBuilder,
+    broker: *const PitPretradePoliciesOrderSizeBrokerBarrier,
+    asset: *const PitPretradePoliciesOrderSizeAssetBarrier,
+    asset_len: usize,
+    account_asset: *const PitPretradePoliciesOrderSizeAccountAssetBarrier,
+    account_asset_len: usize,
+    out_error: PitOutError,
+) -> bool {
+    if builder.is_null() {
+        write_error(out_error, "engine builder is null");
+        return false;
+    }
+    let asset_slice = match unsafe {
+        try_slice_arg(asset, asset_len, "order_size_limit_policy asset", out_error)
+    } {
+        Some(v) => v,
+        None => return false,
+    };
+    let account_asset_slice = match unsafe {
+        try_slice_arg(
+            account_asset,
+            account_asset_len,
+            "order_size_limit_policy account_asset",
+            out_error,
+        )
+    } {
+        Some(v) => v,
+        None => return false,
+    };
+
+    let broker_opt = if !broker.is_null() {
+        let b = unsafe { &*broker };
+        let max_quantity = match b.limit.max_quantity.to_param() {
+            Ok(v) => v,
+            Err(e) => {
+                write_error_format!(out_error, "broker max_quantity is invalid: {}", e);
+                return false;
+            }
+        };
+        let max_notional = match b.limit.max_notional.to_param() {
+            Ok(v) => v,
+            Err(e) => {
+                write_error_format!(out_error, "broker max_notional is invalid: {}", e);
+                return false;
+            }
+        };
+        Some(OrderSizeBrokerBarrier {
+            limit: OrderSizeLimit {
+                max_quantity,
+                max_notional,
+            },
+        })
+    } else {
+        None
+    };
+
+    let mut asset_barriers = Vec::with_capacity(asset_slice.len());
+    for (index, entry) in asset_slice.iter().enumerate() {
+        let settlement = match parse_settlement_asset_or_error(
+            entry.settlement_asset,
+            "asset",
+            index,
+            out_error,
+        ) {
+            Some(v) => v,
+            None => return false,
+        };
+        let max_quantity = match entry.limit.max_quantity.to_param() {
+            Ok(v) => v,
+            Err(e) => {
+                write_error_format!(out_error, "asset[{index}] max_quantity is invalid: {}", e);
+                return false;
+            }
+        };
+        let max_notional = match entry.limit.max_notional.to_param() {
+            Ok(v) => v,
+            Err(e) => {
+                write_error_format!(out_error, "asset[{index}] max_notional is invalid: {}", e);
+                return false;
+            }
+        };
+        asset_barriers.push(OrderSizeAssetBarrier {
+            limit: OrderSizeLimit {
+                max_quantity,
+                max_notional,
+            },
+            settlement_asset: settlement,
+        });
+    }
+
+    let mut account_asset_barriers = Vec::with_capacity(account_asset_slice.len());
+    for (index, entry) in account_asset_slice.iter().enumerate() {
+        let settlement = match parse_settlement_asset_or_error(
+            entry.settlement_asset,
+            "account_asset",
+            index,
+            out_error,
+        ) {
+            Some(v) => v,
+            None => return false,
+        };
+        let max_quantity = match entry.limit.max_quantity.to_param() {
+            Ok(v) => v,
+            Err(e) => {
+                write_error_format!(
+                    out_error,
+                    "account_asset[{index}] max_quantity is invalid: {}",
+                    e
+                );
+                return false;
+            }
+        };
+        let max_notional = match entry.limit.max_notional.to_param() {
+            Ok(v) => v,
+            Err(e) => {
+                write_error_format!(
+                    out_error,
+                    "account_asset[{index}] max_notional is invalid: {}",
+                    e
+                );
+                return false;
+            }
+        };
+        account_asset_barriers.push(OrderSizeAccountAssetBarrier {
+            limit: OrderSizeLimit {
+                max_quantity,
+                max_notional,
+            },
+            account_id: AccountId::from_u64(entry.account_id),
+            settlement_asset: settlement,
+        });
+    }
+
+    let policy = match OrderSizeLimitPolicy::new(broker_opt, asset_barriers, account_asset_barriers)
+    {
+        Ok(v) => v,
+        Err(e) => {
+            write_error_format!(out_error, "order_size_limit_policy creation failed: {}", e);
+            return false;
+        }
+    };
+    match crate::engine::add_check_pre_trade_start_policy_to_builder(
+        unsafe { &mut *builder },
+        policy,
+    ) {
+        Ok(()) => true,
+        Err(err) => {
+            write_error(out_error, &err);
+            false
+        }
+    }
+}
+
+#[no_mangle]
+/// Adds the built-in P&L bounds kill-switch policy to the engine builder.
+///
+/// Contract:
+/// - `builder` must be a valid engine builder pointer.
+/// - At least one barrier must be provided: `broker_len > 0` or
+///   `account_len > 0`.
+/// - When a length is greater than zero the corresponding pointer must point
+///   to that many readable entries.
+/// - Each `settlement_asset` string view inside an array entry must be valid
+///   for the duration of the call.
+///
+/// Success:
+/// - returns `true`; the builder retains the policy.
+///
+/// Error:
+/// - returns `false` when the builder is null or already consumed, when no
+///   barrier is configured, or when argument parsing fails;
+/// - if `out_error` is not null, writes a caller-owned `PitSharedString`
+///   error handle that MUST be released with `pit_destroy_shared_string`.
+pub unsafe extern "C" fn pit_engine_builder_add_builtin_pnl_bounds_killswitch_policy(
+    builder: *mut crate::engine::PitEngineBuilder,
+    broker: *const PitPretradePoliciesPnlBoundsBarrier,
+    broker_len: usize,
+    account: *const PitPretradePoliciesPnlBoundsAccountBarrier,
+    account_len: usize,
+    out_error: PitOutError,
+) -> bool {
+    if builder.is_null() {
+        write_error(out_error, "engine builder is null");
+        return false;
+    }
+    let broker_slice = match unsafe {
+        try_slice_arg(
+            broker,
+            broker_len,
+            "pnl_bounds_killswitch_policy broker",
+            out_error,
+        )
+    } {
+        Some(v) => v,
+        None => return false,
+    };
+    let mut barriers = Vec::with_capacity(broker_slice.len());
+    for (index, param) in broker_slice.iter().enumerate() {
+        let settlement = match parse_settlement_asset_or_error(
+            param.settlement_asset,
+            "broker",
+            index,
+            out_error,
+        ) {
+            Some(v) => v,
+            None => return false,
+        };
+        let lower_bound = match parse_optional_pnl_or_error(
+            param.lower_bound,
+            "broker",
+            index,
+            "lower_bound",
+            out_error,
+        ) {
+            Ok(v) => v,
+            Err(()) => return false,
+        };
+        let upper_bound = match parse_optional_pnl_or_error(
+            param.upper_bound,
+            "broker",
+            index,
+            "upper_bound",
+            out_error,
+        ) {
+            Ok(v) => v,
+            Err(()) => return false,
+        };
+        barriers.push(PnlBoundsBrokerBarrier {
+            settlement_asset: settlement,
+            lower_bound,
+            upper_bound,
+        });
+    }
+
+    let account_slice = match unsafe {
+        try_slice_arg(
+            account,
+            account_len,
+            "pnl_bounds_killswitch_policy account",
+            out_error,
+        )
+    } {
+        Some(v) => v,
+        None => return false,
+    };
+    let mut account_barriers = Vec::with_capacity(account_slice.len());
+    for (index, param) in account_slice.iter().enumerate() {
+        let account_id = AccountId::from_u64(param.account_id);
+        let settlement = match parse_settlement_asset_or_error(
+            param.settlement_asset,
+            "account",
+            index,
+            out_error,
+        ) {
+            Some(v) => v,
+            None => return false,
+        };
+        let lower_bound = match parse_optional_pnl_or_error(
+            param.lower_bound,
+            "account",
+            index,
+            "lower_bound",
+            out_error,
+        ) {
+            Ok(v) => v,
+            Err(()) => return false,
+        };
+        let upper_bound = match parse_optional_pnl_or_error(
+            param.upper_bound,
+            "account",
+            index,
+            "upper_bound",
+            out_error,
+        ) {
+            Ok(v) => v,
+            Err(()) => return false,
+        };
+        let initial_pnl = match param.initial_pnl.to_param() {
+            Ok(v) => v,
+            Err(e) => {
+                write_error_format!(out_error, "account[{index}] initial_pnl is invalid: {}", e);
+                return false;
+            }
+        };
+        account_barriers.push(PnlBoundsAccountAssetBarrier {
+            barrier: PnlBoundsBrokerBarrier {
+                settlement_asset: settlement,
+                lower_bound,
+                upper_bound,
+            },
+            account_id,
+            initial_pnl,
+        });
+    }
+
+    let builder_ref = unsafe { &mut *builder };
+    let storage = match policy_storage(builder_ref) {
+        Some(storage) => storage,
+        None => {
+            write_error(out_error, "engine builder is no longer available");
+            return false;
+        }
+    };
+    let policy = match PnlBoundsKillSwitchPolicy::new(barriers, account_barriers, storage) {
+        Ok(v) => v,
+        Err(e) => {
+            write_error_format!(
+                out_error,
+                "pnl_bounds_killswitch_policy creation failed: {}",
+                e
+            );
+            return false;
+        }
+    };
+    match crate::engine::add_check_pre_trade_start_policy_to_builder(builder_ref, policy) {
+        Ok(()) => true,
+        Err(err) => {
+            write_error(out_error, &err);
+            false
+        }
+    }
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -593,30 +1066,18 @@ policy_get_name_fn!(
 
 //--------------------------------------------------------------------------------------------------
 
-fn add_policy_to_builder<P: ?Sized, F>(
+fn get_policy_arc<P: ?Sized>(
     builder: *mut crate::engine::PitEngineBuilder,
     policy: *mut PolicyHandle<P>,
-    add_fn: F,
-) -> Result<(), String>
-where
-    F: FnOnce(
-        openpit::EngineBuilder<Order, ExecutionReport, AccountAdjustment>,
-        Arc<P>,
-    ) -> openpit::EngineBuilder<Order, ExecutionReport, AccountAdjustment>,
-{
+) -> Result<(*mut crate::engine::PitEngineBuilder, Arc<P>), String> {
     if builder.is_null() {
         return Err("engine builder is null".to_string());
     }
     if policy.is_null() {
         return Err("policy is null".to_string());
     }
-    let pointer = unsafe { &*policy };
-    let policy = Arc::clone(&pointer.policy);
-    crate::engine::with_builder(
-        unsafe { &mut *builder },
-        Box::new(move |b| add_fn(b, policy)),
-    )?;
-    Ok(())
+    let arc = Arc::clone(unsafe { &(*policy).policy });
+    Ok((builder, arc))
 }
 
 #[no_mangle]
@@ -647,9 +1108,13 @@ pub extern "C" fn pit_engine_builder_add_check_pre_trade_start_policy(
     policy: *mut PitPretradeCheckPreTradeStartPolicy,
     out_error: PitOutError,
 ) -> bool {
-    match add_policy_to_builder(builder, policy, |b, policy| {
-        b.check_pre_trade_start_policy(DynCheckPreTradeStartPolicy { inner: policy })
-    }) {
+    let result = get_policy_arc(builder, policy).and_then(|(b, policy)| {
+        crate::engine::add_check_pre_trade_start_policy_to_builder(
+            unsafe { &mut *b },
+            DynCheckPreTradeStartPolicy { inner: policy },
+        )
+    });
+    match result {
         Ok(()) => true,
         Err(err) => {
             write_error(out_error, &err);
@@ -683,9 +1148,13 @@ pub extern "C" fn pit_engine_builder_add_pre_trade_policy(
     policy: *mut PitPretradePreTradePolicy,
     out_error: PitOutError,
 ) -> bool {
-    match add_policy_to_builder(builder, policy, |b, policy| {
-        b.pre_trade_policy(DynPreTradePolicy { inner: policy })
-    }) {
+    let result = get_policy_arc(builder, policy).and_then(|(b, policy)| {
+        crate::engine::add_pre_trade_policy_to_builder(
+            unsafe { &mut *b },
+            DynPreTradePolicy { inner: policy },
+        )
+    });
+    match result {
         Ok(()) => true,
         Err(err) => {
             write_error(out_error, &err);
@@ -719,9 +1188,13 @@ pub extern "C" fn pit_engine_builder_add_account_adjustment_policy(
     policy: *mut PitAccountAdjustmentPolicy,
     out_error: PitOutError,
 ) -> bool {
-    match add_policy_to_builder(builder, policy, |b, policy| {
-        b.account_adjustment_policy(DynAccountAdjustmentPolicy { inner: policy })
-    }) {
+    let result = get_policy_arc(builder, policy).and_then(|(b, policy)| {
+        crate::engine::add_account_adjustment_policy_to_builder(
+            unsafe { &mut *b },
+            DynAccountAdjustmentPolicy { inner: policy },
+        )
+    });
+    match result {
         Ok(()) => true,
         Err(err) => {
             write_error(out_error, &err);
@@ -997,6 +1470,17 @@ struct DynCheckPreTradeStartPolicy {
     inner: Arc<dyn CheckPreTradeStartPolicy<Order, ExecutionReport>>,
 }
 
+// SAFETY: The binding threading contract (engine.rs module comment) guarantees
+// that engine method calls are never concurrent from the caller side. The inner
+// Arc's concrete type is a Custom* callback struct whose user_data is accessed
+// only under that serialization guarantee. The Arc refcount is atomically
+// maintained. Sequential transfer across OS threads is permitted by the contract.
+unsafe impl Send for DynCheckPreTradeStartPolicy {}
+impl_dyn_policy_sync!(
+    DynCheckPreTradeStartPolicy,
+    "CustomCheckPreTradeStartPolicy"
+);
+
 impl CheckPreTradeStartPolicy<Order, ExecutionReport> for DynCheckPreTradeStartPolicy {
     fn name(&self) -> &str {
         self.inner.name()
@@ -1014,6 +1498,10 @@ impl CheckPreTradeStartPolicy<Order, ExecutionReport> for DynCheckPreTradeStartP
 struct DynPreTradePolicy {
     inner: Arc<dyn PreTradePolicy<Order, ExecutionReport>>,
 }
+
+// SAFETY: same reasoning as `DynCheckPreTradeStartPolicy` above.
+unsafe impl Send for DynPreTradePolicy {}
+impl_dyn_policy_sync!(DynPreTradePolicy, "CustomPreTradePolicy");
 
 impl PreTradePolicy<Order, ExecutionReport> for DynPreTradePolicy {
     fn name(&self) -> &str {
@@ -1037,6 +1525,10 @@ impl PreTradePolicy<Order, ExecutionReport> for DynPreTradePolicy {
 struct DynAccountAdjustmentPolicy {
     inner: Arc<dyn AccountAdjustmentPolicy<AccountAdjustment>>,
 }
+
+// SAFETY: same reasoning as `DynCheckPreTradeStartPolicy` above.
+unsafe impl Send for DynAccountAdjustmentPolicy {}
+impl_dyn_policy_sync!(DynAccountAdjustmentPolicy, "CustomAccountAdjustmentPolicy");
 
 impl AccountAdjustmentPolicy<AccountAdjustment> for DynAccountAdjustmentPolicy {
     fn name(&self) -> &str {
@@ -1064,6 +1556,8 @@ struct CustomCheckPreTradeStartPolicy {
     free_user_data_fn: PitPretradeCheckPreTradeStartPolicyFreeUserDataFn,
     user_data: *mut c_void,
 }
+
+impl_custom_policy_send_sync!(CustomCheckPreTradeStartPolicy);
 
 impl CheckPreTradeStartPolicy<Order, ExecutionReport> for CustomCheckPreTradeStartPolicy {
     fn name(&self) -> &str {
@@ -1096,6 +1590,8 @@ struct CustomPreTradePolicy {
     free_user_data_fn: PitPretradePreTradePolicyFreeUserDataFn,
     user_data: *mut c_void,
 }
+
+impl_custom_policy_send_sync!(CustomPreTradePolicy);
 
 impl PreTradePolicy<Order, ExecutionReport> for CustomPreTradePolicy {
     fn name(&self) -> &str {
@@ -1136,6 +1632,8 @@ struct CustomAccountAdjustmentPolicy {
     free_user_data_fn: PitAccountAdjustmentPolicyFreeUserDataFn,
     user_data: *mut c_void,
 }
+
+impl_custom_policy_send_sync!(CustomAccountAdjustmentPolicy);
 
 impl AccountAdjustmentPolicy<AccountAdjustment> for CustomAccountAdjustmentPolicy {
     fn name(&self) -> &str {
@@ -1221,7 +1719,14 @@ fn import_reject_list_result(rejects: *mut PitRejectList) -> Result<(), Rejects>
 ///   the engine.
 /// - `free_user_data_fn` will be called exactly once, when the last reference
 ///   to the policy is released.
-/// - `user_data` is stored as-is and passed back to every callback invocation.
+/// - `user_data` is opaque to the SDK: the engine never inspects, dereferences,
+///   or frees it; it is forwarded verbatim to the registered callbacks.
+///   Lifetime, thread-safety, and meaning of the pointed-at state are entirely
+///   the caller's responsibility. Under `PitSyncPolicy_Local` or
+///   `PitSyncPolicy_Account`, the caller serialises per-handle invocation per
+///   the SDK threading contract; under `PitSyncPolicy_Full`, the caller is
+///   responsible for making any state reachable through `user_data` safe under
+///   concurrent invocation.
 ///
 /// Success:
 /// - returns a new caller-owned policy object.
@@ -1278,7 +1783,14 @@ pub unsafe extern "C" fn pit_create_pretrade_custom_check_pre_trade_start_policy
 ///   mutations pointer passed to `check_fn`.
 /// - `free_user_data_fn` will be called exactly once, when the last reference
 ///   to the policy is released.
-/// - `user_data` is stored as-is and passed back to every callback invocation.
+/// - `user_data` is opaque to the SDK: the engine never inspects, dereferences,
+///   or frees it; it is forwarded verbatim to the registered callbacks.
+///   Lifetime, thread-safety, and meaning of the pointed-at state are entirely
+///   the caller's responsibility. Under `PitSyncPolicy_Local` or
+///   `PitSyncPolicy_Account`, the caller serialises per-handle invocation per
+///   the SDK threading contract; under `PitSyncPolicy_Full`, the caller is
+///   responsible for making any state reachable through `user_data` safe under
+///   concurrent invocation.
 ///
 /// Success:
 /// - returns a new caller-owned policy object.
@@ -1334,7 +1846,14 @@ pub unsafe extern "C" fn pit_create_pretrade_custom_pre_trade_policy(
 ///   mutations pointer passed to `apply_fn`.
 /// - `free_user_data_fn` will be called exactly once, when the last reference
 ///   to the policy is released.
-/// - `user_data` is stored as-is and passed back to every callback invocation.
+/// - `user_data` is opaque to the SDK: the engine never inspects, dereferences,
+///   or frees it; it is forwarded verbatim to the registered callbacks.
+///   Lifetime, thread-safety, and meaning of the pointed-at state are entirely
+///   the caller's responsibility. Under `PitSyncPolicy_Local` or
+///   `PitSyncPolicy_Account`, the caller serialises per-handle invocation per
+///   the SDK threading contract; under `PitSyncPolicy_Full`, the caller is
+///   responsible for making any state reachable through `user_data` safe under
+///   concurrent invocation.
 ///
 /// Success:
 /// - returns a new caller-owned policy object.
@@ -1400,7 +1919,7 @@ mod tests {
 
     use super::*;
 
-    use crate::param::PitParamDecimal;
+    use crate::param::{PitParamDecimal, PitParamPnl};
     use crate::reject::PitRejectList;
 
     unsafe extern "C" fn custom_check_fn(
@@ -1538,6 +2057,7 @@ mod tests {
         user_data: *mut c_void,
     ) -> openpit::pretrade::PreTradeReservation {
         let engine = openpit::Engine::<Order, ExecutionReport, AccountAdjustment>::builder()
+            .with_sync(openpit::LocalSyncPolicy)
             .pre_trade_policy(CustomPreTradePolicy {
                 name: "ffi.custom".to_owned(),
                 check_fn,
@@ -1825,360 +2345,19 @@ mod tests {
     }
 
     #[test]
-    fn pnl_bounds_killswitch_create_accepts_multiple_params() {
-        let usd = PitStringView::from_utf8("USD");
-        let eur = PitStringView::from_utf8("EUR");
-        let params = [
-            PitPretradePoliciesPnlBoundsBarrier {
-                settlement_asset: usd,
-                lower_bound: pnl_optional(Some(pnl_param(-1000, 0))),
-                upper_bound: pnl_optional(Some(pnl_param(1000, 0))),
-                initial_pnl: pnl_param(0, 0),
-            },
-            PitPretradePoliciesPnlBoundsBarrier {
-                settlement_asset: eur,
-                lower_bound: pnl_optional(Some(pnl_param(-500, 0))),
-                upper_bound: pnl_optional(None),
-                initial_pnl: pnl_param(0, 0),
-            },
-        ];
-        let pointer = unsafe {
-            pit_create_pretrade_policies_pnl_bounds_killswitch_policy(
-                params.as_ptr(),
-                params.len(),
-                std::ptr::null_mut(),
-            )
-        };
-        assert!(!pointer.is_null());
-        pit_destroy_pretrade_check_pre_trade_start_policy(pointer);
-    }
-
-    #[test]
-    fn order_size_limit_create_accepts_multiple_params() {
-        let usd = PitStringView::from_utf8("USD");
-        let eur = PitStringView::from_utf8("EUR");
-        let params = [
-            PitPretradePoliciesOrderSizeLimitParam {
-                settlement_asset: usd,
-                max_quantity: quantity_param(10, 0),
-                max_notional: volume_param(1000, 0),
-            },
-            PitPretradePoliciesOrderSizeLimitParam {
-                settlement_asset: eur,
-                max_quantity: quantity_param(5, 0),
-                max_notional: volume_param(500, 0),
-            },
-        ];
-        let pointer = unsafe {
-            pit_create_pretrade_policies_order_size_limit_policy(
-                params.as_ptr(),
-                params.len(),
-                std::ptr::null_mut(),
-            )
-        };
-        assert!(!pointer.is_null());
-        pit_destroy_pretrade_check_pre_trade_start_policy(pointer);
-    }
-
-    #[test]
-    fn pnl_bounds_killswitch_create_rejects_zero_len_params() {
-        let mut out_error = std::ptr::null_mut();
-        let pointer = unsafe {
-            pit_create_pretrade_policies_pnl_bounds_killswitch_policy(
-                std::ptr::null(),
-                0,
-                &mut out_error,
-            )
-        };
-        assert!(pointer.is_null());
-        assert_eq!(
-            cstr_to_string(out_error),
-            "pnl_bounds_killswitch_policy requires at least one barrier"
-        );
-    }
-
-    #[test]
-    fn order_size_limit_create_rejects_zero_len_params() {
-        let mut out_error = std::ptr::null_mut();
-        let pointer = unsafe {
-            pit_create_pretrade_policies_order_size_limit_policy(
-                std::ptr::null(),
-                0,
-                &mut out_error,
-            )
-        };
-        assert!(pointer.is_null());
-        assert_eq!(
-            cstr_to_string(out_error),
-            "order_size_limit_policy requires at least one limit"
-        );
-    }
-
-    #[test]
-    fn pnl_bounds_killswitch_create_rejects_null_params_with_positive_len() {
-        let mut out_error = std::ptr::null_mut();
-        let pointer = unsafe {
-            pit_create_pretrade_policies_pnl_bounds_killswitch_policy(
-                std::ptr::null(),
-                1,
-                &mut out_error,
-            )
-        };
-        assert!(pointer.is_null());
-        assert_eq!(
-            cstr_to_string(out_error),
-            "pnl_bounds_killswitch_policy params is null"
-        );
-    }
-
-    #[test]
-    fn order_size_limit_create_rejects_null_params_with_positive_len() {
-        let mut out_error = std::ptr::null_mut();
-        let pointer = unsafe {
-            pit_create_pretrade_policies_order_size_limit_policy(
-                std::ptr::null(),
-                1,
-                &mut out_error,
-            )
-        };
-        assert!(pointer.is_null());
-        assert_eq!(
-            cstr_to_string(out_error),
-            "order_size_limit_policy params is null"
-        );
-    }
-
-    #[test]
-    fn pnl_bounds_killswitch_create_reports_indexed_settlement_error() {
-        let usd = PitStringView::from_utf8("USD");
-        let invalid = PitStringView::from_utf8("");
-        let params = [
-            PitPretradePoliciesPnlBoundsBarrier {
-                settlement_asset: usd,
-                lower_bound: pnl_optional(Some(pnl_param(-1000, 0))),
-                upper_bound: pnl_optional(None),
-                initial_pnl: pnl_param(0, 0),
-            },
-            PitPretradePoliciesPnlBoundsBarrier {
-                settlement_asset: invalid,
-                lower_bound: pnl_optional(Some(pnl_param(-100, 0))),
-                upper_bound: pnl_optional(None),
-                initial_pnl: pnl_param(0, 0),
-            },
-        ];
-        let mut out_error = std::ptr::null_mut();
-        let pointer = unsafe {
-            pit_create_pretrade_policies_pnl_bounds_killswitch_policy(
-                params.as_ptr(),
-                params.len(),
-                &mut out_error,
-            )
-        };
-        assert!(pointer.is_null());
-        let error = cstr_to_string(out_error);
-        assert!(
-            error.contains("param[1] settlement asset is invalid"),
-            "actual error: {}",
-            error
-        );
-    }
-
-    #[test]
-    fn order_size_limit_create_reports_indexed_settlement_error() {
-        let usd = PitStringView::from_utf8("USD");
-        let invalid = PitStringView::from_utf8("");
-        let params = [
-            PitPretradePoliciesOrderSizeLimitParam {
-                settlement_asset: usd,
-                max_quantity: quantity_param(10, 0),
-                max_notional: volume_param(1000, 0),
-            },
-            PitPretradePoliciesOrderSizeLimitParam {
-                settlement_asset: invalid,
-                max_quantity: quantity_param(5, 0),
-                max_notional: volume_param(500, 0),
-            },
-        ];
-        let mut out_error = std::ptr::null_mut();
-        let pointer = unsafe {
-            pit_create_pretrade_policies_order_size_limit_policy(
-                params.as_ptr(),
-                params.len(),
-                &mut out_error,
-            )
-        };
-        assert!(pointer.is_null());
-        let error = cstr_to_string(out_error);
-        assert!(
-            error.contains("param[1] settlement asset is invalid"),
-            "actual error: {}",
-            error
-        );
-    }
-
-    #[test]
-    fn pnl_bounds_killswitch_create_reports_indexed_lower_bound_error() {
-        let usd = PitStringView::from_utf8("USD");
-        let params = [PitPretradePoliciesPnlBoundsBarrier {
-            settlement_asset: usd,
-            lower_bound: pnl_optional(Some(pnl_param(1000, -1))),
-            upper_bound: pnl_optional(None),
-            initial_pnl: pnl_param(0, 0),
-        }];
-        let mut out_error = std::ptr::null_mut();
-        let pointer = unsafe {
-            pit_create_pretrade_policies_pnl_bounds_killswitch_policy(
-                params.as_ptr(),
-                params.len(),
-                &mut out_error,
-            )
-        };
-        assert!(pointer.is_null());
-        let error = cstr_to_string(out_error);
-        assert!(
-            error.contains("param[0] lower_bound is invalid"),
-            "actual error: {}",
-            error
-        );
-    }
-
-    #[test]
-    fn pnl_bounds_killswitch_create_rejects_when_no_bounds_configured() {
-        let usd = PitStringView::from_utf8("USD");
-        let params = [PitPretradePoliciesPnlBoundsBarrier {
-            settlement_asset: usd,
-            lower_bound: pnl_optional(None),
-            upper_bound: pnl_optional(None),
-            initial_pnl: pnl_param(0, 0),
-        }];
-        let mut out_error = std::ptr::null_mut();
-        let pointer = unsafe {
-            pit_create_pretrade_policies_pnl_bounds_killswitch_policy(
-                params.as_ptr(),
-                params.len(),
-                &mut out_error,
-            )
-        };
-        assert!(pointer.is_null());
-        let error = cstr_to_string(out_error);
-        assert!(
-            error.contains("at least one of lower_bound or upper_bound must be configured"),
-            "actual error: {}",
-            error
-        );
-    }
-
-    #[test]
-    fn order_size_limit_create_reports_indexed_max_quantity_error() {
-        let usd = PitStringView::from_utf8("USD");
-        let params = [PitPretradePoliciesOrderSizeLimitParam {
-            settlement_asset: usd,
-            max_quantity: quantity_param(10, -1),
-            max_notional: volume_param(1000, 0),
-        }];
-        let mut out_error = std::ptr::null_mut();
-        let pointer = unsafe {
-            pit_create_pretrade_policies_order_size_limit_policy(
-                params.as_ptr(),
-                params.len(),
-                &mut out_error,
-            )
-        };
-        assert!(pointer.is_null());
-        let error = cstr_to_string(out_error);
-        assert!(
-            error.contains("param[0] max quantity is invalid"),
-            "actual error: {}",
-            error
-        );
-    }
-
-    #[test]
-    fn order_size_limit_create_reports_indexed_max_notional_error() {
-        let usd = PitStringView::from_utf8("USD");
-        let params = [PitPretradePoliciesOrderSizeLimitParam {
-            settlement_asset: usd,
-            max_quantity: quantity_param(10, 0),
-            max_notional: volume_param(1000, -1),
-        }];
-        let mut out_error = std::ptr::null_mut();
-        let pointer = unsafe {
-            pit_create_pretrade_policies_order_size_limit_policy(
-                params.as_ptr(),
-                params.len(),
-                &mut out_error,
-            )
-        };
-        assert!(pointer.is_null());
-        let error = cstr_to_string(out_error);
-        assert!(
-            error.contains("param[0] max notional is invalid"),
-            "actual error: {}",
-            error
-        );
-    }
-
-    #[test]
-    fn create_functions_accept_duplicate_settlement_entries() {
-        let usd = PitStringView::from_utf8("USD");
-        let pnl_params = [
-            PitPretradePoliciesPnlBoundsBarrier {
-                settlement_asset: usd,
-                lower_bound: pnl_optional(Some(pnl_param(-1000, 0))),
-                upper_bound: pnl_optional(None),
-                initial_pnl: pnl_param(0, 0),
-            },
-            PitPretradePoliciesPnlBoundsBarrier {
-                settlement_asset: usd,
-                lower_bound: pnl_optional(Some(pnl_param(-900, 0))),
-                upper_bound: pnl_optional(None),
-                initial_pnl: pnl_param(0, 0),
-            },
-        ];
-        let pnl_handle = unsafe {
-            pit_create_pretrade_policies_pnl_bounds_killswitch_policy(
-                pnl_params.as_ptr(),
-                pnl_params.len(),
-                std::ptr::null_mut(),
-            )
-        };
-        assert!(
-            !pnl_handle.is_null(),
-            "unexpected error: {}",
-            cstr_to_string(std::ptr::null_mut())
-        );
-        pit_destroy_pretrade_check_pre_trade_start_policy(pnl_handle);
-
-        let size_params = [
-            PitPretradePoliciesOrderSizeLimitParam {
-                settlement_asset: usd,
-                max_quantity: quantity_param(10, 0),
-                max_notional: volume_param(1000, 0),
-            },
-            PitPretradePoliciesOrderSizeLimitParam {
-                settlement_asset: usd,
-                max_quantity: quantity_param(9, 0),
-                max_notional: volume_param(900, 0),
-            },
-        ];
-        let size_handle = unsafe {
-            pit_create_pretrade_policies_order_size_limit_policy(
-                size_params.as_ptr(),
-                size_params.len(),
-                std::ptr::null_mut(),
-            )
-        };
-        assert!(
-            !size_handle.is_null(),
-            "unexpected error: {}",
-            cstr_to_string(std::ptr::null_mut())
-        );
-        pit_destroy_pretrade_check_pre_trade_start_policy(size_handle);
-    }
-
-    #[test]
     fn add_policy_reports_null_builder() {
-        let policy = pit_create_pretrade_policies_order_validation_policy();
+        let name = PitStringView::from_utf8("null.builder.check");
+        let policy = unsafe {
+            pit_create_pretrade_custom_check_pre_trade_start_policy(
+                name,
+                custom_check_fn,
+                custom_apply_report_fn,
+                custom_free_user_data_fn,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+        assert!(!policy.is_null());
         let mut out_error = std::ptr::null_mut();
         let ok = pit_engine_builder_add_check_pre_trade_start_policy(
             std::ptr::null_mut(),
@@ -2192,7 +2371,10 @@ mod tests {
 
     #[test]
     fn add_policy_reports_null_policy() {
-        let builder = crate::engine::pit_create_engine_builder();
+        let builder = crate::engine::pit_create_engine_builder(
+            crate::engine::PitSyncPolicy::Full as u8,
+            std::ptr::null_mut(),
+        );
         let mut out_error = std::ptr::null_mut();
         let ok = pit_engine_builder_add_check_pre_trade_start_policy(
             builder,
@@ -2361,15 +2543,11 @@ mod tests {
     }
 
     #[test]
-    fn rate_limit_policy_create_and_destroy_are_reachable() {
-        let pointer = pit_create_pretrade_policies_rate_limit_policy(10, 1);
-        assert!(!pointer.is_null());
-        pit_destroy_pretrade_check_pre_trade_start_policy(pointer);
-    }
-
-    #[test]
     fn add_main_and_account_adjustment_policy_to_builder() {
-        let builder = crate::engine::pit_create_engine_builder();
+        let builder = crate::engine::pit_create_engine_builder(
+            crate::engine::PitSyncPolicy::Full as u8,
+            std::ptr::null_mut(),
+        );
 
         let pre_trade_name = PitStringView::from_utf8("caller.pretrade.add");
         let pre_trade_policy = unsafe {
@@ -2430,7 +2608,10 @@ mod tests {
 
     #[test]
     fn add_check_start_policy_to_builder_and_execute_paths() {
-        let builder = crate::engine::pit_create_engine_builder();
+        let builder = crate::engine::pit_create_engine_builder(
+            crate::engine::PitSyncPolicy::Full as u8,
+            std::ptr::null_mut(),
+        );
 
         let check_name = PitStringView::from_utf8("caller.check.start.add");
         let check_policy = unsafe {
@@ -2487,7 +2668,10 @@ mod tests {
 
     #[test]
     fn custom_pre_trade_and_account_adjustment_callbacks_are_invoked_via_engine() {
-        let builder = crate::engine::pit_create_engine_builder();
+        let builder = crate::engine::pit_create_engine_builder(
+            crate::engine::PitSyncPolicy::Full as u8,
+            std::ptr::null_mut(),
+        );
 
         let pre_trade_name = PitStringView::from_utf8("pretrade.invoke");
         let pre_trade_policy = unsafe {
@@ -2578,6 +2762,373 @@ mod tests {
         assert!(out_reject.is_null());
 
         crate::engine::pit_destroy_engine(engine);
+        crate::engine::pit_destroy_engine_builder(builder);
+    }
+
+    fn build_engine_with_builtin_start_policy(
+        add_fn: impl FnOnce(*mut crate::engine::PitEngineBuilder) -> bool,
+    ) -> *mut crate::engine::PitEngine {
+        let builder = crate::engine::pit_create_engine_builder(
+            crate::engine::PitSyncPolicy::Full as u8,
+            std::ptr::null_mut(),
+        );
+        assert!(add_fn(builder), "failed to add policy");
+        let engine = crate::engine::pit_engine_builder_build(builder, std::ptr::null_mut());
+        assert!(!engine.is_null(), "engine build failed");
+        engine
+    }
+
+    fn valid_pit_order() -> PitOrder {
+        use crate::instrument::PitInstrument;
+        use crate::order::{PitOrderOperation, PitOrderOperationOptional};
+        use crate::param::{
+            PitParamAccountIdOptional, PitParamPrice, PitParamPriceOptional, PitParamSide,
+            PitParamTradeAmount, PitParamTradeAmountKind,
+        };
+        PitOrder {
+            operation: PitOrderOperationOptional {
+                is_set: true,
+                value: PitOrderOperation {
+                    instrument: PitInstrument {
+                        underlying_asset: PitStringView::from_utf8("SPX"),
+                        settlement_asset: PitStringView::from_utf8("USD"),
+                    },
+                    trade_amount: PitParamTradeAmount {
+                        value: quantity_param(1, 0).0,
+                        kind: PitParamTradeAmountKind::Quantity,
+                    },
+                    account_id: PitParamAccountIdOptional {
+                        value: 7,
+                        is_set: true,
+                    },
+                    side: PitParamSide::Buy,
+                    price: PitParamPriceOptional {
+                        is_set: true,
+                        value: PitParamPrice(PitParamDecimal {
+                            mantissa_lo: 100,
+                            mantissa_hi: 0,
+                            scale: 0,
+                        }),
+                    },
+                },
+            },
+            position: Default::default(),
+            margin: Default::default(),
+            user_data: std::ptr::null_mut(),
+        }
+    }
+
+    fn run_start_pre_trade_passes(engine: *mut crate::engine::PitEngine) {
+        let order = valid_pit_order();
+        let mut request = std::ptr::null_mut();
+        let mut out_rejects = std::ptr::null_mut();
+        let status = crate::engine::pit_engine_start_pre_trade(
+            engine,
+            &order,
+            &mut request,
+            &mut out_rejects,
+            std::ptr::null_mut(),
+        );
+        assert_eq!(
+            status,
+            crate::engine::PitPretradeStatus::Passed,
+            "start_pre_trade should pass"
+        );
+        crate::engine::pit_destroy_pretrade_pre_trade_request(request);
+    }
+
+    #[test]
+    fn add_builtin_order_validation_policy_happy_path() {
+        let engine = build_engine_with_builtin_start_policy(|builder| {
+            pit_engine_builder_add_builtin_order_validation_policy(builder, std::ptr::null_mut())
+        });
+        run_start_pre_trade_passes(engine);
+        crate::engine::pit_destroy_engine(engine);
+    }
+
+    #[test]
+    fn add_builtin_order_validation_policy_null_builder_reports_error() {
+        let mut out_error = std::ptr::null_mut();
+        let ok = pit_engine_builder_add_builtin_order_validation_policy(
+            std::ptr::null_mut(),
+            &mut out_error,
+        );
+        assert!(!ok);
+        assert_eq!(cstr_to_string(out_error), "engine builder is null");
+    }
+
+    #[test]
+    fn add_builtin_rate_limit_policy_happy_path() {
+        let broker = PitPretradePoliciesRateLimitBrokerBarrier {
+            max_orders: 100,
+            window_nanoseconds: 1_000_000_000,
+        };
+        let engine = build_engine_with_builtin_start_policy(|builder| unsafe {
+            pit_engine_builder_add_builtin_rate_limit_policy(
+                builder,
+                &broker,
+                std::ptr::null(),
+                0,
+                std::ptr::null(),
+                0,
+                std::ptr::null(),
+                0,
+                std::ptr::null_mut(),
+            )
+        });
+        run_start_pre_trade_passes(engine);
+        crate::engine::pit_destroy_engine(engine);
+    }
+
+    #[test]
+    fn add_builtin_rate_limit_policy_empty_config_reports_error() {
+        let builder = crate::engine::pit_create_engine_builder(
+            crate::engine::PitSyncPolicy::Full as u8,
+            std::ptr::null_mut(),
+        );
+        let mut out_error = std::ptr::null_mut();
+        let ok = unsafe {
+            pit_engine_builder_add_builtin_rate_limit_policy(
+                builder,
+                std::ptr::null(),
+                std::ptr::null(),
+                0,
+                std::ptr::null(),
+                0,
+                std::ptr::null(),
+                0,
+                &mut out_error,
+            )
+        };
+        assert!(!ok);
+        let message = cstr_to_string(out_error);
+        assert!(
+            message.contains("rate_limit_policy creation failed")
+                && message.contains("must be configured"),
+            "expected SDK no-barrier error wrapped by FFI, got: {message}"
+        );
+        crate::engine::pit_destroy_engine_builder(builder);
+    }
+
+    #[test]
+    fn add_builtin_rate_limit_policy_local_sync_mode() {
+        let broker = PitPretradePoliciesRateLimitBrokerBarrier {
+            max_orders: 50,
+            window_nanoseconds: 10_000_000_000,
+        };
+        let builder = crate::engine::pit_create_engine_builder(
+            crate::engine::PitSyncPolicy::Local as u8,
+            std::ptr::null_mut(),
+        );
+        let ok = unsafe {
+            pit_engine_builder_add_builtin_rate_limit_policy(
+                builder,
+                &broker,
+                std::ptr::null(),
+                0,
+                std::ptr::null(),
+                0,
+                std::ptr::null(),
+                0,
+                std::ptr::null_mut(),
+            )
+        };
+        assert!(ok, "add should succeed for Local sync mode");
+        let engine = crate::engine::pit_engine_builder_build(builder, std::ptr::null_mut());
+        assert!(!engine.is_null());
+        run_start_pre_trade_passes(engine);
+        crate::engine::pit_destroy_engine(engine);
+    }
+
+    #[test]
+    fn add_builtin_rate_limit_policy_cross_axis_all_configured() {
+        let usd = PitStringView::from_utf8("USD");
+        let broker = PitPretradePoliciesRateLimitBrokerBarrier {
+            max_orders: 1000,
+            window_nanoseconds: 60_000_000_000,
+        };
+        let asset = [PitPretradePoliciesRateLimitAssetBarrier {
+            settlement_asset: usd,
+            max_orders: 500,
+            window_nanoseconds: 60_000_000_000,
+        }];
+        let account = [PitPretradePoliciesRateLimitAccountBarrier {
+            account_id: 42,
+            max_orders: 200,
+            window_nanoseconds: 60_000_000_000,
+        }];
+        let account_asset = [PitPretradePoliciesRateLimitAccountAssetBarrier {
+            account_id: 42,
+            settlement_asset: usd,
+            max_orders: 100,
+            window_nanoseconds: 60_000_000_000,
+        }];
+        let engine = build_engine_with_builtin_start_policy(|builder| unsafe {
+            pit_engine_builder_add_builtin_rate_limit_policy(
+                builder,
+                &broker,
+                asset.as_ptr(),
+                asset.len(),
+                account.as_ptr(),
+                account.len(),
+                account_asset.as_ptr(),
+                account_asset.len(),
+                std::ptr::null_mut(),
+            )
+        });
+        run_start_pre_trade_passes(engine);
+        crate::engine::pit_destroy_engine(engine);
+    }
+
+    #[test]
+    fn add_builtin_order_size_limit_policy_happy_path() {
+        let usd = PitStringView::from_utf8("USD");
+        let asset = [PitPretradePoliciesOrderSizeAssetBarrier {
+            limit: PitPretradePoliciesOrderSizeLimit {
+                max_quantity: quantity_param(100, 0),
+                max_notional: volume_param(10000, 0),
+            },
+            settlement_asset: usd,
+        }];
+        let engine = build_engine_with_builtin_start_policy(|builder| unsafe {
+            pit_engine_builder_add_builtin_order_size_limit_policy(
+                builder,
+                std::ptr::null(),
+                asset.as_ptr(),
+                asset.len(),
+                std::ptr::null(),
+                0,
+                std::ptr::null_mut(),
+            )
+        });
+        run_start_pre_trade_passes(engine);
+        crate::engine::pit_destroy_engine(engine);
+    }
+
+    #[test]
+    fn add_builtin_order_size_limit_policy_empty_config_reports_error() {
+        let builder = crate::engine::pit_create_engine_builder(
+            crate::engine::PitSyncPolicy::Full as u8,
+            std::ptr::null_mut(),
+        );
+        let mut out_error = std::ptr::null_mut();
+        let ok = unsafe {
+            pit_engine_builder_add_builtin_order_size_limit_policy(
+                builder,
+                std::ptr::null(),
+                std::ptr::null(),
+                0,
+                std::ptr::null(),
+                0,
+                &mut out_error,
+            )
+        };
+        assert!(!ok);
+        let message = cstr_to_string(out_error);
+        assert!(
+            message.contains("order_size_limit_policy creation failed")
+                && message.contains("must be configured"),
+            "expected SDK no-barrier error wrapped by FFI, got: {message}"
+        );
+        crate::engine::pit_destroy_engine_builder(builder);
+    }
+
+    #[test]
+    fn add_builtin_pnl_bounds_killswitch_policy_happy_path() {
+        let usd = PitStringView::from_utf8("USD");
+        let broker = [PitPretradePoliciesPnlBoundsBarrier {
+            settlement_asset: usd,
+            lower_bound: pnl_optional(Some(pnl_param(-10000, 0))),
+            upper_bound: pnl_optional(None),
+        }];
+        let engine = build_engine_with_builtin_start_policy(|builder| unsafe {
+            pit_engine_builder_add_builtin_pnl_bounds_killswitch_policy(
+                builder,
+                broker.as_ptr(),
+                broker.len(),
+                std::ptr::null(),
+                0,
+                std::ptr::null_mut(),
+            )
+        });
+        run_start_pre_trade_passes(engine);
+        crate::engine::pit_destroy_engine(engine);
+    }
+
+    #[test]
+    fn add_builtin_pnl_bounds_killswitch_policy_empty_config_reports_error() {
+        let builder = crate::engine::pit_create_engine_builder(
+            crate::engine::PitSyncPolicy::Full as u8,
+            std::ptr::null_mut(),
+        );
+        let mut out_error = std::ptr::null_mut();
+        let ok = unsafe {
+            pit_engine_builder_add_builtin_pnl_bounds_killswitch_policy(
+                builder,
+                std::ptr::null(),
+                0,
+                std::ptr::null(),
+                0,
+                &mut out_error,
+            )
+        };
+        assert!(!ok);
+        let message = cstr_to_string(out_error);
+        assert!(
+            message.contains("pnl_bounds_killswitch_policy creation failed")
+                && message.contains("must be configured"),
+            "expected SDK no-barrier error wrapped by FFI, got: {message}"
+        );
+        crate::engine::pit_destroy_engine_builder(builder);
+    }
+
+    #[test]
+    fn add_builtin_pnl_bounds_killswitch_null_broker_with_positive_len_reports_error() {
+        let builder = crate::engine::pit_create_engine_builder(
+            crate::engine::PitSyncPolicy::Full as u8,
+            std::ptr::null_mut(),
+        );
+        let mut out_error = std::ptr::null_mut();
+        let ok = unsafe {
+            pit_engine_builder_add_builtin_pnl_bounds_killswitch_policy(
+                builder,
+                std::ptr::null(),
+                1,
+                std::ptr::null(),
+                0,
+                &mut out_error,
+            )
+        };
+        assert!(!ok);
+        assert_eq!(
+            cstr_to_string(out_error),
+            "pnl_bounds_killswitch_policy broker is null"
+        );
+        crate::engine::pit_destroy_engine_builder(builder);
+    }
+
+    #[test]
+    fn add_builtin_pnl_bounds_killswitch_null_account_with_positive_len_reports_error() {
+        let builder = crate::engine::pit_create_engine_builder(
+            crate::engine::PitSyncPolicy::Full as u8,
+            std::ptr::null_mut(),
+        );
+        let mut out_error = std::ptr::null_mut();
+        let ok = unsafe {
+            pit_engine_builder_add_builtin_pnl_bounds_killswitch_policy(
+                builder,
+                std::ptr::null(),
+                0,
+                std::ptr::null(),
+                1,
+                &mut out_error,
+            )
+        };
+        assert!(!ok);
+        assert_eq!(
+            cstr_to_string(out_error),
+            "pnl_bounds_killswitch_policy account is null"
+        );
         crate::engine::pit_destroy_engine_builder(builder);
     }
 }

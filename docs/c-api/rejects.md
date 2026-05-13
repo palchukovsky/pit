@@ -1,13 +1,15 @@
 # Rejects
 
+<!-- markdownlint-disable MD013 MD024 -->
+
 [Back to index](index.md)
 
 ## `PitRejectScope`
 
 Broad area to which a reject applies.
 
-Valid values: `Order` (1), `Account` (2). Zero is not a valid scope value;
-the caller must always set this field explicitly.
+Valid values: `Order` (1), `Account` (2). Zero is not a valid scope value; the
+caller must always set this field explicitly.
 
 ```c
 typedef uint8_t PitRejectScope;
@@ -25,11 +27,11 @@ typedef uint8_t PitRejectScope;
 
 Stable classification code for a reject.
 
-Read this first when you need machine-readable handling. The textual fields
-in [`PitReject`] provide operator-facing explanation and extra context.
+Read this first when you need machine-readable handling. The textual fields in
+[`PitReject`] provide operator-facing explanation and extra context.
 
-Valid codes are `1..=39` and `255` (`Other`). Unknown incoming codes are
-mapped to `Other` (`255`).
+Valid codes are `1..=39` and `255` (`Other`). Unknown incoming codes are mapped
+to `Other` (`255`).
 
 ```c
 typedef uint16_t PitRejectCode;
@@ -193,8 +195,8 @@ typedef uint16_t PitRejectCode;
  * Reserved discriminant for caller-defined reject classes.
  *
  * Use together with `Reject::with_user_data` to attach a caller-defined
- * payload that the receiving code can decode. The SDK does not interpret
- * this code beyond mapping it to FFI value 254.
+ * payload that the receiving code can decode. The SDK does not interpret this
+ * code beyond mapping it to FFI value 254.
  */
 #define PitRejectCode_Custom ((PitRejectCode) 254)
 /**
@@ -305,9 +307,7 @@ Contract:
 - `out_reject` must be a valid non-null pointer;
 - returns `true` when a value exists and was copied;
 - returns `false` when `index` is out of bounds and does not write
-
-`out_reject`;
-
+  `out_reject`;
 - the copied view remains valid while `list` is alive and unchanged;
 - this function never fails;
 - violating the pointer contract aborts the call.

@@ -101,10 +101,26 @@ typedef struct PitParamVolumeOptional PitParamVolumeOptional;
 typedef struct PitPretradeCheckPreTradeStartPolicy
     PitPretradeCheckPreTradeStartPolicy;
 typedef struct PitPretradeContext PitPretradeContext;
-typedef struct PitPretradePoliciesOrderSizeLimitParam
-    PitPretradePoliciesOrderSizeLimitParam;
+typedef struct PitPretradePoliciesOrderSizeAccountAssetBarrier
+    PitPretradePoliciesOrderSizeAccountAssetBarrier;
+typedef struct PitPretradePoliciesOrderSizeAssetBarrier
+    PitPretradePoliciesOrderSizeAssetBarrier;
+typedef struct PitPretradePoliciesOrderSizeBrokerBarrier
+    PitPretradePoliciesOrderSizeBrokerBarrier;
+typedef struct PitPretradePoliciesOrderSizeLimit
+    PitPretradePoliciesOrderSizeLimit;
+typedef struct PitPretradePoliciesPnlBoundsAccountBarrier
+    PitPretradePoliciesPnlBoundsAccountBarrier;
 typedef struct PitPretradePoliciesPnlBoundsBarrier
     PitPretradePoliciesPnlBoundsBarrier;
+typedef struct PitPretradePoliciesRateLimitAccountAssetBarrier
+    PitPretradePoliciesRateLimitAccountAssetBarrier;
+typedef struct PitPretradePoliciesRateLimitAccountBarrier
+    PitPretradePoliciesRateLimitAccountBarrier;
+typedef struct PitPretradePoliciesRateLimitAssetBarrier
+    PitPretradePoliciesRateLimitAssetBarrier;
+typedef struct PitPretradePoliciesRateLimitBrokerBarrier
+    PitPretradePoliciesRateLimitBrokerBarrier;
 typedef struct PitPretradePostTradeResult PitPretradePostTradeResult;
 typedef struct PitPretradePreTradeLock PitPretradePreTradeLock;
 typedef struct PitPretradePreTradePolicy PitPretradePreTradePolicy;
@@ -133,8 +149,7 @@ typedef uint16_t PitParamLeverage;
 /**
  * Stable account identifier type for FFI payloads.
  *
- * WARNING:
- * Use exactly one account-id source model per runtime:
+ * WARNING: Use exactly one account-id source model per runtime:
  * - either purely numeric IDs (`pit_create_param_account_id_from_u64`),
  * - or purely string-derived IDs (`pit_create_param_account_id_from_str`).
  *
@@ -551,8 +566,8 @@ typedef uint16_t PitRejectCode;
  * Reserved discriminant for caller-defined reject classes.
  *
  * Use together with `Reject::with_user_data` to attach a caller-defined
- * payload that the receiving code can decode. The SDK does not interpret
- * this code beyond mapping it to FFI value 254.
+ * payload that the receiving code can decode. The SDK does not interpret this
+ * code beyond mapping it to FFI value 254.
  */
 #define PitRejectCode_Custom ((PitRejectCode) 254)
 /**
@@ -612,6 +627,29 @@ typedef uint32_t PitParamErrorCode;
  * Catch-all code for unknown cases.
  */
 #define PitParamErrorCode_Other ((PitParamErrorCode) 4294967295)
+
+/**
+ * Runtime selector for the engine's storage synchronization policy.
+ */
+typedef uint8_t PitSyncPolicy;
+/**
+ * Concurrent invocation of public methods on the same handle is safe.
+ * Sequential cross-thread access is also safe. Use this when the engine is
+ * shared across threads.
+ */
+#define PitSyncPolicy_Full ((PitSyncPolicy) 0)
+/**
+ * The handle stays on the OS thread that created it. Use this for
+ * single-threaded embeddings where synchronization overhead must be zero.
+ */
+#define PitSyncPolicy_Local ((PitSyncPolicy) 1)
+/**
+ * Sequential cross-thread access on the same handle is safe; the caller pins
+ * each account to a single processing chain (one queue or one worker at a
+ * time). Concurrent invocation on the same handle is not supported in this
+ * mode.
+ */
+#define PitSyncPolicy_Account ((PitSyncPolicy) 2)
 
 /**
  * Result status for pre-trade operations.
@@ -965,6 +1003,66 @@ struct PitEngineApplyExecutionReportResult {
 };
 
 /**
+ * Broker-wide rate-limit barrier for
+ * `pit_engine_builder_add_builtin_rate_limit_policy`.
+ */
+struct PitPretradePoliciesRateLimitBrokerBarrier {
+    /**
+     * Maximum number of orders accepted within the window.
+     */
+    size_t max_orders;
+    /**
+     * Window duration in nanoseconds.
+     */
+    uint64_t window_nanoseconds;
+};
+
+/**
+ * Per-account rate-limit barrier for
+ * `pit_engine_builder_add_builtin_rate_limit_policy`.
+ */
+struct PitPretradePoliciesRateLimitAccountBarrier {
+    /**
+     * Account this barrier applies to.
+     */
+    PitParamAccountId account_id;
+    /**
+     * Maximum number of orders accepted within the window.
+     */
+    size_t max_orders;
+    /**
+     * Window duration in nanoseconds.
+     */
+    uint64_t window_nanoseconds;
+};
+
+/**
+ * Shared order-size limits for
+ * `pit_engine_builder_add_builtin_order_size_limit_policy`.
+ */
+struct PitPretradePoliciesOrderSizeLimit {
+    /**
+     * Maximum allowed quantity for one order.
+     */
+    PitParamQuantity max_quantity;
+    /**
+     * Maximum allowed notional for one order.
+     */
+    PitParamVolume max_notional;
+};
+
+/**
+ * Broker-wide order-size barrier for
+ * `pit_engine_builder_add_builtin_order_size_limit_policy`.
+ */
+struct PitPretradePoliciesOrderSizeBrokerBarrier {
+    /**
+     * Size limits for this broker barrier.
+     */
+    PitPretradePoliciesOrderSizeLimit limit;
+};
+
+/**
  * Non-owning UTF-8 string view.
  *
  * This type never owns memory. It borrows bytes from another object.
@@ -972,10 +1070,10 @@ struct PitEngineApplyExecutionReportResult {
  * Lifetime contract:
  * - `ptr` points to `len` readable bytes;
  * - the memory is valid while the original object is alive and the source
- * string has not been modified;
+ *   string has not been modified;
  * - the caller must not free or mutate memory behind `ptr`.
  * - if the caller needs to retain the string beyond that announced lifetime,
- * the caller must copy the bytes.
+ *   the caller must copy the bytes.
  */
 struct PitStringView {
     /**
@@ -1048,8 +1146,8 @@ struct PitExecutionReportFill {
      */
     PitParamPriceOptional lock_price;
     /**
-     * Whether this report closes the order's report stream.
-     * The order is filled, cancelled, or rejected.
+     * Whether this report closes the order's report stream. The order is filled,
+     * cancelled, or rejected.
      */
     PitExecutionReportIsFinalOptional is_final;
 };
@@ -1103,8 +1201,7 @@ struct PitReject {
      * model.
      *
      * The token flows through every reject path the SDK exposes (start-stage,
-     * main-stage, account-adjustment, batch results) and is preserved on
-     * `Clone`.
+     * main-stage, account-adjustment, batch results) and is preserved on `Clone`.
      */
     void * user_data;
     /**
@@ -1118,17 +1215,17 @@ struct PitReject {
 };
 
 /**
- * One barrier definition for
- * `pit_create_pretrade_policies_pnl_bounds_killswitch_policy`.
+ * One broker barrier definition for
+ * `pit_engine_builder_add_builtin_pnl_bounds_killswitch_policy`.
  *
  * What it describes:
- * - A settlement asset and its lower/upper P&L bounds.
+ * - A settlement asset and its lower/upper P&L bounds applied as a broker
+ *   barrier across all accounts.
  *
  * Contract:
- * - `settlement_asset` must point to a valid, null-terminated string for the
- * duration of the call.
- * - `initial_pnl` must contain a valid PnL value.
- * - The array passed to the create function may contain multiple entries.
+ * - `settlement_asset` must point to a valid string for the duration of the
+ *   call.
+ * - The array passed to the add function may contain multiple entries.
  */
 struct PitPretradePoliciesPnlBoundsBarrier {
     /**
@@ -1143,38 +1240,118 @@ struct PitPretradePoliciesPnlBoundsBarrier {
      * Optional upper bound for accumulated P&L.
      */
     PitParamPnlOptional upper_bound;
+};
+
+/**
+ * Per-(account, settlement-asset) P&L bounds barrier with an initial P&L seed.
+ *
+ * What it describes:
+ * - Refines P&L bounds for a specific account and settlement asset.
+ * - `initial_pnl` is pre-loaded into storage at construction; accumulation
+ *   starts from this value.
+ * - Both the broker barrier (if any) and this account+asset barrier are
+ *   evaluated on every check; the order passes only if neither is breached.
+ *
+ * Passed to `pit_engine_builder_add_builtin_pnl_bounds_killswitch_policy` in
+ * the `account` array.
+ */
+struct PitPretradePoliciesPnlBoundsAccountBarrier {
     /**
-     * Initial accumulated P&L value.
+     * Account this barrier applies to.
+     */
+    PitParamAccountId account_id;
+    /**
+     * Settlement asset whose accumulated P&L is being monitored.
+     */
+    PitStringView settlement_asset;
+    /**
+     * Optional lower bound for accumulated P&L for this account+asset pair.
+     */
+    PitParamPnlOptional lower_bound;
+    /**
+     * Optional upper bound for accumulated P&L for this account+asset pair.
+     */
+    PitParamPnlOptional upper_bound;
+    /**
+     * Starting accumulated P&L pre-loaded into storage at construction.
      */
     PitParamPnl initial_pnl;
 };
 
 /**
- * One limit definition for
- * `pit_create_pretrade_policies_order_size_limit_policy`.
- *
- * What it describes:
- * - Per-settlement maximum quantity and maximum notional allowed for one
- *   order.
- *
- * Contract:
- * - `settlement_asset` must point to a valid, null-terminated string for the
- * duration of the call.
- * - `max_quantity` and `max_notional` must contain valid limit values.
+ * Per-settlement-asset rate-limit barrier for
+ * `pit_engine_builder_add_builtin_rate_limit_policy`.
  */
-struct PitPretradePoliciesOrderSizeLimitParam {
+struct PitPretradePoliciesRateLimitAssetBarrier {
     /**
-     * Settlement asset to which the limits apply.
+     * Settlement asset this barrier applies to.
      */
     PitStringView settlement_asset;
     /**
-     * Maximum allowed quantity for one order.
+     * Maximum number of orders accepted within the window.
      */
-    PitParamQuantity max_quantity;
+    size_t max_orders;
     /**
-     * Maximum allowed notional for one order.
+     * Window duration in nanoseconds.
      */
-    PitParamVolume max_notional;
+    uint64_t window_nanoseconds;
+};
+
+/**
+ * Per-(account, settlement-asset) rate-limit barrier for
+ * `pit_engine_builder_add_builtin_rate_limit_policy`.
+ */
+struct PitPretradePoliciesRateLimitAccountAssetBarrier {
+    /**
+     * Account this barrier applies to.
+     */
+    PitParamAccountId account_id;
+    /**
+     * Settlement asset this barrier applies to.
+     */
+    PitStringView settlement_asset;
+    /**
+     * Maximum number of orders accepted within the window.
+     */
+    size_t max_orders;
+    /**
+     * Window duration in nanoseconds.
+     */
+    uint64_t window_nanoseconds;
+};
+
+/**
+ * Per-settlement-asset order-size barrier for
+ * `pit_engine_builder_add_builtin_order_size_limit_policy`.
+ */
+struct PitPretradePoliciesOrderSizeAssetBarrier {
+    /**
+     * Size limits for this asset barrier.
+     */
+    PitPretradePoliciesOrderSizeLimit limit;
+    /**
+     * Settlement asset this barrier applies to.
+     */
+    PitStringView settlement_asset;
+};
+
+/**
+ * Per-(account, settlement-asset) order-size barrier for
+ * `pit_engine_builder_add_builtin_order_size_limit_policy`.
+ */
+struct PitPretradePoliciesOrderSizeAccountAssetBarrier {
+    /**
+     * Size limits for this account+asset barrier.
+     */
+    PitPretradePoliciesOrderSizeLimit limit;
+    /**
+     * Account this barrier applies to.
+     */
+    PitParamAccountId account_id;
+    /**
+     * Settlement asset this barrier applies to.
+     */
+    PitStringView settlement_asset;
 };
 
 /**
@@ -1282,9 +1459,8 @@ struct PitExecutionReport {
      * means "not set". See the project Threading Contract for the full lifetime
      * model.
      *
-     * The token is preserved unchanged across every engine callback that
-     * receives the carrying value, including policy callbacks and adjustment
-     * callbacks.
+     * The token is preserved unchanged across every engine callback that receives
+     * the carrying value, including policy callbacks and adjustment callbacks.
      */
     void * user_data;
 };
@@ -1348,9 +1524,8 @@ struct PitAccountAdjustment {
      * means "not set". See the project Threading Contract for the full lifetime
      * model.
      *
-     * The token is preserved unchanged across every engine callback that
-     * receives the carrying value, including policy callbacks and adjustment
-     * callbacks.
+     * The token is preserved unchanged across every engine callback that receives
+     * the carrying value, including policy callbacks and adjustment callbacks.
      */
     void * user_data;
 };
@@ -1379,9 +1554,8 @@ struct PitOrder {
      * means "not set". See the project Threading Contract for the full lifetime
      * model.
      *
-     * The token is preserved unchanged across every engine callback that
-     * receives the carrying value, including policy callbacks and adjustment
-     * callbacks.
+     * The token is preserved unchanged across every engine callback that receives
+     * the carrying value, including policy callbacks and adjustment callbacks.
      */
     void * user_data;
 };
@@ -1412,19 +1586,19 @@ typedef void (*PitMutationFreeFn)(
  * - `ctx` is a read-only context valid only for the duration of the
  *   callback.
  * - `order` points to a read-only order view valid only for the duration of
- * the callback.
+ *   the callback.
  * - `order` is passed as a borrowed view and is not copied before the
- * callback runs.
+ *   callback runs.
  * - If the callback wants to keep any data from `order`, it must copy that
- * data before returning.
+ *   data before returning.
  * - Return null or an empty list to accept the order.
  * - Return a non-empty reject list to reject the order.
  * - A rejected order must set explicit `code` and `scope` values in every
- * list item.
+ *   list item.
  * - The returned list ownership is transferred to the engine; create it with
- * `pit_create_reject_list`.
+ *   `pit_create_reject_list`.
  * - Every reject payload is copied into internal storage before the callback
- * returns.
+ *   returns.
  * - `user_data` is passed through unchanged from policy creation.
  */
 typedef PitRejectList *
@@ -1439,14 +1613,13 @@ typedef PitRejectList *
  *
  * Contract:
  * - `report` points to a read-only report view valid only for the duration
- *   of
- * the callback.
+ *   of the callback.
  * - `report` is passed as a borrowed view and is not copied before the
- * callback runs.
+ *   callback runs.
  * - If the callback wants to keep any data from `report`, it must copy that
- * data before returning.
+ *   data before returning.
  * - Return `true` if the policy state changed and the engine should keep the
- * update.
+ *   update.
  * - Return `false` when nothing changed.
  * - `user_data` is passed through unchanged from policy creation.
  */
@@ -1462,7 +1635,7 @@ typedef bool (*PitPretradeCheckPreTradeStartPolicyApplyExecutionReportFn)(
  * Contract:
  * - Called exactly once, on the thread that drops the last policy reference.
  * - After this callback returns, no further callbacks will be invoked for
- * this policy instance.
+ *   this policy instance.
  * - `user_data` is the same value that was passed at policy creation.
  * - The callback must release any resources associated with `user_data`.
  */
@@ -1477,22 +1650,21 @@ typedef void (*PitPretradeCheckPreTradeStartPolicyFreeUserDataFn)(
  * - `ctx` is a read-only context valid only for the duration of the
  *   callback.
  * - `order` points to a read-only order view valid only for the duration of
- * the callback.
+ *   the callback.
  * - `order` is passed as a borrowed view and is not copied before the
- * callback runs.
+ *   callback runs.
  * - If the callback wants to keep any data from `order`, it must copy that
- * data before returning.
+ *   data before returning.
  * - `mutations` is a callback-scoped non-owning pointer that allows the
- * callback to register commit/rollback mutations.
+ *   callback to register commit/rollback mutations.
  * - The callback must not store or use `mutations` after return.
  * - Return null or an empty list to accept the order.
  * - Return a non-empty reject list to reject the order.
  * - Every returned reject must contain explicit `code` and `scope` values.
  * - The returned list ownership is transferred to the engine; create it with
- * `pit_create_reject_list`.
+ *   `pit_create_reject_list`.
  * - Every reject payload is copied into internal storage before this
- *   callback
- * returns.
+ *   callback returns.
  * - `user_data` is passed through unchanged from policy creation.
  */
 typedef PitRejectList * (*PitPretradePreTradePolicyCheckFn)(
@@ -1507,14 +1679,13 @@ typedef PitRejectList * (*PitPretradePreTradePolicyCheckFn)(
  *
  * Contract:
  * - `report` points to a read-only report view valid only for the duration
- *   of
- * the callback.
+ *   of the callback.
  * - `report` is passed as a borrowed view and is not copied before the
- * callback runs.
+ *   callback runs.
  * - If the callback wants to keep any data from `report`, it must copy that
- * data before returning.
+ *   data before returning.
  * - Return `true` if the policy state changed and the engine should keep the
- * update.
+ *   update.
  * - Return `false` when nothing changed.
  * - `user_data` is passed through unchanged from policy creation.
  */
@@ -1530,7 +1701,7 @@ typedef bool (*PitPretradePreTradePolicyApplyExecutionReportFn)(
  * Contract:
  * - Called exactly once, on the thread that drops the last policy reference.
  * - After this callback returns, no further callbacks will be invoked for
- * this policy instance.
+ *   this policy instance.
  * - `user_data` is the same value that was passed at policy creation.
  * - The callback must release any resources associated with `user_data`.
  */
@@ -1546,15 +1717,15 @@ typedef void (*PitPretradePreTradePolicyFreeUserDataFn)(
  * - `ctx` is a read-only context valid only for the duration of the
  *   callback.
  * - `adjustment` points to a read-only adjustment view valid only for the
- * duration of the callback.
+ *   duration of the callback.
  * - `adjustment` is passed as a borrowed view and is not copied before the
- * callback runs.
+ *   callback runs.
  * - If the callback wants to keep any data from `adjustment`, it must copy
- * that data before returning.
+ *   that data before returning.
  * - `account_id` must follow the same source model as the rest of the
- * runtime state (numeric-only or string-derived-only).
+ *   runtime state (numeric-only or string-derived-only).
  * - `mutations` is a callback-scoped non-owning pointer that allows the
- * callback to register commit/rollback mutations.
+ *   callback to register commit/rollback mutations.
  * - The callback must not store or use `mutations` after return.
  * - Return null to accept the adjustment.
  * - Return a non-empty reject list to reject the adjustment.
@@ -1576,7 +1747,7 @@ typedef PitRejectList * (*PitAccountAdjustmentPolicyApplyFn)(
  * Contract:
  * - Called exactly once, on the thread that drops the last policy reference.
  * - After this callback returns, no further callbacks will be invoked for
- * this policy instance.
+ *   this policy instance.
  * - `user_data` is the same value that was passed at policy creation.
  * - The callback must release any resources associated with `user_data`.
  */
@@ -3203,8 +3374,7 @@ bool pit_param_volume_from_notional(
  *
  * This is a direct numeric mapping with no collision risk.
  *
- * WARNING:
- * Do not mix IDs produced by this function with IDs produced by
+ * WARNING: Do not mix IDs produced by this function with IDs produced by
  * `pit_create_param_account_id_from_str` in the same runtime state.
  *
  * Contract:
@@ -3224,16 +3394,15 @@ PitParamAccountId pit_create_param_account_id_from_u64(
  * Collision note:
  * - different account strings can map to the same identifier;
  * - for `n` distinct account strings the probability of at least one
- *   collision
- * is approximately `n^2 / 2^65`.
+ *   collision is approximately `n^2 / 2^65`.
  * - if collision risk is unacceptable, keep your own collision-free
- * string-to-integer mapping and use `pit_create_param_account_id_from_u64`.
+ *   string-to-integer mapping and use
+ *   `pit_create_param_account_id_from_u64`.
  *
  * The previous sentence is why this helper is suitable for stable adapter-side
  * mapping, but not for workflows that require guaranteed uniqueness.
  *
- * WARNING:
- * Do not mix IDs produced by this function with IDs produced by
+ * WARNING: Do not mix IDs produced by this function with IDs produced by
  * `pit_create_param_account_id_from_u64` in the same runtime state.
  *
  * Contract:
@@ -3332,7 +3501,7 @@ size_t pit_reject_list_len(
  * - `out_reject` must be a valid non-null pointer;
  * - returns `true` when a value exists and was copied;
  * - returns `false` when `index` is out of bounds and does not write
- * `out_reject`;
+ *   `out_reject`;
  * - the copied view remains valid while `list` is alive and unchanged;
  * - this function never fails;
  * - violating the pointer contract aborts the call.
@@ -3356,19 +3525,27 @@ void pit_destroy_param_error(
 );
 
 /**
- * Creates a new engine builder.
+ * Creates a new engine builder with the chosen synchronization policy.
  *
- * Contract:
- * - returns a new caller-owned builder object;
- * - this function always succeeds.
+ * Success:
+ * - returns a non-null caller-owned builder object.
+ *
+ * Error:
+ * - returns null when `sync_policy` is not one of `PitSyncPolicy_Full` (0),
+ *   `PitSyncPolicy_Local` (1), or `PitSyncPolicy_Account` (2);
+ * - if `out_error` is not null, writes a caller-owned `PitSharedString`
+ *   error handle that MUST be released with `pit_destroy_shared_string`.
  *
  * Cleanup:
  * - release the pointer with `pit_destroy_engine_builder` if you stop before
- * building;
+ *   building;
  * - after a successful build the builder is consumed and must still be
- * released with `pit_destroy_engine_builder`.
+ *   released with `pit_destroy_engine_builder`.
  */
-PitEngineBuilder * pit_create_engine_builder(void);
+PitEngineBuilder * pit_create_engine_builder(
+    uint8_t sync_policy,
+    PitOutError out_error
+);
 
 /**
  * Releases a builder pointer owned by the caller.
@@ -3390,15 +3567,13 @@ void pit_destroy_engine_builder(
  *
  * Error:
  * - returns null when `builder` is null, the builder was already consumed,
- *   or
- * configuration is invalid;
+ *   or configuration is invalid;
  * - if `out_error` is not null, writes a caller-owned `PitSharedString`
- * error handle that MUST be released with `pit_destroy_shared_string`.
+ *   error handle that MUST be released with `pit_destroy_shared_string`.
  *
  * Ownership:
  * - on success the returned engine pointer is owned by the caller and must
- *   be
- * released with `pit_destroy_engine`;
+ *   be released with `pit_destroy_engine`;
  * - the builder becomes consumed regardless of success and must not be
  *   reused.
  */
@@ -3413,7 +3588,7 @@ PitEngine * pit_engine_builder_build(
  * Contract:
  * - passing null is allowed;
  * - destroying the engine also releases any state and policies retained by
- * that engine instance;
+ *   that engine instance;
  * - this function always succeeds.
  */
 void pit_destroy_engine(
@@ -3428,37 +3603,34 @@ void pit_destroy_engine(
  * Success:
  * - returns `Passed` when the order passed this stage; read `out_request`;
  * - returns `Rejected` when the order was rejected; read `out_rejects` if
- *   not
- * null.
+ *   not null.
  *
  * Error:
  * - returns `Error` when input pointers are invalid or the order payload
- * cannot be decoded;
- * - on `Error`, if `out_error` is not null, it is filled with a
- * caller-owned `PitSharedString` that MUST be destroyed by the caller.
+ *   cannot be decoded;
+ * - on `Error`, if `out_error` is not null, it is filled with a caller-owned
+ *   `PitSharedString` that MUST be destroyed by the caller.
  *
  * Cleanup:
  * - release a successful request with
  *   `pit_pretrade_pre_trade_request_execute` or
- * `pit_destroy_pretrade_pre_trade_request`.
+ *   `pit_destroy_pretrade_pre_trade_request`.
  *
  * Reject ownership contract:
  * - on `Rejected`, a non-null `PitRejectList` pointer is written to
- *   `out_rejects`
- * if it is not null;
+ *   `out_rejects` if it is not null;
  * - the caller takes ownership and MUST release it with
- * `pit_destroy_reject_list`; failing to do so leaks the heap allocation made
- * inside this call;
+ *   `pit_destroy_reject_list`; failing to do so leaks the heap allocation
+ *   made inside this call;
  * - no thread-local state is involved, and the returned pointer is safe to
- * read on any thread;
+ *   read on any thread;
  * - on `Passed` and `Error`, null is written to `out_rejects`, and the
- *   caller
- * must not call destroy in those cases.
+ *   caller must not call destroy in those cases.
  *
  * Order lifetime contract:
  * - `order` is read as a borrowed view during this call;
  * - the operation snapshots that payload before returning, because the
- * deferred request may outlive the source buffers.
+ *   deferred request may outlive the source buffers.
  */
 PitPretradeStatus pit_engine_start_pre_trade(
     PitEngine * engine,
@@ -3475,36 +3647,35 @@ PitPretradeStatus pit_engine_start_pre_trade(
  * - returns `Passed` when the order passed this stage; read
  *   `out_reservation`;
  * - returns `Rejected` when the order was rejected is not null; read
- * `out_rejects`.
+ *   `out_rejects`.
  *
  * Error:
  * - returns `Error` when input pointers are invalid or the order payload
- * cannot be decoded;
- * - on `Error`, if `out_error` is not null, it is filled with a
- * caller-owned `PitSharedString` that MUST be destroyed by the caller.
+ *   cannot be decoded;
+ * - on `Error`, if `out_error` is not null, it is filled with a caller-owned
+ *   `PitSharedString` that MUST be destroyed by the caller.
  *
  * Cleanup:
  * - release a successful reservation with
  *   `pit_pretrade_pre_trade_reservation_commit`,
- * `pit_pretrade_pre_trade_reservation_rollback`, or
- * `pit_destroy_pretrade_pre_trade_reservation`.
+ *   `pit_pretrade_pre_trade_reservation_rollback`, or
+ *   `pit_destroy_pretrade_pre_trade_reservation`.
  *
  * Reject ownership contract:
  * - on `Rejected`, a non-null `PitRejectList` pointer is written to
- * `out_rejects` if it is not null;
+ *   `out_rejects` if it is not null;
  * - the caller takes ownership and MUST release it with
- * `pit_destroy_reject_list`; failing to do so leaks the heap allocation made
- * inside this call;
+ *   `pit_destroy_reject_list`; failing to do so leaks the heap allocation
+ *   made inside this call;
  * - no thread-local state is involved, and the returned pointer is safe to
- * read on any thread;
+ *   read on any thread;
  * - on `Passed` and `Error`, null is written to `out_rejects`, and the
- *   caller
- * must not call destroy in those cases.
+ *   caller must not call destroy in those cases.
  *
  * Order lifetime contract:
  * - `order` is read as a borrowed view during this call only;
  * - the operation does not retain any pointer into source memory after this
- * function returns.
+ *   function returns.
  */
 PitPretradeStatus pit_engine_execute_pre_trade(
     PitEngine * engine,
@@ -3521,31 +3692,30 @@ PitPretradeStatus pit_engine_execute_pre_trade(
  * - returns `Passed` when the order passed this stage; read
  *   `out_reservation`;
  * - returns `Rejected` when the order was rejected and `out_rejects` is not
- * null; read `out_rejects`.
+ *   null; read `out_rejects`.
  *
  * Error:
  * - returns `Error` when input pointers are invalid or the order payload
- * cannot be decoded;
- * - on `Error`, if `out_error` is not null, it is filled with a
- * caller-owned `PitSharedString` that MUST be destroyed by the caller.
+ *   cannot be decoded;
+ * - on `Error`, if `out_error` is not null, it is filled with a caller-owned
+ *   `PitSharedString` that MUST be destroyed by the caller.
  *
  * Ownership:
  * - this call consumes the request object's content exactly once;
- * - after a successful or failed execute, the object itself may still
- * be released with `pit_destroy_pretrade_pre_trade_request`, but it cannot be
- * executed again.
+ * - after a successful or failed execute, the object itself may still be
+ *   released with `pit_destroy_pretrade_pre_trade_request`, but it cannot be
+ *   executed again.
  *
  * Reject ownership contract:
  * - on `Rejected`, a non-null `PitRejectList` pointer is written to
- * `out_rejects` if it is not null;
+ *   `out_rejects` if it is not null;
  * - the caller takes ownership and MUST release it with
- * `pit_destroy_reject_list`; failing to do so leaks the heap allocation made
- * inside this call;
+ *   `pit_destroy_reject_list`; failing to do so leaks the heap allocation
+ *   made inside this call;
  * - no thread-local state is involved, and the returned pointer is safe to
- * read on any thread;
+ *   read on any thread;
  * - on `Passed` and `Error`, null is written to `out_rejects`, and the
- *   caller
- * must not call destroy in those cases.
+ *   caller must not call destroy in those cases.
  */
 PitPretradeStatus pit_pretrade_pre_trade_request_execute(
     PitPretradePreTradeRequest * request,
@@ -3560,7 +3730,7 @@ PitPretradeStatus pit_pretrade_pre_trade_request_execute(
  * Contract:
  * - passing null is allowed;
  * - destroying an unexecuted request abandons it without creating a
- * reservation;
+ *   reservation;
  * - this function always succeeds.
  */
 void pit_destroy_pretrade_pre_trade_request(
@@ -3616,9 +3786,9 @@ PitPretradePreTradeLock pit_pretrade_pre_trade_reservation_get_lock(
  * Contract:
  * - passing null is allowed;
  * - destroying an unresolved reservation triggers rollback of any pending
- * mutations;
+ *   mutations;
  * - callers that need explicit resolution should call commit or rollback
- * first;
+ *   first;
  * - this function always succeeds.
  */
 void pit_destroy_pretrade_pre_trade_reservation(
@@ -3633,17 +3803,17 @@ void pit_destroy_pretrade_pre_trade_reservation(
  *
  * Error:
  * - returns `PitEngineApplyExecutionReportResult { is_error = true,
- *   post_trade_result = { kill_switch_triggered = false } }`
- * when input pointers are invalid or the report payload cannot be decoded;
+ *   post_trade_result = { kill_switch_triggered = false } }` when input
+ *   pointers are invalid or the report payload cannot be decoded;
  * - if `out_error` is not null, writes a caller-owned `PitSharedString`
- * error handle that MUST be released with `pit_destroy_shared_string`;
+ *   error handle that MUST be released with `pit_destroy_shared_string`;
  * - when `is_error` is `true`, do not trust any other fields beyond the fact
- * that the call failed.
+ *   that the call failed.
  *
  * Lifetime contract:
  * - `report` is read as a borrowed view during this call only;
  * - the operation does not retain any pointer into source memory after this
- * function returns.
+ *   function returns.
  */
 PitEngineApplyExecutionReportResult pit_engine_apply_execution_report(
     PitEngine * engine,
@@ -3692,31 +3862,32 @@ const PitRejectList * pit_account_adjustment_batch_error_get_rejects(
  *
  * Success:
  * - returns `PitAccountAdjustmentApplyStatus::Applied` when the batch was
- * accepted and applied;
+ *   accepted and applied;
  * - returns `PitAccountAdjustmentApplyStatus::Rejected` when the call itself
- * completed normally but a policy rejected the batch; read `out_reject`.
+ *   completed normally but a policy rejected the batch; read `out_reject`.
  *
  * Error:
  * - returns `PitAccountAdjustmentApplyStatus::Error` when input pointers are
- * invalid or some adjustment payload cannot be decoded;
- * - on `Error`, if `out_error` is not null, it is filled with a
- * caller-owned `PitSharedString` that MUST be destroyed by the caller.
+ *   invalid or some adjustment payload cannot be decoded;
+ * - on `Error`, if `out_error` is not null, it is filled with a caller-owned
+ *   `PitSharedString` that MUST be destroyed by the caller.
  *
  * Result handling:
  * - `Applied` means there is no reject object to clean up;
  * - `Rejected` stores batch error details in `out_reject`, the caller must
- * release a returned object with `pit_destroy_account_adjustment_batch_error`;
+ *   release a returned object with
+ *   `pit_destroy_account_adjustment_batch_error`;
  * - rejects returned by `pit_account_adjustment_batch_error_get_rejects`
- * contain string views borrowed from the batch error and must not be used
- * after the batch error is destroyed;
+ *   contain string views borrowed from the batch error and must not be used
+ *   after the batch error is destroyed;
  * - when `Error` is returned, do not use any pointer from a previous
- * unrelated call as if it belonged to this failure.
+ *   unrelated call as if it belonged to this failure.
  *
  * Lifetime contract:
  * - every `adjustment` entry from the contiguous input array is read as a
- * borrowed view during this call only;
+ *   borrowed view during this call only;
  * - release a returned batch error with
- * `pit_destroy_account_adjustment_batch_error`.
+ *   `pit_destroy_account_adjustment_batch_error`.
  */
 PitAccountAdjustmentApplyStatus pit_engine_apply_account_adjustment(
     PitEngine * engine,
@@ -3728,131 +3899,116 @@ PitAccountAdjustmentApplyStatus pit_engine_apply_account_adjustment(
 );
 
 /**
- * Creates a built-in start-stage policy that validates order input shape.
- *
- * Why it exists:
- * - Use it to reject structurally invalid orders before deeper checks run.
- *
- * Success:
- * - returns a new caller-owned pointer.
- * - this function always succeeds.
- *
- * Lifetime contract:
- * - The returned pointer belongs to the caller.
- * - If the pointer is added to the engine builder, the engine keeps its own
- * reference to the same policy object.
- * - The caller must still release its own pointer with
- * `pit_destroy_pretrade_check_pre_trade_start_policy` after the pointer is no
- * longer needed locally.
- */
-PitPretradeCheckPreTradeStartPolicy *
-pit_create_pretrade_policies_order_validation_policy(
-    void
-);
-
-/**
- * Creates a built-in start-stage policy that limits how many orders may be
- * accepted within a time window.
- *
- * Arguments:
- * - `max_orders`: maximum number of accepted orders allowed in one window.
- * - `window_seconds`: size of the rolling window in seconds.
- *
- * Success:
- * - returns a new caller-owned pointer.
- * - this function always succeeds.
- *
- * Lifetime contract:
- * - The returned pointer belongs to the caller.
- * - If the pointer is added to the engine builder, the engine keeps its own
- * reference to the same policy object.
- * - The caller must still release its own pointer with
- * `pit_destroy_pretrade_check_pre_trade_start_policy` after the pointer is no
- * longer needed locally.
- */
-PitPretradeCheckPreTradeStartPolicy *
-pit_create_pretrade_policies_rate_limit_policy(
-    size_t max_orders,
-    uint64_t window_seconds
-);
-
-/**
- * Creates a built-in start-stage policy that rejects new orders when
- * accumulated P&L is outside configured bounds.
- *
- * Why it exists:
- * - Use it as a P&L bounds kill switch per settlement asset.
- *
- * Arguments:
- * - `params`: pointer to an array of barrier definitions.
- * - `params_len`: number of elements in `params`.
+ * Adds the built-in order-validation policy to the engine builder.
  *
  * Contract:
- * - `params` must point to `params_len` readable entries.
- * - `params_len` must be greater than zero.
- * - Each `settlement_asset` pointer inside `params` must be a valid
- * null-terminated string for the duration of the call.
+ * - `builder` must be a valid engine builder pointer.
  *
  * Success:
- * - returns a new caller-owned policy object.
+ * - returns `true`; the builder retains the policy.
  *
  * Error:
- * - returns null when arguments are invalid or the policy cannot be created;
+ * - returns `false` when the builder is null or already consumed;
  * - if `out_error` is not null, writes a caller-owned `PitSharedString`
- * error handle that MUST be released with `pit_destroy_shared_string`.
- *
- * Lifetime contract:
- * - The returned pointer belongs to the caller.
- * - If the pointer is added to the engine builder, the engine keeps its own
- * reference to the same policy object.
- * - The caller must still release its own pointer with
- * `pit_destroy_pretrade_check_pre_trade_start_policy` after the pointer is no
- * longer needed locally.
+ *   error handle that MUST be released with `pit_destroy_shared_string`.
  */
-PitPretradeCheckPreTradeStartPolicy *
-pit_create_pretrade_policies_pnl_bounds_killswitch_policy(
-    const PitPretradePoliciesPnlBoundsBarrier * params,
-    size_t params_len,
+bool pit_engine_builder_add_builtin_order_validation_policy(
+    PitEngineBuilder * builder,
     PitOutError out_error
 );
 
 /**
- * Creates a built-in start-stage policy that rejects orders above configured
- * size limits.
- *
- * Why it exists:
- * - Use it to cap order quantity and notional per settlement asset.
- *
- * Arguments:
- * - `params`: pointer to an array of size-limit definitions.
- * - `params_len`: number of elements in `params`.
+ * Adds the built-in rate-limit policy to the engine builder.
  *
  * Contract:
- * - `params` must point to `params_len` readable entries.
- * - `params_len` must be greater than zero.
- * - Each `settlement_asset` pointer inside `params` must be a valid
- * null-terminated string for the duration of the call.
+ * - `builder` must be a valid engine builder pointer.
+ * - At least one barrier axis must be configured: `broker` non-null,
+ *   `asset_len > 0`, `account_len > 0`, or `account_asset_len > 0`.
+ * - When a length is greater than zero the corresponding pointer must point
+ *   to that many readable entries.
+ * - Each `settlement_asset` string view inside an array entry must be valid
+ *   for the duration of the call.
  *
  * Success:
- * - returns a new caller-owned policy object.
+ * - returns `true`; the builder retains the policy.
  *
  * Error:
- * - returns null when arguments are invalid;
+ * - returns `false` when the builder is null or already consumed, when no
+ *   barrier axis is configured, or when argument parsing fails;
  * - if `out_error` is not null, writes a caller-owned `PitSharedString`
- * error handle that MUST be released with `pit_destroy_shared_string`.
- *
- * Lifetime contract:
- * - The returned pointer belongs to the caller.
- * - If the pointer is added to the engine builder, the engine keeps its own
- * reference to the same policy object.
- * - The caller must still release its own pointer with
- * `pit_destroy_pretrade_check_pre_trade_start_policy` after the pointer is no
- * longer needed locally.
+ *   error handle that MUST be released with `pit_destroy_shared_string`.
  */
-PitPretradeCheckPreTradeStartPolicy *
-pit_create_pretrade_policies_order_size_limit_policy(
-    const PitPretradePoliciesOrderSizeLimitParam * params,
-    size_t params_len,
+bool pit_engine_builder_add_builtin_rate_limit_policy(
+    PitEngineBuilder * builder,
+    const PitPretradePoliciesRateLimitBrokerBarrier * broker,
+    const PitPretradePoliciesRateLimitAssetBarrier * asset,
+    size_t asset_len,
+    const PitPretradePoliciesRateLimitAccountBarrier * account,
+    size_t account_len,
+    const PitPretradePoliciesRateLimitAccountAssetBarrier * account_asset,
+    size_t account_asset_len,
+    PitOutError out_error
+);
+
+/**
+ * Adds the built-in order-size limit policy to the engine builder.
+ *
+ * Contract:
+ * - `builder` must be a valid engine builder pointer.
+ * - At least one barrier axis must be configured: `broker` non-null,
+ *   `asset_len > 0`, or `account_asset_len > 0`.
+ * - When a length is greater than zero the corresponding pointer must point
+ *   to that many readable entries.
+ * - Each `settlement_asset` string view inside an array entry must be valid
+ *   for the duration of the call.
+ * - `max_quantity` and `max_notional` inside each limit must be valid.
+ *
+ * Success:
+ * - returns `true`; the builder retains the policy.
+ *
+ * Error:
+ * - returns `false` when the builder is null or already consumed, when no
+ *   barrier axis is configured, or when argument parsing fails;
+ * - if `out_error` is not null, writes a caller-owned `PitSharedString`
+ *   error handle that MUST be released with `pit_destroy_shared_string`.
+ */
+bool pit_engine_builder_add_builtin_order_size_limit_policy(
+    PitEngineBuilder * builder,
+    const PitPretradePoliciesOrderSizeBrokerBarrier * broker,
+    const PitPretradePoliciesOrderSizeAssetBarrier * asset,
+    size_t asset_len,
+    const PitPretradePoliciesOrderSizeAccountAssetBarrier * account_asset,
+    size_t account_asset_len,
+    PitOutError out_error
+);
+
+/**
+ * Adds the built-in P&L bounds kill-switch policy to the engine builder.
+ *
+ * Contract:
+ * - `builder` must be a valid engine builder pointer.
+ * - At least one barrier must be provided: `broker_len > 0` or `account_len
+ *   > 0`.
+ * - When a length is greater than zero the corresponding pointer must point
+ *   to that many readable entries.
+ * - Each `settlement_asset` string view inside an array entry must be valid
+ *   for the duration of the call.
+ *
+ * Success:
+ * - returns `true`; the builder retains the policy.
+ *
+ * Error:
+ * - returns `false` when the builder is null or already consumed, when no
+ *   barrier is configured, or when argument parsing fails;
+ * - if `out_error` is not null, writes a caller-owned `PitSharedString`
+ *   error handle that MUST be released with `pit_destroy_shared_string`.
+ */
+bool pit_engine_builder_add_builtin_pnl_bounds_killswitch_policy(
+    PitEngineBuilder * builder,
+    const PitPretradePoliciesPnlBoundsBarrier * broker,
+    size_t broker_len,
+    const PitPretradePoliciesPnlBoundsAccountBarrier * account,
+    size_t account_len,
     PitOutError out_error
 );
 
@@ -3896,14 +4052,14 @@ PitStringView pit_account_adjustment_policy_get_name(
  * Error:
  * - returns `false` when the builder or policy cannot be used;
  * - if `out_error` is not null, writes a caller-owned `PitSharedString`
- * error handle that MUST be released with `pit_destroy_shared_string`.
+ *   error handle that MUST be released with `pit_destroy_shared_string`.
  *
  * Lifetime contract:
  * - The engine builder retains its own reference to the policy object.
  * - The caller still owns the passed pointer and must release that local
- *   pointer
- * separately with `pit_destroy_pretrade_check_pre_trade_start_policy` when
- * it is no longer needed.
+ *   pointer separately with
+ *   `pit_destroy_pretrade_check_pre_trade_start_policy` when it is no longer
+ *   needed.
  */
 bool pit_engine_builder_add_check_pre_trade_start_policy(
     PitEngineBuilder * builder,
@@ -3924,14 +4080,13 @@ bool pit_engine_builder_add_check_pre_trade_start_policy(
  * Error:
  * - returns `false` when the builder or policy cannot be used;
  * - if `out_error` is not null, writes a caller-owned `PitSharedString`
- * error handle that MUST be released with `pit_destroy_shared_string`.
+ *   error handle that MUST be released with `pit_destroy_shared_string`.
  *
  * Lifetime contract:
  * - The engine builder retains its own reference to the policy object.
  * - The caller still owns the passed pointer and must release that local
- *   pointer
- * separately with `pit_destroy_pretrade_pre_trade_policy` when it is no
- * longer needed.
+ *   pointer separately with `pit_destroy_pretrade_pre_trade_policy` when it
+ *   is no longer needed.
  */
 bool pit_engine_builder_add_pre_trade_policy(
     PitEngineBuilder * builder,
@@ -3952,14 +4107,13 @@ bool pit_engine_builder_add_pre_trade_policy(
  * Error:
  * - returns `false` when the builder or policy cannot be used;
  * - if `out_error` is not null, writes a caller-owned `PitSharedString`
- * error handle that MUST be released with `pit_destroy_shared_string`.
+ *   error handle that MUST be released with `pit_destroy_shared_string`.
  *
  * Lifetime contract:
  * - The engine builder retains its own reference to the policy object.
  * - The caller still owns the passed pointer and must release that local
- *   pointer
- * separately with `pit_destroy_account_adjustment_policy` when it
- * is no longer needed.
+ *   pointer separately with `pit_destroy_account_adjustment_policy` when it
+ *   is no longer needed.
  */
 bool pit_engine_builder_add_account_adjustment_policy(
     PitEngineBuilder * builder,
@@ -3973,20 +4127,19 @@ bool pit_engine_builder_add_account_adjustment_policy(
  * Contract:
  * - `mutations` must be a valid non-null callback-scoped pointer.
  * - `commit_fn` and `rollback_fn` must remain callable until one of them is
- * executed.
+ *   executed.
  * - `user_data` is passed to both callbacks.
  * - Exactly one of `commit_fn` or `rollback_fn` runs for each successful
  *   push.
  * - After the executed callback returns, `free_fn` is called exactly once
- *   when
- * provided.
+ *   when provided.
  * - If neither callback runs (for example collector drop), only `free_fn`
- * runs exactly once when provided.
+ *   runs exactly once when provided.
  *
  * Error:
  * - returns `false` when `mutations` is null or invalid;
  * - if `out_error` is not null, writes a caller-owned `PitSharedString`
- * error handle that MUST be released with `pit_destroy_shared_string`.
+ *   error handle that MUST be released with `pit_destroy_shared_string`.
  */
 bool pit_mutations_push(
     PitMutations * mutations,
@@ -4002,19 +4155,24 @@ bool pit_mutations_push(
  *
  * Why it exists:
  * - Lets the caller implement policy logic outside the engine and plug it
- *   into
- * the same builder flow as built-in policies.
+ *   into the same builder flow as built-in policies.
  *
  * Contract:
  * - `name` must point to a valid, null-terminated string for the duration of
- * the call.
+ *   the call.
  * - `check_fn`, `apply_fn`, and `free_user_data_fn` must remain callable for
- * as long as the policy may still be used by either the caller pointer or
- * the engine.
+ *   as long as the policy may still be used by either the caller pointer or
+ *   the engine.
  * - `free_user_data_fn` will be called exactly once, when the last reference
- * to the policy is released.
- * - `user_data` is stored as-is and passed back to every callback
- *   invocation.
+ *   to the policy is released.
+ * - `user_data` is opaque to the SDK: the engine never inspects,
+ *   dereferences, or frees it; it is forwarded verbatim to the registered
+ *   callbacks. Lifetime, thread-safety, and meaning of the pointed-at state
+ *   are entirely the caller's responsibility. Under `PitSyncPolicy_Local` or
+ *   `PitSyncPolicy_Account`, the caller serialises per-handle invocation per
+ *   the SDK threading contract; under `PitSyncPolicy_Full`, the caller is
+ *   responsible for making any state reachable through `user_data` safe
+ *   under concurrent invocation.
  *
  * Success:
  * - returns a new caller-owned policy object.
@@ -4022,19 +4180,19 @@ bool pit_mutations_push(
  * Error:
  * - returns null when `name` is invalid;
  * - if `out_error` is not null, writes a caller-owned `PitSharedString`
- * error handle that MUST be released with `pit_destroy_shared_string`.
+ *   error handle that MUST be released with `pit_destroy_shared_string`.
  *
  * Lifetime contract:
  * - The policy stores its own copy of `name`; the caller may release the
- *   input
- * string after this function returns.
+ *   input string after this function returns.
  * - The returned pointer is owned by the caller and must be released with
- * `pit_destroy_pretrade_check_pre_trade_start_policy` when no longer needed.
+ *   `pit_destroy_pretrade_check_pre_trade_start_policy` when no longer
+ *   needed.
  * - If the policy is added to the engine builder, the engine keeps its own
- * reference, but the caller must still release the caller-owned pointer.
+ *   reference, but the caller must still release the caller-owned pointer.
  * - `free_user_data_fn` runs once the last reference to the policy is
- * released; when the engine is the final holder, it runs as part of engine
- * destruction.
+ *   released; when the engine is the final holder, it runs as part of engine
+ *   destruction.
  */
 PitPretradeCheckPreTradeStartPolicy *
 pit_create_pretrade_custom_check_pre_trade_start_policy(
@@ -4051,17 +4209,22 @@ pit_create_pretrade_custom_check_pre_trade_start_policy(
  *
  * Contract:
  * - `name` must point to a valid, null-terminated string for the duration of
- * the call.
- * - `check_fn`, `apply_fn`, and `free_user_data_fn` must
- * remain callable for as long as the policy may still be used by either the
- * caller pointer or the engine.
+ *   the call.
+ * - `check_fn`, `apply_fn`, and `free_user_data_fn` must remain callable for
+ *   as long as the policy may still be used by either the caller pointer or
+ *   the engine.
  * - Custom policy callbacks can register commit/rollback mutations through
- *   the
- * mutations pointer passed to `check_fn`.
+ *   the mutations pointer passed to `check_fn`.
  * - `free_user_data_fn` will be called exactly once, when the last reference
- * to the policy is released.
- * - `user_data` is stored as-is and passed back to every callback
- *   invocation.
+ *   to the policy is released.
+ * - `user_data` is opaque to the SDK: the engine never inspects,
+ *   dereferences, or frees it; it is forwarded verbatim to the registered
+ *   callbacks. Lifetime, thread-safety, and meaning of the pointed-at state
+ *   are entirely the caller's responsibility. Under `PitSyncPolicy_Local` or
+ *   `PitSyncPolicy_Account`, the caller serialises per-handle invocation per
+ *   the SDK threading contract; under `PitSyncPolicy_Full`, the caller is
+ *   responsible for making any state reachable through `user_data` safe
+ *   under concurrent invocation.
  *
  * Success:
  * - returns a new caller-owned policy object.
@@ -4069,19 +4232,18 @@ pit_create_pretrade_custom_check_pre_trade_start_policy(
  * Error:
  * - returns null when `name` is invalid;
  * - if `out_error` is not null, writes a caller-owned `PitSharedString`
- * error handle that MUST be released with `pit_destroy_shared_string`.
+ *   error handle that MUST be released with `pit_destroy_shared_string`.
  *
  * Lifetime contract:
  * - The policy stores its own copy of `name`; the caller may release the
- *   input
- * string after this function returns.
+ *   input string after this function returns.
  * - The returned pointer is owned by the caller and must be released with
- * `pit_destroy_pretrade_pre_trade_policy` when no longer needed.
+ *   `pit_destroy_pretrade_pre_trade_policy` when no longer needed.
  * - If the policy is added to the engine builder, the engine keeps its own
- * reference, but the caller must still release the caller-owned pointer.
+ *   reference, but the caller must still release the caller-owned pointer.
  * - `free_user_data_fn` runs once the last reference to the policy is
- * released; when the engine is the final holder, it runs as part of engine
- * destruction.
+ *   released; when the engine is the final holder, it runs as part of engine
+ *   destruction.
  */
 PitPretradePreTradePolicy * pit_create_pretrade_custom_pre_trade_policy(
     PitStringView name,
@@ -4097,16 +4259,21 @@ PitPretradePreTradePolicy * pit_create_pretrade_custom_pre_trade_policy(
  *
  * Contract:
  * - `name` must point to a valid, null-terminated string for the duration of
- * the call.
+ *   the call.
  * - `apply_fn` and `free_user_data_fn` must remain callable for as long as
- * the policy may still be used by either the caller pointer or the engine.
+ *   the policy may still be used by either the caller pointer or the engine.
  * - Custom policy callbacks can register commit/rollback mutations through
- *   the
- * mutations pointer passed to `apply_fn`.
+ *   the mutations pointer passed to `apply_fn`.
  * - `free_user_data_fn` will be called exactly once, when the last reference
- * to the policy is released.
- * - `user_data` is stored as-is and passed back to every callback
- *   invocation.
+ *   to the policy is released.
+ * - `user_data` is opaque to the SDK: the engine never inspects,
+ *   dereferences, or frees it; it is forwarded verbatim to the registered
+ *   callbacks. Lifetime, thread-safety, and meaning of the pointed-at state
+ *   are entirely the caller's responsibility. Under `PitSyncPolicy_Local` or
+ *   `PitSyncPolicy_Account`, the caller serialises per-handle invocation per
+ *   the SDK threading contract; under `PitSyncPolicy_Full`, the caller is
+ *   responsible for making any state reachable through `user_data` safe
+ *   under concurrent invocation.
  *
  * Success:
  * - returns a new caller-owned policy object.
@@ -4114,19 +4281,18 @@ PitPretradePreTradePolicy * pit_create_pretrade_custom_pre_trade_policy(
  * Error:
  * - returns null when `name` is invalid;
  * - if `out_error` is not null, writes a caller-owned `PitSharedString`
- * error handle that MUST be released with `pit_destroy_shared_string`.
+ *   error handle that MUST be released with `pit_destroy_shared_string`.
  *
  * Lifetime contract:
  * - The policy stores its own copy of `name`; the caller may release the
- *   input
- * string after this function returns.
+ *   input string after this function returns.
  * - The returned pointer is owned by the caller and must be released with
- * `pit_destroy_account_adjustment_policy` when no longer needed.
+ *   `pit_destroy_account_adjustment_policy` when no longer needed.
  * - If the policy is added to the engine builder, the engine keeps its own
- * reference, but the caller must still release the caller-owned pointer.
+ *   reference, but the caller must still release the caller-owned pointer.
  * - `free_user_data_fn` runs once the last reference to the policy is
- * released; when the engine is the final holder, it runs as part of engine
- * destruction.
+ *   released; when the engine is the final holder, it runs as part of engine
+ *   destruction.
  */
 PitAccountAdjustmentPolicy * pit_create_custom_account_adjustment_policy(
     PitStringView name,
@@ -4141,8 +4307,8 @@ PitAccountAdjustmentPolicy * pit_create_custom_account_adjustment_policy(
  *
  * This function never fails.
  *
- * The returned view is read-only, never null, and remains valid for the
- * entire process lifetime. The caller must not release it.
+ * The returned view is read-only, never null, and remains valid for the entire
+ * process lifetime. The caller must not release it.
  */
 PitStringView pit_get_runtime_version(void);
 
@@ -4151,8 +4317,8 @@ PitStringView pit_get_runtime_version(void);
  *
  * Null input is a no-op.
  *
- * After this call, the handle and any `PitStringView` previously obtained
- * from it are invalid and must not be used.
+ * After this call, the handle and any `PitStringView` previously obtained from
+ * it are invalid and must not be used.
  */
 void pit_destroy_shared_string(
     PitSharedString * handle

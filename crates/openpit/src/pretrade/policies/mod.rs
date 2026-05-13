@@ -22,9 +22,16 @@ pub mod order_validation;
 pub mod pnl_bounds_killswitch;
 pub mod rate_limit;
 
-pub use order_size_limit::{OrderSizeLimit, OrderSizeLimitPolicy};
+pub use order_size_limit::{
+    OrderSizeAccountAssetBarrier, OrderSizeAssetBarrier, OrderSizeBrokerBarrier, OrderSizeLimit,
+    OrderSizeLimitPolicy, OrderSizeLimitPolicyError,
+};
 pub use order_validation::OrderValidationPolicy;
 pub use pnl_bounds_killswitch::{
-    PnlBoundsBarrier, PnlBoundsKillSwitchPolicy, PnlBoundsKillSwitchPolicyError,
+    PnlBoundsAccountAssetBarrier, PnlBoundsBrokerBarrier, PnlBoundsKillSwitchPolicy,
+    PnlBoundsKillSwitchPolicyError,
 };
-pub use rate_limit::RateLimitPolicy;
+pub use rate_limit::{
+    RateLimit, RateLimitAccountAssetBarrier, RateLimitAccountBarrier, RateLimitAssetBarrier,
+    RateLimitBrokerBarrier, RateLimitPolicy, RateLimitPolicyError,
+};

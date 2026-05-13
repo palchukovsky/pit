@@ -1,3 +1,5 @@
+import datetime
+
 import conftest
 import openpit
 import pytest
@@ -98,7 +100,7 @@ class IntegrationStrategy(openpit.pretrade.PreTradePolicy):
             "kill_switch_reset_resume",
             openpit.pretrade.RejectCode.PNL_KILL_SWITCH_TRIGGERED,
         ),
-        ("order_size_missing", openpit.pretrade.RejectCode.RISK_CONFIGURATION_MISSING),
+        ("order_size_missing", None),
         ("order_size_quantity", openpit.pretrade.RejectCode.ORDER_QTY_EXCEEDS_LIMIT),
         (
             "order_size_notional",
@@ -112,9 +114,8 @@ def test_engine_end_to_end_table(case: str, expected_code: str | None) -> None:
         strategy = IntegrationStrategy(max_abs_notional="700")
         engine = (
             openpit.Engine.builder()
-            .check_pre_trade_start_policy(
-                policy=openpit.pretrade.policies.OrderValidationPolicy(),
-            )
+            .with_local_sync()
+            .builtin(openpit.pretrade.policies.build_order_validation())
             .pre_trade_policy(policy=strategy)
             .build()
         )
@@ -143,7 +144,12 @@ def test_engine_end_to_end_table(case: str, expected_code: str | None) -> None:
 
     if case == "rollback_on_exception":
         strategy = IntegrationStrategy(max_abs_notional="1000")
-        engine = openpit.Engine.builder().pre_trade_policy(policy=strategy).build()
+        engine = (
+            openpit.Engine.builder()
+            .with_local_sync()
+            .pre_trade_policy(policy=strategy)
+            .build()
+        )
 
         start = engine.start_pre_trade(
             order=conftest.make_order(
@@ -180,7 +186,12 @@ def test_engine_end_to_end_table(case: str, expected_code: str | None) -> None:
 
     if case == "main_stage_reject":
         strategy = IntegrationStrategy(max_abs_notional="700")
-        engine = openpit.Engine.builder().pre_trade_policy(policy=strategy).build()
+        engine = (
+            openpit.Engine.builder()
+            .with_local_sync()
+            .pre_trade_policy(policy=strategy)
+            .build()
+        )
 
         start = engine.start_pre_trade(
             order=conftest.make_order(
@@ -204,12 +215,18 @@ def test_engine_end_to_end_table(case: str, expected_code: str | None) -> None:
         return
 
     if case == "rate_limit_reject":
+        policies = openpit.pretrade.policies
         engine = (
             openpit.Engine.builder()
-            .check_pre_trade_start_policy(
-                policy=openpit.pretrade.policies.RateLimitPolicy(
-                    max_orders=1,
-                    window_seconds=60,
+            .with_local_sync()
+            .builtin(
+                policies.build_rate_limit().broker_barrier(
+                    policies.RateLimitBrokerBarrier(
+                        limit=policies.RateLimit(
+                            max_orders=1,
+                            window=datetime.timedelta(seconds=60),
+                        )
+                    )
                 )
             )
             .build()
@@ -224,14 +241,27 @@ def test_engine_end_to_end_table(case: str, expected_code: str | None) -> None:
         return
 
     if case == "kill_switch_reset_resume":
-        pnl_policy = openpit.pretrade.policies.PnlBoundsKillSwitchPolicy(
-            settlement_asset="USD",
-            lower_bound=openpit.param.Pnl("-500"),
-            initial_pnl=openpit.param.Pnl("0"),
-        )
+        policies = openpit.pretrade.policies
         engine = (
             openpit.Engine.builder()
-            .check_pre_trade_start_policy(policy=pnl_policy)
+            .with_local_sync()
+            .builtin(
+                policies.build_pnl_bounds_killswitch()
+                .broker_barriers(
+                    policies.PnlBoundsBrokerBarrier(
+                        settlement_asset="USD",
+                        lower_bound=openpit.param.Pnl("-500"),
+                    )
+                )
+                .account_barriers(
+                    policies.PnlBoundsAccountAssetBarrier(
+                        account_id=openpit.param.AccountId.from_u64(99224416),
+                        settlement_asset="USD",
+                        lower_bound=openpit.param.Pnl("-500"),
+                        initial_pnl=openpit.param.Pnl("0"),
+                    )
+                )
+            )
             .build()
         )
 
@@ -247,18 +277,6 @@ def test_engine_end_to_end_table(case: str, expected_code: str | None) -> None:
         assert len(blocked.rejects) == 1
         assert blocked.rejects[0].code == expected_code
         assert blocked.rejects[0].scope == "account"
-
-        pnl_policy.reset_pnl(settlement_asset="USD")
-        resumed = engine.start_pre_trade(
-            order=conftest.make_order(
-                price=openpit.param.Price("101"),
-                trade_amount=openpit.param.TradeAmount.quantity(2),
-            )
-        )
-        assert resumed.ok
-        resumed_execute = resumed.request.execute()
-        assert resumed_execute.ok
-        resumed_execute.reservation.commit()
         return
 
     if case.startswith("order_size_"):
@@ -279,14 +297,28 @@ def test_engine_end_to_end_table(case: str, expected_code: str | None) -> None:
             quantity = openpit.param.Quantity("10")
             price = openpit.param.Price("100")
 
+        policies = openpit.pretrade.policies
+        asset_limit = policies.OrderSizeLimit(
+            max_quantity=openpit.param.Quantity("10"),
+            max_notional=openpit.param.Volume("1000"),
+        )
         engine = (
             openpit.Engine.builder()
-            .check_pre_trade_start_policy(
-                policy=openpit.pretrade.policies.OrderSizeLimitPolicy(
-                    limit=openpit.pretrade.policies.OrderSizeLimit(
+            .with_local_sync()
+            .builtin(
+                policies.build_order_size_limit()
+                .broker_barrier(
+                    policies.OrderSizeBrokerBarrier(
+                        limit=policies.OrderSizeLimit(
+                            max_quantity=openpit.param.Quantity("1000000"),
+                            max_notional=openpit.param.Volume("1000000000"),
+                        )
+                    )
+                )
+                .asset_barriers(
+                    policies.OrderSizeAssetBarrier(
+                        limit=asset_limit,
                         settlement_asset=limit_asset,
-                        max_quantity=openpit.param.Quantity("10"),
-                        max_notional=openpit.param.Volume("1000"),
                     )
                 )
             )

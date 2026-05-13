@@ -1,6 +1,6 @@
 # Pit C API
 
-- Header: `bindings/c/pit.h`
+- Header: `pit.h`
 - Sections:
   - [Parameter Types](params.md)
   - [Orders](orders.md)

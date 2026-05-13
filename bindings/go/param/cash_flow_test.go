@@ -339,7 +339,7 @@ func TestCashFlowIsZeroEqualCompare(t *testing.T) {
 	if a.Compare(a) != 0 { //nolint:gocritic
 		t.Fatalf("reflexive compare = %d, want 0", a.Compare(a)) //nolint:gocritic
 	}
-	if !(a.Compare(b) < 0 && b.Compare(c) < 0 && a.Compare(c) < 0) {
+	if a.Compare(b) >= 0 || b.Compare(c) >= 0 || a.Compare(c) >= 0 {
 		t.Fatal("transitive compare contract violated")
 	}
 	if a.Compare(b) != -b.Compare(a) {

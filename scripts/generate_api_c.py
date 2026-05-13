@@ -588,6 +588,14 @@ def parse_file(path: Path) -> list[Item]:
             docs = []
             attrs = []
             continue
+        if stripped.startswith("pub use ") and " as " in stripped:
+            block, i = collect_until_semicolon(lines, i)
+            item = parse_use_reexport_as(block, docs, attrs)
+            if item:
+                items.append(item)
+            docs = []
+            attrs = []
+            continue
         if 'pub extern "C" fn ' in stripped or 'pub unsafe extern "C" fn ' in stripped:
             block, i = collect_function(lines, i)
             item = parse_function(block, docs, attrs)
@@ -894,6 +902,60 @@ def resolve_enum_path_discriminant(path_parts: list[str], variant: str) -> int |
         ] = current_value
 
     return ENUM_DISCRIMINANT_CACHE.get(key)
+
+
+def parse_use_reexport_as(block: str, docs: list[str], attrs: list[str]) -> Item | None:
+    normalized = " ".join(block.split())
+    match = re.match(r"pub use (\w+)::(.+) as (\w+);", normalized)
+    if not match:
+        return None
+    crate_name, type_path, alias_name = match.group(1), match.group(2), match.group(3)
+    if not alias_name.startswith("Pit"):
+        return None
+    return resolve_reexported_enum(crate_name, type_path, alias_name, docs, attrs)
+
+
+def resolve_reexported_enum(
+    crate_name: str,
+    type_path: str,
+    alias_name: str,
+    docs: list[str],
+    attrs: list[str],
+) -> Item | None:
+    crate_src = ROOT / "crates" / crate_name.replace("_", "-") / "src"
+    if not crate_src.exists():
+        return None
+    type_name = type_path.split("::")[-1]
+    for candidate in sorted(crate_src.rglob("*.rs")):
+        text = candidate.read_text(encoding="utf-8")
+        if f"pub enum {type_name}" not in text:
+            continue
+        enum_match = re.search(rf"pub enum {re.escape(type_name)}\s*\{{", text)
+        if not enum_match:
+            continue
+        start = text.rfind("\n", 0, enum_match.start()) + 1
+        block_lines = text[start:].splitlines()
+        block, _ = collect_braced(block_lines, 0, "{", "}")
+        pre_text = text[: enum_match.start()]
+        source_attrs: list[str] = []
+        source_docs: list[str] = []
+        for pre_line in reversed(pre_text.splitlines()[-20:]):
+            stripped = pre_line.strip()
+            if stripped.startswith("#["):
+                source_attrs.insert(0, stripped)
+            elif stripped.startswith("///"):
+                source_docs.insert(0, stripped[3:].lstrip())
+            elif stripped and not stripped.startswith("//"):
+                break
+        item = parse_enum(
+            block,
+            list(docs) if docs else source_docs,
+            source_attrs or list(attrs),
+        )
+        if item:
+            item.name = alias_name
+        return item
+    return None
 
 
 def parse_type_alias(block: str, docs: list[str], attrs: list[str]) -> Item | None:
@@ -1422,6 +1484,7 @@ def format_args(args: list[tuple[str, str]]) -> str:
 
 
 def format_doc_comment(lines: list[str]) -> str:
+    lines = normalize_doc_lines(lines)
     if not lines:
         return ""
     wrapped: list[str] = []
@@ -1453,7 +1516,26 @@ def format_doc_comment(lines: list[str]) -> str:
     return f"/**\n{body}\n */\n"
 
 
+def wrap_markdown_bullet(text: str) -> list[str]:
+    chunks = textwrap.wrap(
+        text,
+        width=78,
+        initial_indent="- ",
+        subsequent_indent="  ",
+        break_long_words=False,
+        break_on_hyphens=False,
+    )
+    wrapped: list[str] = []
+    for chunk in chunks:
+        if wrapped and wrapped[-1].count("`") % 2 == 1:
+            wrapped[-1] = f"{wrapped[-1]} {chunk.strip()}"
+            continue
+        wrapped.append(chunk)
+    return wrapped
+
+
 def format_markdown_lines(lines: list[str]) -> list[str]:
+    lines = normalize_doc_lines(lines)
     wrapped: list[str] = []
     for line in lines:
         if not line:
@@ -1463,16 +1545,7 @@ def format_markdown_lines(lines: list[str]) -> list[str]:
             wrapped.append(f"### {line[2:]}")
             continue
         if line.startswith("- "):
-            wrapped.extend(
-                textwrap.wrap(
-                    line[2:],
-                    width=78,
-                    initial_indent="- ",
-                    subsequent_indent="  ",
-                    break_long_words=False,
-                    break_on_hyphens=False,
-                )
-            )
+            wrapped.extend(wrap_markdown_bullet(line[2:]))
             continue
         wrapped.extend(
             textwrap.wrap(
@@ -1721,7 +1794,7 @@ def render_docs(items: list[Item], source_files: list[str]) -> str:
     index_lines = [
         "# Pit C API",
         "",
-        f"- Header: `{HEADER_PATH.relative_to(ROOT)}`",
+        f"- Header: `{HEADER_PATH.name}`",
         "- Sections:",
     ]
     for slug in section_order:
@@ -1734,7 +1807,14 @@ def render_docs(items: list[Item], source_files: list[str]) -> str:
 
     for slug in section_order:
         title, section_items = sections_by_slug[slug]
-        lines = [f"# {title}", "", "[Back to index](index.md)", ""]
+        lines = [
+            f"# {title}",
+            "",
+            "<!-- markdownlint-disable MD013 MD024 -->",
+            "",
+            "[Back to index](index.md)",
+            "",
+        ]
         if slug == "params":
             runtime_section = sections_by_slug.get("runtime")
             if runtime_section:

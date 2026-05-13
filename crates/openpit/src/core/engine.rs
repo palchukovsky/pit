@@ -15,13 +15,21 @@
 //
 // Please see https://github.com/openpitkit and the OWNERS file for details.
 
-use std::cell::RefCell;
+// EnginePolicies and PolicyBox are crate-private traits used in public bounds.
+// This is intentional: external code uses only the built-in EL types (LocalEngineLocking,
+// SyncedEngineLocking) which all implement these traits, so the bounds are always satisfied
+// without the caller naming the traits.
+#![allow(private_bounds)]
+
 use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 use std::marker::PhantomData;
-use std::rc::{Rc, Weak};
 use std::time::Instant;
 
+use super::engine_locking::{
+    EngineLockingPolicy, LocalEngineLocking, SequentialEngineLocking, SyncedEngineLocking,
+};
+use super::sync_policy;
 use crate::param::AccountId;
 use crate::pretrade::handle::{RequestHandleImpl, ReservationHandleImpl};
 use crate::pretrade::start_pre_trade_time::with_start_pre_trade_now;
@@ -29,15 +37,172 @@ use crate::pretrade::{
     CheckPreTradeStartPolicy, PostTradeResult, PreTradeContext, PreTradePolicy, PreTradeRequest,
     PreTradeReservation, Reject, RejectCode, RejectScope, Rejects,
 };
+use crate::storage::StorageBuilder;
 use crate::{AccountAdjustmentContext, AccountAdjustmentPolicy, Mutations};
 
-struct EngineInner<O, R, A> {
-    check_pre_trade_start_policies: Vec<Box<dyn CheckPreTradeStartPolicy<O, R>>>,
-    pre_trade_policies: Vec<Box<dyn PreTradePolicy<O, R>>>,
-    account_adjustment_policies: Vec<Box<dyn AccountAdjustmentPolicy<A>>>,
+// ─── Type aliases for per-EL policy Vecs ─────────────────────────────────────
+
+type CheckStartVec<EL, O, ER, AA> = Vec<Box<<EL as EnginePolicies<O, ER, AA>>::CheckStart>>;
+type PreTradeVec<EL, O, ER, AA> = Vec<Box<<EL as EnginePolicies<O, ER, AA>>::PreTrade>>;
+type AccountAdjVec<EL, O, ER, AA> = Vec<Box<<EL as EnginePolicies<O, ER, AA>>::AccountAdj>>;
+
+// ─── EnginePolicies ──────────────────────────────────────────────────────────
+
+/// Internal trait that selects the dyn-trait-object shape for
+/// registered policies on engines using a given [`EngineLockingPolicy`]
+/// flavor.
+///
+/// This trait is intentionally `#[doc(hidden)]` and reachable from
+/// workspace crates via [`openpit::__private::EnginePolicies`] only.
+/// It is not part of the public API; implementations live in `openpit`
+/// and `pit-interop` only.
+#[doc(hidden)]
+pub trait EnginePolicies<Order: 'static, ExecutionReport: 'static, AccountAdjustment: 'static>:
+    EngineLockingPolicy
+{
+    type CheckStart: CheckPreTradeStartPolicy<Order, ExecutionReport> + ?Sized + 'static;
+    type PreTrade: PreTradePolicy<Order, ExecutionReport> + ?Sized + 'static;
+    type AccountAdj: AccountAdjustmentPolicy<AccountAdjustment> + ?Sized + 'static;
 }
 
-/// Errors returned by [`EngineBuilder::build`].
+impl<O: 'static, ER: 'static, AA: 'static> EnginePolicies<O, ER, AA> for LocalEngineLocking {
+    type CheckStart = dyn CheckPreTradeStartPolicy<O, ER>;
+    type PreTrade = dyn PreTradePolicy<O, ER>;
+    type AccountAdj = dyn AccountAdjustmentPolicy<AA>;
+}
+
+impl<O: 'static, ER: 'static, AA: 'static> EnginePolicies<O, ER, AA> for SyncedEngineLocking {
+    type CheckStart = dyn CheckPreTradeStartPolicy<O, ER> + Send + Sync;
+    type PreTrade = dyn PreTradePolicy<O, ER> + Send + Sync;
+    type AccountAdj = dyn AccountAdjustmentPolicy<AA> + Send + Sync;
+}
+
+impl<O: 'static, ER: 'static, AA: 'static> EnginePolicies<O, ER, AA> for SequentialEngineLocking {
+    type CheckStart = dyn CheckPreTradeStartPolicy<O, ER> + Send;
+    type PreTrade = dyn PreTradePolicy<O, ER> + Send;
+    type AccountAdj = dyn AccountAdjustmentPolicy<AA> + Send;
+}
+
+// ─── PolicyBox ───────────────────────────────────────────────────────────────
+
+/// Crate-private coercion helper: converts a concrete policy into a
+/// `Box<Target>` where `Target` is the dyn type selected by [`EnginePolicies`].
+///
+/// Three blanket impls exist for each policy category trait:
+///
+/// - `Target = dyn Trait` — satisfied by `Policy: Trait + 'static` (no
+///   Send/Sync required; used for `LocalEngineLocking`).
+/// - `Target = dyn Trait + Send` — satisfied by
+///   `Policy: Trait + Send + 'static` (used for `SequentialEngineLocking`).
+/// - `Target = dyn Trait + Send + Sync` — satisfied by
+///   `Policy: Trait + Send + Sync + 'static` (used for `SyncedEngineLocking`).
+///
+/// The builder methods carry a single `where Policy: PolicyBox<EL::CheckStart>`
+/// bound, which resolves to whichever blanket impl matches the concrete `Target`
+/// for the active `EL`. This avoids duplicate method definitions while still
+/// enforcing the right bounds per locking flavor.
+#[doc(hidden)]
+pub(crate) trait PolicyBox<Target: ?Sized>: 'static {
+    fn into_box(self) -> Box<Target>;
+}
+
+// ── Start-stage policies ──────────────────────────────────────────────────────
+
+#[doc(hidden)]
+impl<O: 'static, ER: 'static, P: CheckPreTradeStartPolicy<O, ER> + 'static>
+    PolicyBox<dyn CheckPreTradeStartPolicy<O, ER>> for P
+{
+    fn into_box(self) -> Box<dyn CheckPreTradeStartPolicy<O, ER>> {
+        Box::new(self)
+    }
+}
+
+#[doc(hidden)]
+impl<O: 'static, ER: 'static, P: CheckPreTradeStartPolicy<O, ER> + Send + 'static>
+    PolicyBox<dyn CheckPreTradeStartPolicy<O, ER> + Send> for P
+{
+    fn into_box(self) -> Box<dyn CheckPreTradeStartPolicy<O, ER> + Send> {
+        Box::new(self)
+    }
+}
+
+#[doc(hidden)]
+impl<O: 'static, ER: 'static, P: CheckPreTradeStartPolicy<O, ER> + Send + Sync + 'static>
+    PolicyBox<dyn CheckPreTradeStartPolicy<O, ER> + Send + Sync> for P
+{
+    fn into_box(self) -> Box<dyn CheckPreTradeStartPolicy<O, ER> + Send + Sync> {
+        Box::new(self)
+    }
+}
+
+// ── Main-stage policies ───────────────────────────────────────────────────────
+
+#[doc(hidden)]
+impl<O: 'static, ER: 'static, P: PreTradePolicy<O, ER> + 'static>
+    PolicyBox<dyn PreTradePolicy<O, ER>> for P
+{
+    fn into_box(self) -> Box<dyn PreTradePolicy<O, ER>> {
+        Box::new(self)
+    }
+}
+
+#[doc(hidden)]
+impl<O: 'static, ER: 'static, P: PreTradePolicy<O, ER> + Send + 'static>
+    PolicyBox<dyn PreTradePolicy<O, ER> + Send> for P
+{
+    fn into_box(self) -> Box<dyn PreTradePolicy<O, ER> + Send> {
+        Box::new(self)
+    }
+}
+
+#[doc(hidden)]
+impl<O: 'static, ER: 'static, P: PreTradePolicy<O, ER> + Send + Sync + 'static>
+    PolicyBox<dyn PreTradePolicy<O, ER> + Send + Sync> for P
+{
+    fn into_box(self) -> Box<dyn PreTradePolicy<O, ER> + Send + Sync> {
+        Box::new(self)
+    }
+}
+
+// ── Account-adjustment policies ───────────────────────────────────────────────
+
+#[doc(hidden)]
+impl<AA: 'static, P: AccountAdjustmentPolicy<AA> + 'static>
+    PolicyBox<dyn AccountAdjustmentPolicy<AA>> for P
+{
+    fn into_box(self) -> Box<dyn AccountAdjustmentPolicy<AA>> {
+        Box::new(self)
+    }
+}
+
+#[doc(hidden)]
+impl<AA: 'static, P: AccountAdjustmentPolicy<AA> + Send + 'static>
+    PolicyBox<dyn AccountAdjustmentPolicy<AA> + Send> for P
+{
+    fn into_box(self) -> Box<dyn AccountAdjustmentPolicy<AA> + Send> {
+        Box::new(self)
+    }
+}
+
+#[doc(hidden)]
+impl<AA: 'static, P: AccountAdjustmentPolicy<AA> + Send + Sync + 'static>
+    PolicyBox<dyn AccountAdjustmentPolicy<AA> + Send + Sync> for P
+{
+    fn into_box(self) -> Box<dyn AccountAdjustmentPolicy<AA> + Send + Sync> {
+        Box::new(self)
+    }
+}
+
+struct EngineInner<Order: 'static, ExecutionReport: 'static, AccountAdjustment: 'static, EL>
+where
+    EL: EngineLockingPolicy + EnginePolicies<Order, ExecutionReport, AccountAdjustment>,
+{
+    check_pre_trade_start_policies: Vec<Box<EL::CheckStart>>,
+    pre_trade_policies: Vec<Box<EL::PreTrade>>,
+    account_adjustment_policies: Vec<Box<EL::AccountAdj>>,
+}
+
+/// Errors returned by [`ReadyEngineBuilder::build`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum EngineBuildError {
@@ -84,23 +249,33 @@ impl std::error::Error for AccountAdjustmentBatchError {}
 /// [`Engine::builder`], then share it across order submissions.
 ///
 /// Generic parameters:
-/// - `O`: order contract type used by `start_pre_trade`;
-/// - `R`: execution-report contract type used by `apply_execution_report`;
-/// - `A`: account-adjustment contract type used by `apply_account_adjustment`.
+/// - `Order`: order contract type used by `start_pre_trade`;
+/// - `ExecutionReport`: execution-report contract type used by `apply_execution_report`;
+/// - `AccountAdjustment`: account-adjustment contract type used by `apply_account_adjustment`;
+/// - `EL`: engine-locking policy; defaults to [`LocalEngineLocking`] (`!Send + !Sync`).
+///   Use [`SyncedEngineLocking`] (produced by [`EngineBuilder::with_full_sync`]) for
+///   `Send + Sync` engines, or [`SequentialEngineLocking`] (produced by
+///   [`EngineBuilder::with_account_sync`]) for sequential cross-thread engines.
 ///
 /// # Threading
 ///
-/// `Engine<O, R, A>` is `!Send + !Sync` because it stores
-/// `Rc<RefCell<EngineInner<O, R, A>>>`, so pure-Rust callers must keep each
-/// engine value on the OS thread that created it.
+/// The engine handle's thread-safety is determined by `EL`:
 ///
-/// The broader SDK threading contract documented in
-/// `crates/openpit/README.md#threading` applies to language bindings, which
-/// manage handle lifecycle across the FFI boundary and may move handles
-/// between OS threads sequentially.
+/// - [`LocalEngineLocking`] (default, produced by `with_local_sync`): the handle
+///   is `!Send + !Sync`. Keep it on the OS thread that created it. Concurrent
+///   invocation is not supported.
+/// - [`SyncedEngineLocking`] (produced by `with_full_sync`): the handle is
+///   `Send + Sync` when all registered policies are `Send + Sync`. It can be
+///   wrapped in `Arc<Engine<..., SyncedEngineLocking>>` and shared across
+///   threads. With `FullLocking` storage, concurrent invocation from multiple
+///   threads is safe.
+/// - [`SequentialEngineLocking`] (produced by `with_account_sync`): the handle
+///   is `Send + !Sync`. Ownership may move between OS threads sequentially, but
+///   concurrent invocation on the same handle is not supported.
 ///
-/// Callers must prevent concurrent invocation on the same engine handle;
-/// entering the same handle concurrently is undefined behavior.
+/// Language bindings (Python, Go, C) may narrow this contract for their public
+/// API surface — see the binding documentation for the exact rules each binding
+/// offers.
 ///
 /// # Examples
 ///
@@ -109,11 +284,15 @@ impl std::error::Error for AccountAdjustmentBatchError {}
 /// use openpit::param::{Asset, Price, Quantity, Side, TradeAmount};
 /// use openpit::{Engine, Instrument, OrderOperation, WithOrderOperation};
 /// use openpit::{FinancialImpact, ExecutionReportOperation, WithFinancialImpact, WithExecutionReportOperation};
+/// use openpit::pretrade::policies::OrderValidationPolicy;
 ///
 /// type MyOrder = WithOrderOperation<()>;
 /// type MyReport = WithExecutionReportOperation<WithFinancialImpact<()>>;
 ///
-/// let engine = Engine::<MyOrder, MyReport>::builder().build()?;
+/// let engine = Engine::<MyOrder, MyReport>::builder()
+///     .with_local_sync()
+///     .check_pre_trade_start_policy(OrderValidationPolicy::new())
+///     .build()?;
 ///
 /// let order = WithOrderOperation {
 ///     inner: (),
@@ -132,16 +311,52 @@ impl std::error::Error for AccountAdjustmentBatchError {}
 /// # Ok(())
 /// # }
 /// ```
-pub struct Engine<O, R = (), A = ()> {
-    inner: Rc<RefCell<EngineInner<O, R, A>>>,
+pub struct Engine<
+    Order: 'static,
+    ExecutionReport: 'static = (),
+    AccountAdjustment: 'static = (),
+    EL = LocalEngineLocking,
+> where
+    EL: EngineLockingPolicy + EnginePolicies<Order, ExecutionReport, AccountAdjustment>,
+{
+    inner: EL::Strong<EngineInner<Order, ExecutionReport, AccountAdjustment, EL>>,
 }
+
+/// Single-threaded engine type alias.
+///
+/// Equivalent to `Engine<Order, ExecutionReport, AccountAdjustment, LocalEngineLocking>`.
+/// Produced by [`EngineBuilder::with_local_sync`] chains.
+pub type LocalEngine<Order, ExecutionReport = (), AccountAdjustment = ()> =
+    Engine<Order, ExecutionReport, AccountAdjustment, LocalEngineLocking>;
+
+/// Account-sharded engine type alias.
+///
+/// Equivalent to `Engine<Order, ExecutionReport, AccountAdjustment, SequentialEngineLocking>`.
+/// Produced by [`EngineBuilder::with_account_sync`] chains. Engine handle is
+/// `Send + !Sync`.
+pub type SequentialEngine<Order, ExecutionReport = (), AccountAdjustment = ()> =
+    Engine<Order, ExecutionReport, AccountAdjustment, SequentialEngineLocking>;
+
+/// Multi-threaded engine type alias.
+///
+/// Equivalent to `Engine<Order, ExecutionReport, AccountAdjustment, SyncedEngineLocking>`.
+/// Produced by [`EngineBuilder::with_full_sync`] chains. The resulting engine handle is
+/// `Send + Sync` and may be wrapped in `Arc<SyncedEngine<...>>`.
+pub type SyncedEngine<Order, ExecutionReport = (), AccountAdjustment = ()> =
+    Engine<Order, ExecutionReport, AccountAdjustment, SyncedEngineLocking>;
 
 /// # Threading
 ///
 /// See [`Engine`]'s `# Threading` section for the threading contract.
-impl<O: 'static, R: 'static, A: 'static> Engine<O, R, A> {
+impl<
+        Order: 'static,
+        ExecutionReport: 'static,
+        AccountAdjustment: 'static,
+        EL: EngineLockingPolicy + EnginePolicies<Order, ExecutionReport, AccountAdjustment>,
+    > Engine<Order, ExecutionReport, AccountAdjustment, EL>
+{
     /// Creates an engine builder.
-    pub fn builder() -> EngineBuilder<O, R, A> {
+    pub fn builder() -> EngineBuilder<Order, ExecutionReport, AccountAdjustment> {
         EngineBuilder::new()
     }
 
@@ -158,11 +373,11 @@ impl<O: 'static, R: 'static, A: 'static> Engine<O, R, A> {
     /// # Errors
     ///
     /// Returns [`Rejects`] when any start-stage policy rejects the order.
-    pub fn start_pre_trade(&self, order: O) -> Result<PreTradeRequest<O>, Rejects> {
+    pub fn start_pre_trade(&self, order: Order) -> Result<PreTradeRequest<Order>, Rejects> {
         let now: Instant = Instant::now();
         let ctx = PreTradeContext::new();
         let start_rejects = with_start_pre_trade_now(now, || {
-            let inner = self.inner.borrow();
+            let inner: &EngineInner<Order, ExecutionReport, AccountAdjustment, EL> = &self.inner;
             let mut lists = Vec::new();
             let mut len = 0;
             for policy in &inner.check_pre_trade_start_policies {
@@ -177,9 +392,10 @@ impl<O: 'static, R: 'static, A: 'static> Engine<O, R, A> {
             return Err(rejects);
         }
 
-        let engine = Rc::downgrade(&self.inner);
-        let request_handle =
-            RequestHandleImpl::<O>::new(Box::new(move || execute_request(engine, ctx, order)));
+        let engine = EL::downgrade(&self.inner);
+        let request_handle = RequestHandleImpl::<Order>::new(Box::new(move || {
+            execute_request::<Order, ExecutionReport, AccountAdjustment, EL>(engine, ctx, order)
+        }));
 
         Ok(PreTradeRequest::from_handle(Box::new(request_handle)))
     }
@@ -192,7 +408,7 @@ impl<O: 'static, R: 'static, A: 'static> Engine<O, R, A> {
     /// # Errors
     ///
     /// Returns [`Rejects`] for both stages.
-    pub fn execute_pre_trade(&self, order: O) -> Result<PreTradeReservation, Rejects> {
+    pub fn execute_pre_trade(&self, order: Order) -> Result<PreTradeReservation, Rejects> {
         self.start_pre_trade(order)
             .and_then(PreTradeRequest::execute)
     }
@@ -201,8 +417,8 @@ impl<O: 'static, R: 'static, A: 'static> Engine<O, R, A> {
     ///
     /// Returns [`PostTradeResult::kill_switch_triggered`] `true` when at least one policy
     /// reports a kill-switch condition.
-    pub fn apply_execution_report(&self, report: &R) -> PostTradeResult {
-        let inner = self.inner.borrow();
+    pub fn apply_execution_report(&self, report: &ExecutionReport) -> PostTradeResult {
+        let inner: &EngineInner<Order, ExecutionReport, AccountAdjustment, EL> = &self.inner;
         let mut kill_switch_triggered = false;
 
         for policy in &inner.check_pre_trade_start_policies {
@@ -229,13 +445,13 @@ impl<O: 'static, R: 'static, A: 'static> Engine<O, R, A> {
     pub fn apply_account_adjustment(
         &self,
         account_id: AccountId,
-        adjustments: &[A],
+        adjustments: &[AccountAdjustment],
     ) -> Result<(), AccountAdjustmentBatchError> {
         if adjustments.is_empty() {
             return Ok(());
         }
 
-        let inner = self.inner.borrow();
+        let inner: &EngineInner<Order, ExecutionReport, AccountAdjustment, EL> = &self.inner;
         let mut mutations = Mutations::new();
         let mut batch_error: Option<AccountAdjustmentBatchError> = None;
         let ctx = AccountAdjustmentContext::new();
@@ -271,7 +487,7 @@ impl<O: 'static, R: 'static, A: 'static> Engine<O, R, A> {
 ///
 /// Policies are evaluated in registration order. Policy names must be unique
 /// across start-stage, main-stage, and account-adjustment sets;
-/// [`EngineBuilder::build`] returns [`EngineBuildError::DuplicatePolicyName`]
+/// [`ReadyEngineBuilder::build`] returns [`EngineBuildError::DuplicatePolicyName`]
 /// otherwise.
 ///
 /// # Examples
@@ -280,26 +496,47 @@ impl<O: 'static, R: 'static, A: 'static> Engine<O, R, A> {
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// use std::time::Duration;
 /// use openpit::{WithExecutionReportOperation, WithFinancialImpact, WithOrderOperation};
-/// use openpit::pretrade::policies::{PnlBoundsBarrier, PnlBoundsKillSwitchPolicy, RateLimitPolicy};
+/// use openpit::pretrade::policies::{
+///     PnlBoundsAccountAssetBarrier, PnlBoundsBrokerBarrier, PnlBoundsKillSwitchPolicy,
+///     RateLimit, RateLimitBrokerBarrier, RateLimitPolicy,
+/// };
 /// use openpit::Engine;
-/// use openpit::param::{Asset, Pnl};
+/// use openpit::param::{AccountId, Asset, Pnl};
 ///
 /// type MyOrder = WithOrderOperation<()>;
 /// type MyReport = WithFinancialImpact<WithExecutionReportOperation<()>>;
 ///
+/// let builder = Engine::<MyOrder, MyReport>::builder().with_local_sync();
+///
 /// let pnl_policy = PnlBoundsKillSwitchPolicy::new(
-///     PnlBoundsBarrier {
+///     [PnlBoundsBrokerBarrier {
 ///         settlement_asset: Asset::new("USD")?,
 ///         lower_bound: Some(Pnl::from_str("-500")?),
 ///         upper_bound: None,
-///         initial_pnl: Pnl::ZERO,
-///     },
-///     [],
+///     }],
+///     [PnlBoundsAccountAssetBarrier {
+///         barrier: PnlBoundsBrokerBarrier {
+///             settlement_asset: Asset::new("USD")?,
+///             lower_bound: Some(Pnl::from_str("-200")?),
+///             upper_bound: None,
+///         },
+///         account_id: AccountId::from_u64(99224416),
+///         initial_pnl: Pnl::from_str("-50")?,
+///     }],
+///     builder.storage_builder(),
 /// )?;
 ///
-/// let rate_policy = RateLimitPolicy::new(100, Duration::from_secs(1));
+/// let rate_policy = RateLimitPolicy::new(
+///     Some(RateLimitBrokerBarrier {
+///         limit: RateLimit { max_orders: 100, window: Duration::from_secs(1) },
+///     }),
+///     [],
+///     [],
+///     [],
+///     builder.storage_builder(),
+/// )?;
 ///
-/// let engine = Engine::<MyOrder, MyReport>::builder()
+/// let engine = builder
 ///     .check_pre_trade_start_policy(pnl_policy)
 ///     .check_pre_trade_start_policy(rate_policy)
 ///     .build()?;
@@ -307,17 +544,22 @@ impl<O: 'static, R: 'static, A: 'static> Engine<O, R, A> {
 /// # Ok(())
 /// # }
 /// ```
-pub struct EngineBuilder<O, R = (), A = ()> {
-    check_pre_trade_start_policies: Vec<Box<dyn CheckPreTradeStartPolicy<O, R>>>,
-    pre_trade_policies: Vec<Box<dyn PreTradePolicy<O, R>>>,
-    account_adjustment_policies: Vec<Box<dyn AccountAdjustmentPolicy<A>>>,
-    marker: PhantomData<fn(O, R, A)>,
+pub struct EngineBuilder<Order, ExecutionReport = (), AccountAdjustment = ()> {
+    check_pre_trade_start_policies: Vec<Box<dyn CheckPreTradeStartPolicy<Order, ExecutionReport>>>,
+    pre_trade_policies: Vec<Box<dyn PreTradePolicy<Order, ExecutionReport>>>,
+    account_adjustment_policies: Vec<Box<dyn AccountAdjustmentPolicy<AccountAdjustment>>>,
+    marker: PhantomData<fn(Order, ExecutionReport, AccountAdjustment)>,
 }
 
-impl<O, R, A> EngineBuilder<O, R, A> {
+impl<Order, ExecutionReport, AccountAdjustment>
+    EngineBuilder<Order, ExecutionReport, AccountAdjustment>
+{
     /// Creates a new builder.
+    ///
+    /// This is a crate-internal constructor. External callers must use
+    /// [`Engine::builder`] as the entry point.
     #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             check_pre_trade_start_policies: Vec::new(),
             pre_trade_policies: Vec::new(),
@@ -326,89 +568,440 @@ impl<O, R, A> EngineBuilder<O, R, A> {
         }
     }
 
-    /// Registers a start-stage policy.
-    pub fn check_pre_trade_start_policy<P>(mut self, policy: P) -> Self
+    #[cfg_attr(not(test), allow(dead_code))]
+    fn check_pre_trade_start_policy<Policy>(mut self, policy: Policy) -> Self
     where
-        P: CheckPreTradeStartPolicy<O, R> + 'static,
+        Policy: CheckPreTradeStartPolicy<Order, ExecutionReport> + 'static,
     {
         self.check_pre_trade_start_policies.push(Box::new(policy));
         self
     }
 
-    /// Registers a main-stage policy.
-    pub fn pre_trade_policy<P>(mut self, policy: P) -> Self
+    #[cfg_attr(not(test), allow(dead_code))]
+    fn pre_trade_policy<Policy>(mut self, policy: Policy) -> Self
     where
-        P: PreTradePolicy<O, R> + 'static,
+        Policy: PreTradePolicy<Order, ExecutionReport> + 'static,
     {
         self.pre_trade_policies.push(Box::new(policy));
         self
     }
 
-    /// Registers an account-adjustment policy.
-    ///
-    /// Policy names must remain unique across start-stage, main-stage, and
-    /// account-adjustment policy sets.
-    pub fn account_adjustment_policy<P>(mut self, policy: P) -> Self
+    #[cfg_attr(not(test), allow(dead_code))]
+    fn account_adjustment_policy<Policy>(mut self, policy: Policy) -> Self
     where
-        P: AccountAdjustmentPolicy<A> + 'static,
+        Policy: AccountAdjustmentPolicy<AccountAdjustment> + 'static,
     {
         self.account_adjustment_policies.push(Box::new(policy));
         self
     }
 
-    /// Builds the engine.
-    pub fn build(self) -> Result<Engine<O, R, A>, EngineBuildError>
+    #[cfg_attr(not(test), allow(dead_code))]
+    fn build(
+        self,
+    ) -> Result<
+        Engine<Order, ExecutionReport, AccountAdjustment, LocalEngineLocking>,
+        EngineBuildError,
+    >
     where
-        O: 'static,
-        R: 'static,
-        A: 'static,
+        Order: 'static,
+        ExecutionReport: 'static,
+        AccountAdjustment: 'static,
     {
         ensure_unique_policy_names(
-            &self.check_pre_trade_start_policies,
-            &self.pre_trade_policies,
-            &self.account_adjustment_policies,
+            self.check_pre_trade_start_policies
+                .iter()
+                .map(|p| p.name())
+                .chain(self.pre_trade_policies.iter().map(|p| p.name()))
+                .chain(self.account_adjustment_policies.iter().map(|p| p.name())),
         )?;
 
         Ok(Engine {
-            inner: Rc::new(RefCell::new(EngineInner {
+            inner: LocalEngineLocking::new_strong(EngineInner {
                 check_pre_trade_start_policies: self.check_pre_trade_start_policies,
                 pre_trade_policies: self.pre_trade_policies,
                 account_adjustment_policies: self.account_adjustment_policies,
-            })),
+            }),
+        })
+    }
+
+    /// Applies a custom synchronization policy and advances to
+    /// [`SyncedEngineBuilder`].
+    ///
+    /// The policy is specified as a type argument only — the struct must
+    /// implement [`SyncPolicy`] and is typically zero-sized. For the
+    /// built-in regimes, prefer [`with_full_sync`](Self::with_full_sync),
+    /// [`with_local_sync`](Self::with_local_sync), or
+    /// [`with_account_sync`](Self::with_account_sync).
+    ///
+    /// [`SyncPolicy`]: crate::SyncPolicy
+    pub fn with_sync<SyncPolicy>(
+        self,
+        policy: SyncPolicy,
+    ) -> SyncedEngineBuilder<Order, ExecutionReport, AccountAdjustment, SyncPolicy>
+    where
+        SyncPolicy: sync_policy::SyncPolicy,
+        SyncPolicy::EngineLocking: EnginePolicies<Order, ExecutionReport, AccountAdjustment>,
+    {
+        // Policies registered on EngineBuilder (if any, via private test helpers) are
+        // intentionally dropped here: with_sync() establishes the locking flavor, and
+        // subsequent policy registration happens on the returned SyncedEngineBuilder.
+        // In production usage with_sync() is called immediately after builder(), so
+        // this is always an empty discard.
+        let _ = self;
+        SyncedEngineBuilder {
+            check_pre_trade_start_policies: Vec::new(),
+            pre_trade_policies: Vec::new(),
+            account_adjustment_policies: Vec::new(),
+            storage_builder: StorageBuilder::new(policy.create_locking_factory()),
+            _marker: PhantomData,
+        }
+    }
+
+    /// Applies full thread-safety synchronization and advances to
+    /// [`SyncedEngineBuilder`].
+    ///
+    /// Storage tables created by registered policies will use
+    /// [`FullLocking`]: index and value domains are each protected by an
+    /// independent reader-writer lock.
+    ///
+    /// [`FullLocking`]: crate::storage::FullLocking
+    pub fn with_full_sync(
+        self,
+    ) -> SyncedEngineBuilder<Order, ExecutionReport, AccountAdjustment, sync_policy::FullSyncPolicy>
+    {
+        self.with_sync(sync_policy::FullSyncPolicy)
+    }
+
+    /// Applies single-thread (no-sync) synchronization and advances to
+    /// [`SyncedEngineBuilder`].
+    ///
+    /// Storage tables created by registered policies will use
+    /// [`NoLocking`]: no synchronization primitives are allocated. The
+    /// resulting storages are `!Send + !Sync`; this option is for
+    /// single-threaded embeddings where synchronization overhead must be
+    /// zero.
+    ///
+    /// [`NoLocking`]: crate::storage::NoLocking
+    pub fn with_local_sync(
+        self,
+    ) -> SyncedEngineBuilder<Order, ExecutionReport, AccountAdjustment, sync_policy::LocalSyncPolicy>
+    {
+        self.with_sync(sync_policy::LocalSyncPolicy)
+    }
+
+    /// Applies account-index synchronization and advances to
+    /// [`SyncedEngineBuilder`].
+    ///
+    /// Storage tables created by registered policies will use
+    /// [`IndexLocking`]: one reader-writer lock guards key insertions and
+    /// removals; per-value access is the caller's responsibility. The engine
+    /// handle is `Send + !Sync`: ownership may move between OS threads
+    /// sequentially, but concurrent invocation on the same handle is not
+    /// supported.
+    ///
+    /// [`IndexLocking`]: crate::storage::IndexLocking
+    pub fn with_account_sync(
+        self,
+    ) -> SyncedEngineBuilder<
+        Order,
+        ExecutionReport,
+        AccountAdjustment,
+        sync_policy::AccountSyncPolicy,
+    > {
+        self.with_sync(sync_policy::AccountSyncPolicy)
+    }
+}
+
+// ─── SyncedEngineBuilder ─────────────────────────────────────────────────────
+
+/// Engine builder with a synchronization policy applied.
+///
+/// Obtained from [`EngineBuilder::with_sync`], [`EngineBuilder::with_full_sync`],
+/// [`EngineBuilder::with_local_sync`], or [`EngineBuilder::with_account_sync`].
+///
+/// This builder deliberately has **no `build` method**: at least one policy
+/// must be registered before the engine can be constructed. Adding any policy
+/// advances to [`ReadyEngineBuilder`], which exposes [`build`](ReadyEngineBuilder::build).
+///
+/// The `SyncPolicy` type parameter carries the chosen [`SyncPolicy`]
+/// forward through the builder chain so that trading policies can create
+/// correctly-synchronized [`Storage`] tables without knowing the concrete
+/// factory type.
+///
+/// [`SyncPolicy`]: crate::SyncPolicy
+/// [`Storage`]: crate::storage::Storage
+pub struct SyncedEngineBuilder<
+    Order: 'static,
+    ExecutionReport: 'static,
+    AccountAdjustment: 'static,
+    SyncPolicyT,
+> where
+    SyncPolicyT: sync_policy::SyncPolicy,
+    SyncPolicyT::EngineLocking: EnginePolicies<Order, ExecutionReport, AccountAdjustment>,
+{
+    check_pre_trade_start_policies:
+        CheckStartVec<SyncPolicyT::EngineLocking, Order, ExecutionReport, AccountAdjustment>,
+    pre_trade_policies:
+        PreTradeVec<SyncPolicyT::EngineLocking, Order, ExecutionReport, AccountAdjustment>,
+    account_adjustment_policies:
+        AccountAdjVec<SyncPolicyT::EngineLocking, Order, ExecutionReport, AccountAdjustment>,
+    storage_builder:
+        StorageBuilder<<SyncPolicyT as sync_policy::SyncPolicy>::StorageLockingPolicyFactory>,
+    _marker: PhantomData<(Order, ExecutionReport, AccountAdjustment, SyncPolicyT)>,
+}
+
+impl<Order, ExecutionReport, AccountAdjustment, SyncPolicyT>
+    SyncedEngineBuilder<Order, ExecutionReport, AccountAdjustment, SyncPolicyT>
+where
+    SyncPolicyT: sync_policy::SyncPolicy,
+    SyncPolicyT::EngineLocking: EnginePolicies<Order, ExecutionReport, AccountAdjustment>,
+{
+    /// Returns the storage builder owned by this engine builder. Pass it (or
+    /// a borrowed reference to it) to policy constructors that need internal
+    /// storage tables. The factory type is shared with the engine builder's
+    /// synchronization policy.
+    pub fn storage_builder(
+        &self,
+    ) -> &StorageBuilder<<SyncPolicyT as sync_policy::SyncPolicy>::StorageLockingPolicyFactory>
+    {
+        &self.storage_builder
+    }
+}
+
+impl<Order: 'static, ExecutionReport: 'static, AccountAdjustment: 'static, SyncPolicyT>
+    SyncedEngineBuilder<Order, ExecutionReport, AccountAdjustment, SyncPolicyT>
+where
+    SyncPolicyT: sync_policy::SyncPolicy,
+    SyncPolicyT::EngineLocking: EnginePolicies<Order, ExecutionReport, AccountAdjustment>,
+{
+    /// Registers a start-stage policy and advances to [`ReadyEngineBuilder`].
+    ///
+    /// The required bound on `Policy` is determined by the `SyncPolicy`'s locking
+    /// flavor:
+    ///
+    /// - `LocalEngineLocking` (from `with_local_sync`): `'static` only; `!Send`
+    ///   policy state is accepted.
+    /// - `SequentialEngineLocking` (from `with_account_sync`): `Send + 'static`.
+    /// - `SyncedEngineLocking` (from `with_full_sync`): `Send + Sync + 'static`.
+    pub fn check_pre_trade_start_policy<Policy>(
+        mut self,
+        policy: Policy,
+    ) -> ReadyEngineBuilder<Order, ExecutionReport, AccountAdjustment, SyncPolicyT>
+    where
+        Policy: PolicyBox<
+            <SyncPolicyT::EngineLocking as EnginePolicies<
+                Order,
+                ExecutionReport,
+                AccountAdjustment,
+            >>::CheckStart,
+        >,
+    {
+        self.check_pre_trade_start_policies
+            .push(PolicyBox::into_box(policy));
+        ReadyEngineBuilder {
+            check_pre_trade_start_policies: self.check_pre_trade_start_policies,
+            pre_trade_policies: self.pre_trade_policies,
+            account_adjustment_policies: self.account_adjustment_policies,
+            storage_builder: self.storage_builder,
+            _marker: PhantomData,
+        }
+    }
+
+    /// Registers a main-stage policy and advances to [`ReadyEngineBuilder`].
+    ///
+    /// See [`check_pre_trade_start_policy`](Self::check_pre_trade_start_policy) for the
+    /// locking-flavor bound rules.
+    pub fn pre_trade_policy<Policy>(
+        mut self,
+        policy: Policy,
+    ) -> ReadyEngineBuilder<Order, ExecutionReport, AccountAdjustment, SyncPolicyT>
+    where
+        Policy: PolicyBox<
+            <SyncPolicyT::EngineLocking as EnginePolicies<
+                Order,
+                ExecutionReport,
+                AccountAdjustment,
+            >>::PreTrade,
+        >,
+    {
+        self.pre_trade_policies.push(PolicyBox::into_box(policy));
+        ReadyEngineBuilder {
+            check_pre_trade_start_policies: self.check_pre_trade_start_policies,
+            pre_trade_policies: self.pre_trade_policies,
+            account_adjustment_policies: self.account_adjustment_policies,
+            storage_builder: self.storage_builder,
+            _marker: PhantomData,
+        }
+    }
+
+    /// Registers an account-adjustment policy and advances to [`ReadyEngineBuilder`].
+    ///
+    /// See [`check_pre_trade_start_policy`](Self::check_pre_trade_start_policy) for the
+    /// locking-flavor bound rules.
+    pub fn account_adjustment_policy<Policy>(
+        mut self,
+        policy: Policy,
+    ) -> ReadyEngineBuilder<Order, ExecutionReport, AccountAdjustment, SyncPolicyT>
+    where
+        Policy: PolicyBox<
+            <SyncPolicyT::EngineLocking as EnginePolicies<
+                Order,
+                ExecutionReport,
+                AccountAdjustment,
+            >>::AccountAdj,
+        >,
+    {
+        self.account_adjustment_policies
+            .push(PolicyBox::into_box(policy));
+        ReadyEngineBuilder {
+            check_pre_trade_start_policies: self.check_pre_trade_start_policies,
+            pre_trade_policies: self.pre_trade_policies,
+            account_adjustment_policies: self.account_adjustment_policies,
+            storage_builder: self.storage_builder,
+            _marker: PhantomData,
+        }
+    }
+}
+
+// ─── ReadyEngineBuilder ──────────────────────────────────────────────────────
+
+/// Engine builder with a synchronization policy and at least one trading
+/// policy registered. Can produce an [`Engine`] via [`build`](Self::build).
+///
+/// Obtained from the `add_policy` methods on [`SyncedEngineBuilder`] or
+/// from the chained `add_policy` methods on this type itself.
+///
+/// The `SyncPolicy` type parameter carries the chosen [`SyncPolicy`]
+/// to any code that needs to create additional [`Storage`] tables with the
+/// same synchronization regime.
+///
+/// [`SyncPolicy`]: crate::SyncPolicy
+/// [`Storage`]: crate::storage::Storage
+pub struct ReadyEngineBuilder<
+    Order: 'static,
+    ExecutionReport: 'static,
+    AccountAdjustment: 'static,
+    SyncPolicyT,
+> where
+    SyncPolicyT: sync_policy::SyncPolicy,
+    SyncPolicyT::EngineLocking: EnginePolicies<Order, ExecutionReport, AccountAdjustment>,
+{
+    check_pre_trade_start_policies:
+        CheckStartVec<SyncPolicyT::EngineLocking, Order, ExecutionReport, AccountAdjustment>,
+    pre_trade_policies:
+        PreTradeVec<SyncPolicyT::EngineLocking, Order, ExecutionReport, AccountAdjustment>,
+    account_adjustment_policies:
+        AccountAdjVec<SyncPolicyT::EngineLocking, Order, ExecutionReport, AccountAdjustment>,
+    storage_builder:
+        StorageBuilder<<SyncPolicyT as sync_policy::SyncPolicy>::StorageLockingPolicyFactory>,
+    _marker: PhantomData<(Order, ExecutionReport, AccountAdjustment, SyncPolicyT)>,
+}
+
+impl<Order, ExecutionReport, AccountAdjustment, SyncPolicyT>
+    ReadyEngineBuilder<Order, ExecutionReport, AccountAdjustment, SyncPolicyT>
+where
+    SyncPolicyT: sync_policy::SyncPolicy,
+    SyncPolicyT::EngineLocking: EnginePolicies<Order, ExecutionReport, AccountAdjustment>,
+{
+    /// Returns the storage builder owned by this engine builder. Pass it (or
+    /// a borrowed reference to it) to policy constructors that need internal
+    /// storage tables. The factory type is shared with the engine builder's
+    /// synchronization policy.
+    pub fn storage_builder(
+        &self,
+    ) -> &StorageBuilder<<SyncPolicyT as sync_policy::SyncPolicy>::StorageLockingPolicyFactory>
+    {
+        &self.storage_builder
+    }
+}
+
+impl<Order: 'static, ExecutionReport: 'static, AccountAdjustment: 'static, SyncPolicyT>
+    ReadyEngineBuilder<Order, ExecutionReport, AccountAdjustment, SyncPolicyT>
+where
+    SyncPolicyT: sync_policy::SyncPolicy,
+    SyncPolicyT::EngineLocking: EnginePolicies<Order, ExecutionReport, AccountAdjustment>,
+{
+    /// Registers an additional start-stage policy.
+    ///
+    /// The required bound on `Policy` mirrors [`SyncedEngineBuilder::check_pre_trade_start_policy`].
+    pub fn check_pre_trade_start_policy<Policy>(mut self, policy: Policy) -> Self
+    where
+        Policy: PolicyBox<
+            <SyncPolicyT::EngineLocking as EnginePolicies<
+                Order,
+                ExecutionReport,
+                AccountAdjustment,
+            >>::CheckStart,
+        >,
+    {
+        self.check_pre_trade_start_policies
+            .push(PolicyBox::into_box(policy));
+        self
+    }
+
+    /// Registers an additional main-stage policy.
+    pub fn pre_trade_policy<Policy>(mut self, policy: Policy) -> Self
+    where
+        Policy: PolicyBox<
+            <SyncPolicyT::EngineLocking as EnginePolicies<
+                Order,
+                ExecutionReport,
+                AccountAdjustment,
+            >>::PreTrade,
+        >,
+    {
+        self.pre_trade_policies.push(PolicyBox::into_box(policy));
+        self
+    }
+
+    /// Registers an additional account-adjustment policy.
+    pub fn account_adjustment_policy<Policy>(mut self, policy: Policy) -> Self
+    where
+        Policy: PolicyBox<
+            <SyncPolicyT::EngineLocking as EnginePolicies<
+                Order,
+                ExecutionReport,
+                AccountAdjustment,
+            >>::AccountAdj,
+        >,
+    {
+        self.account_adjustment_policies
+            .push(PolicyBox::into_box(policy));
+        self
+    }
+
+    /// Builds the engine.
+    pub fn build(
+        self,
+    ) -> Result<
+        Engine<Order, ExecutionReport, AccountAdjustment, SyncPolicyT::EngineLocking>,
+        EngineBuildError,
+    > {
+        ensure_unique_policy_names(
+            self.check_pre_trade_start_policies
+                .iter()
+                .map(|p| p.name())
+                .chain(self.pre_trade_policies.iter().map(|p| p.name()))
+                .chain(self.account_adjustment_policies.iter().map(|p| p.name())),
+        )?;
+        Ok(Engine {
+            inner: SyncPolicyT::EngineLocking::new_strong(EngineInner {
+                check_pre_trade_start_policies: self.check_pre_trade_start_policies,
+                pre_trade_policies: self.pre_trade_policies,
+                account_adjustment_policies: self.account_adjustment_policies,
+            }),
         })
     }
 }
 
-fn ensure_unique_policy_names<O, R, A>(
-    check_pre_trade_start_policies: &[Box<dyn CheckPreTradeStartPolicy<O, R>>],
-    pre_trade_policies: &[Box<dyn PreTradePolicy<O, R>>],
-    account_adjustment_policies: &[Box<dyn AccountAdjustmentPolicy<A>>],
+fn ensure_unique_policy_names<'a>(
+    names: impl Iterator<Item = &'a str>,
 ) -> Result<(), EngineBuildError> {
     let mut unique = HashSet::new();
-
-    for policy in check_pre_trade_start_policies {
-        let inserted = unique.insert(policy.name().to_owned());
-        if !inserted {
+    for name in names {
+        if !unique.insert(name.to_owned()) {
             return Err(EngineBuildError::DuplicatePolicyName {
-                name: policy.name().to_owned(),
-            });
-        }
-    }
-
-    for policy in pre_trade_policies {
-        let inserted = unique.insert(policy.name().to_owned());
-        if !inserted {
-            return Err(EngineBuildError::DuplicatePolicyName {
-                name: policy.name().to_owned(),
-            });
-        }
-    }
-
-    for policy in account_adjustment_policies {
-        let inserted = unique.insert(policy.name().to_owned());
-        if !inserted {
-            return Err(EngineBuildError::DuplicatePolicyName {
-                name: policy.name().to_owned(),
+                name: name.to_owned(),
             });
         }
     }
@@ -416,12 +1009,17 @@ fn ensure_unique_policy_names<O, R, A>(
     Ok(())
 }
 
-fn execute_request<O: 'static, R: 'static, A: 'static>(
-    engine: Weak<RefCell<EngineInner<O, R, A>>>,
+fn execute_request<
+    Order: 'static,
+    ExecutionReport: 'static,
+    AccountAdjustment: 'static,
+    EL: EngineLockingPolicy + EnginePolicies<Order, ExecutionReport, AccountAdjustment>,
+>(
+    engine: EL::Weak<EngineInner<Order, ExecutionReport, AccountAdjustment, EL>>,
     ctx: PreTradeContext,
-    order: O,
+    order: Order,
 ) -> Result<PreTradeReservation, Rejects> {
-    let Some(engine_ref) = engine.upgrade() else {
+    let Some(engine_ref) = EL::upgrade(&engine) else {
         return Err(Rejects::new(vec![Reject::new(
             "Engine",
             RejectScope::Order,
@@ -430,7 +1028,7 @@ fn execute_request<O: 'static, R: 'static, A: 'static>(
             "request handle outlived engine instance".to_owned(),
         )]));
     };
-    let inner = engine_ref.borrow();
+    let inner: &EngineInner<Order, ExecutionReport, AccountAdjustment, EL> = &engine_ref;
 
     let mut mutations = Mutations::new();
     let mut lists = Vec::new();
@@ -441,8 +1039,6 @@ fn execute_request<O: 'static, R: 'static, A: 'static>(
             lists.push(rejects);
         }
     }
-
-    drop(inner);
 
     if let Some(rejects) = merge_reject_lists(lists, len) {
         mutations.rollback_all();
@@ -482,7 +1078,7 @@ mod tests {
     };
     use crate::{AccountAdjustmentContext, AccountAdjustmentPolicy, Mutation, Mutations};
 
-    use super::{AccountAdjustmentBatchError, Engine, EngineBuildError};
+    use super::{AccountAdjustmentBatchError, Engine, EngineBuildError, SyncedEngineLocking};
 
     type TestOrder = WithOrderOperation<()>;
     type TestReport = WithFinancialImpact<WithExecutionReportOperation<()>>;
@@ -2808,5 +3404,30 @@ mod tests {
         fn apply_execution_report(&self, _report: &TestReport) -> bool {
             false
         }
+    }
+
+    // ── Send/Sync type assertions ─────────────────────────────────────────────
+
+    #[test]
+    fn synced_engine_with_full_storage_is_send_and_sync() {
+        fn assert_send<T: Send>() {}
+        fn assert_sync<T: Sync>() {}
+        type SyncedEngineWithFull = Engine<OrderOperation, (), (), SyncedEngineLocking>;
+        assert_send::<SyncedEngineWithFull>();
+        assert_sync::<SyncedEngineWithFull>();
+    }
+
+    /// Confirms that `LocalEngineLocking`-flavored builders accept `!Send` policies.
+    /// The `!Send + !Sync` property of `Engine<..., LocalEngineLocking>` is enforced by
+    /// `Rc` auto-deriving `!Send + !Sync`; see the compile_fail doctest on
+    /// `LocalEngineLocking` for explicit proof.
+    #[test]
+    fn local_engine_accepts_not_send_policies() {
+        // StartPolicyMock contains Rc<...> (!Send). Confirms the local builder
+        // compiles with !Send policies.
+        let _engine = Engine::<TestOrder, TestReport>::builder()
+            .check_pre_trade_start_policy(StartPolicyMock::pass("local_policy"))
+            .build()
+            .expect("engine with !Send policy must build in local mode");
     }
 }

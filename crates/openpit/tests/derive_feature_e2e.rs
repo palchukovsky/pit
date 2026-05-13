@@ -1,9 +1,10 @@
 #![cfg(feature = "derive")]
 
-use openpit::param::{Asset, Fee, Pnl};
-use openpit::pretrade::policies::{PnlBoundsBarrier, PnlBoundsKillSwitchPolicy};
+use openpit::param::{AccountId, Asset, Fee, Pnl};
+use openpit::pretrade::policies::{PnlBoundsBrokerBarrier, PnlBoundsKillSwitchPolicy};
 use openpit::{
-    Engine, HasFee, HasInstrument, HasPnl, Instrument, RequestFieldAccessError, RequestFields,
+    Engine, HasAccountId, HasFee, HasInstrument, HasPnl, Instrument, RequestFieldAccessError,
+    RequestFields,
 };
 
 trait HasStrategyTag {
@@ -36,6 +37,12 @@ struct DerivedOrder {
     operation: OrderCore,
     #[openpit(inner, HasStrategyTag(-> Result<&str, RequestFieldAccessError>))]
     inner: OrderInner,
+}
+
+impl HasAccountId for DerivedOrder {
+    fn account_id(&self) -> Result<AccountId, RequestFieldAccessError> {
+        Ok(AccountId::from_u64(0))
+    }
 }
 
 struct ReportCore {
@@ -76,6 +83,12 @@ struct DerivedReport {
     inner: ReportInner,
 }
 
+impl HasAccountId for DerivedReport {
+    fn account_id(&self) -> Result<AccountId, RequestFieldAccessError> {
+        Ok(AccountId::from_u64(0))
+    }
+}
+
 #[test]
 fn derive_feature_reexport_builds_wrappers_and_engine_smoke_path() {
     let instrument = Instrument::new(
@@ -112,17 +125,18 @@ fn derive_feature_reexport_builds_wrappers_and_engine_smoke_path() {
         Ok(Fee::from_str("-1").expect("must be valid"))
     );
 
+    let builder = Engine::<DerivedOrder, DerivedReport>::builder().with_local_sync();
     let pnl_policy = PnlBoundsKillSwitchPolicy::new(
-        PnlBoundsBarrier {
+        [PnlBoundsBrokerBarrier {
             settlement_asset: Asset::new("USD").expect("must be valid"),
             lower_bound: Some(Pnl::from_str("-500").expect("must be valid")),
             upper_bound: None,
-            initial_pnl: Pnl::ZERO,
-        },
+        }],
         [],
+        builder.storage_builder(),
     )
     .expect("must build policy");
-    let engine = Engine::<DerivedOrder, DerivedReport>::builder()
+    let engine = builder
         .check_pre_trade_start_policy(pnl_policy)
         .build()
         .expect("must build engine");

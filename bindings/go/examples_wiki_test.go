@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"go.openpit.dev/openpit/model"
 	"go.openpit.dev/openpit/param"
@@ -192,15 +193,13 @@ func wikiExampleReport(t *testing.T, pnlStr, feeStr string) model.ExecutionRepor
 	return report
 }
 
-func wikiExampleEngine(t *testing.T, startPolicies ...pretrade.BuiltinPolicy) *Engine {
+func wikiExampleEngine(t *testing.T) *Engine {
 	t.Helper()
 
-	builder, err := NewEngineBuilder()
-	if err != nil {
-		t.Fatalf("NewEngineBuilder() error = %v", err)
-	}
-	builder.BuiltinCheckPreTradeStartPolicy(startPolicies...)
-	engine, err := builder.Build()
+	engine, err := NewEngineBuilder().
+		WithFullSync().
+		Builtin(policies.BuildOrderValidation()).
+		Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -342,7 +341,7 @@ func (wikiReserveThenValidatePolicy) ApplyExecutionReport(model.ExecutionReport)
 
 // Used in: pit.wiki/Pre-trade-Pipeline.md — Handle a Start-Stage Reject
 func TestExampleWikiPipelineStartStageReject(t *testing.T) {
-	engine := wikiExampleEngine(t, policies.NewOrderValidation())
+	engine := wikiExampleEngine(t)
 	order := wikiExampleOrder(t, "100", "185")
 
 	request, rejects, err := engine.StartPreTrade(order)
@@ -364,7 +363,7 @@ func TestExampleWikiPipelineStartStageReject(t *testing.T) {
 // Used in: pit.wiki/Pre-trade-Pipeline.md — Execute the Main Stage and
 // Finalize the Reservation
 func TestExampleWikiPipelineMainStageFinalize(t *testing.T) {
-	engine := wikiExampleEngine(t, policies.NewOrderValidation())
+	engine := wikiExampleEngine(t)
 	order := wikiExampleOrder(t, "100", "185")
 
 	request, rejects, err := engine.StartPreTrade(order)
@@ -396,7 +395,7 @@ func TestExampleWikiPipelineMainStageFinalize(t *testing.T) {
 // Used in: pit.wiki/Pre-trade-Pipeline.md — Shortcut for Start + Main Stages
 // Used in: pit.wiki/Getting-Started.md — Shortcut for Start + Main Stages
 func TestExampleWikiPipelineShortcutStartAndMain(t *testing.T) {
-	engine := wikiExampleEngine(t, policies.NewOrderValidation())
+	engine := wikiExampleEngine(t)
 	order := wikiExampleOrder(t, "100", "185")
 
 	reservation, rejects, err := engine.ExecutePreTrade(order)
@@ -418,7 +417,7 @@ func TestExampleWikiPipelineShortcutStartAndMain(t *testing.T) {
 
 // Used in: pit.wiki/Pre-trade-Pipeline.md — Apply Post-Trade Feedback
 func TestExampleWikiPipelineApplyPostTrade(t *testing.T) {
-	engine := wikiExampleEngine(t, policies.NewOrderValidation())
+	engine := wikiExampleEngine(t)
 	report := wikiExampleReport(t, "-50", "3.4")
 
 	result, err := engine.ApplyExecutionReport(report)
@@ -438,12 +437,8 @@ func TestExampleWikiPolicyNotionalCap(t *testing.T) {
 	}
 
 	policy := &wikiNotionalCapPolicy{MaxAbsNotional: maxNotional}
-	builder, err := NewEngineBuilder()
-	if err != nil {
-		t.Fatalf("NewEngineBuilder() error = %v", err)
-	}
-	builder.PreTradePolicy(policy)
-	engine, err := builder.Build()
+
+	engine, err := NewEngineBuilder().WithFullSync().PreTradePolicy(policy).Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -506,12 +501,8 @@ func TestExampleWikiPolicyRollbackSafety(t *testing.T) {
 		reserved: param.VolumeZero,
 		limit:    limit,
 	}
-	builder, err := NewEngineBuilder()
-	if err != nil {
-		t.Fatalf("NewEngineBuilder() error = %v", err)
-	}
-	builder.PreTradePolicy(policy)
-	engine, err := builder.Build()
+
+	engine, err := NewEngineBuilder().WithFullSync().PreTradePolicy(policy).Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -567,37 +558,45 @@ func TestExampleWikiGettingStartedBuildEngine(t *testing.T) {
 		t.Fatalf("NewVolumeFromString() error = %v", err)
 	}
 
-	pnlPolicy, err := policies.NewPnlBoundsKillSwitchPolicy(policies.PnlBoundsBarrier{
-		SettlementAsset: usd,
-		LowerBound:      optional.Some(lowerBound),
-		InitialPnl:      param.PnlZero,
-	})
-	if err != nil {
-		t.Fatalf("NewPnlBoundsKillSwitchPolicy() error = %v", err)
-	}
-	defer pnlPolicy.Close()
-
-	sizePolicy, err := policies.NewOrderSizeLimitPolicy(policies.OrderSizeLimit{
-		SettlementAsset: usd,
-		MaxQuantity:     maxQty,
-		MaxNotional:     maxNotional,
-	})
-	if err != nil {
-		t.Fatalf("NewOrderSizeLimitPolicy() error = %v", err)
-	}
-	defer sizePolicy.Close()
-
-	builder, err := NewEngineBuilder()
-	if err != nil {
-		t.Fatalf("NewEngineBuilder() error = %v", err)
-	}
-	builder.BuiltinCheckPreTradeStartPolicy(
-		policies.NewOrderValidation(),
-		pnlPolicy,
-		policies.NewRateLimitPolicy(100, 1),
-		sizePolicy,
-	)
-	engine, err := builder.Build()
+	engine, err := NewEngineBuilder().
+		WithFullSync().
+		Builtin(policies.BuildOrderValidation()).
+		Builtin(
+			policies.BuildPnlBoundsKillswitch().BrokerBarriers(
+				policies.PnlBoundsBrokerBarrier{
+					SettlementAsset: usd,
+					LowerBound:      optional.Some(lowerBound),
+				},
+			),
+		).
+		Builtin(
+			policies.BuildRateLimit().BrokerBarrier(
+				policies.RateLimitBrokerBarrier{
+					Limit: policies.RateLimit{MaxOrders: 100, Window: time.Second},
+				},
+			),
+		).
+		Builtin(
+			policies.BuildOrderSizeLimit().
+				AssetBarriers(
+					policies.OrderSizeAssetBarrier{
+						SettlementAsset: usd,
+						Limit: policies.OrderSizeLimit{
+							MaxQuantity: maxQty,
+							MaxNotional: maxNotional,
+						},
+					},
+				).
+				BrokerBarrier(
+					policies.OrderSizeBrokerBarrier{
+						Limit: policies.OrderSizeLimit{
+							MaxQuantity: maxQty,
+							MaxNotional: maxNotional,
+						},
+					},
+				),
+		).
+		Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -662,7 +661,7 @@ func TestExampleWikiGettingStartedBuildEngine(t *testing.T) {
 
 // Used in: pit.wiki/Getting-Started.md — Shortcut for Start + Main Stages
 func TestExampleWikiGettingStartedShortcut(t *testing.T) {
-	engine := wikiExampleEngine(t, policies.NewOrderValidation())
+	engine := wikiExampleEngine(t)
 	order := wikiExampleOrder(t, "100", "185")
 
 	reservation, rejects, err := engine.ExecutePreTrade(order)
@@ -684,7 +683,7 @@ func TestExampleWikiGettingStartedShortcut(t *testing.T) {
 
 // Used in: pit.wiki/Getting-Started.md — Run an Order Through the Engine
 func TestExampleWikiGettingStartedRunOrder(t *testing.T) {
-	engine := wikiExampleEngine(t, policies.NewOrderValidation())
+	engine := wikiExampleEngine(t)
 	order := wikiExampleOrder(t, "100", "185")
 
 	request, rejects, err := engine.StartPreTrade(order)
@@ -721,7 +720,7 @@ func TestExampleWikiGettingStartedRunOrder(t *testing.T) {
 
 // Used in: pit.wiki/Getting-Started.md — Apply Post-Trade Feedback
 func TestExampleWikiGettingStartedApplyPostTrade(t *testing.T) {
-	engine := wikiExampleEngine(t, policies.NewOrderValidation())
+	engine := wikiExampleEngine(t)
 	report := wikiExampleReport(t, "-50", "3.4")
 
 	result, err := engine.ApplyExecutionReport(report)
@@ -735,12 +734,10 @@ func TestExampleWikiGettingStartedApplyPostTrade(t *testing.T) {
 
 // Used in: pit.wiki/Policy-API.md — Example: Go Custom Models
 func TestExampleWikiCustomGoModels(t *testing.T) {
-	builder, err := NewClientPreTradeEngineBuilder[wikiStrategyOrder, wikiStrategyReport]()
-	if err != nil {
-		t.Fatalf("NewClientPreTradeEngineBuilder() error = %v", err)
-	}
-	builder.CheckPreTradeStartPolicy(&wikiStrategyTagPolicy{})
-	engine, err := builder.Build()
+	engine, err := NewClientPreTradeEngineBuilder[wikiStrategyOrder, wikiStrategyReport]().
+		WithFullSync().
+		CheckPreTradeStartPolicy(&wikiStrategyTagPolicy{}).
+		Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -785,15 +782,195 @@ func TestExampleWikiCustomGoModels(t *testing.T) {
 	}
 }
 
+// Used in: pit.wiki/Policies.md — OrderValidationPolicy
+func TestExampleWikiPoliciesOrderValidation(t *testing.T) {
+	engine, err := NewEngineBuilder().
+		WithLocalSync().
+		Builtin(
+			policies.BuildOrderValidation(),
+		).
+		Build()
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	defer engine.Stop()
+
+	order := wikiExampleOrder(t, "100", "185")
+	request, rejects, err := engine.StartPreTrade(order)
+	if err != nil {
+		t.Fatalf("StartPreTrade() error = %v", err)
+	}
+	if rejects != nil {
+		t.Fatalf("StartPreTrade() unexpected rejects: %v", rejects)
+	}
+	reservation, rejects, err := request.Execute()
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if rejects != nil {
+		t.Fatalf("Execute() unexpected rejects: %v", rejects)
+	}
+	reservation.CommitAndClose()
+}
+
+// Used in: pit.wiki/Policies.md — RateLimitPolicy
+func TestExampleWikiPoliciesRateLimit(t *testing.T) {
+	engine, err := NewEngineBuilder().
+		WithLocalSync().
+		Builtin(
+			policies.BuildRateLimit().
+				BrokerBarrier(
+					policies.RateLimitBrokerBarrier{
+						Limit: policies.RateLimit{
+							MaxOrders: 100,
+							Window:    time.Second,
+						},
+					},
+				),
+		).
+		Build()
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	defer engine.Stop()
+
+	order := wikiExampleOrder(t, "1", "100")
+	request, rejects, err := engine.StartPreTrade(order)
+	if err != nil {
+		t.Fatalf("StartPreTrade() error = %v", err)
+	}
+	if rejects != nil {
+		t.Fatalf("StartPreTrade() unexpected rejects: %v", rejects)
+	}
+	reservation, rejects, err := request.Execute()
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if rejects != nil {
+		t.Fatalf("Execute() unexpected rejects: %v", rejects)
+	}
+	reservation.CommitAndClose()
+}
+
+// Used in: pit.wiki/Policies.md — OrderSizeLimitPolicy
+func TestExampleWikiPoliciesOrderSizeLimit(t *testing.T) {
+	usd, err := param.NewAsset("USD")
+	if err != nil {
+		t.Fatalf("NewAsset() error = %v", err)
+	}
+	maxQty, err := param.NewQuantityFromString("100")
+	if err != nil {
+		t.Fatalf("NewQuantityFromString() error = %v", err)
+	}
+	maxNotional, err := param.NewVolumeFromString("50000")
+	if err != nil {
+		t.Fatalf("NewVolumeFromString() error = %v", err)
+	}
+
+	engine, err := NewEngineBuilder().
+		WithLocalSync().
+		Builtin(
+			policies.BuildOrderSizeLimit().
+				AssetBarriers(
+					policies.OrderSizeAssetBarrier{
+						SettlementAsset: usd,
+						Limit: policies.OrderSizeLimit{
+							MaxQuantity: maxQty,
+							MaxNotional: maxNotional,
+						},
+					},
+				).
+				BrokerBarrier(
+					policies.OrderSizeBrokerBarrier{
+						Limit: policies.OrderSizeLimit{
+							MaxQuantity: maxQty,
+							MaxNotional: maxNotional,
+						},
+					},
+				),
+		).
+		Build()
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	defer engine.Stop()
+
+	order := wikiExampleOrder(t, "10", "100")
+	request, rejects, err := engine.StartPreTrade(order)
+	if err != nil {
+		t.Fatalf("StartPreTrade() error = %v", err)
+	}
+	if rejects != nil {
+		t.Fatalf("StartPreTrade() unexpected rejects: %v", rejects)
+	}
+	reservation, rejects, err := request.Execute()
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if rejects != nil {
+		t.Fatalf("Execute() unexpected rejects: %v", rejects)
+	}
+	reservation.CommitAndClose()
+}
+
+// Used in: pit.wiki/Policies.md — PnlBoundsKillSwitchPolicy
+func TestExampleWikiPoliciesPnlBoundsKillswitch(t *testing.T) {
+	usd, err := param.NewAsset("USD")
+	if err != nil {
+		t.Fatalf("NewAsset() error = %v", err)
+	}
+	lowerBound, err := param.NewPnlFromString("-1000")
+	if err != nil {
+		t.Fatalf("NewPnlFromString() error = %v", err)
+	}
+	upperBound, err := param.NewPnlFromString("500")
+	if err != nil {
+		t.Fatalf("NewPnlFromString() error = %v", err)
+	}
+
+	engine, err := NewEngineBuilder().
+		WithLocalSync().
+		Builtin(
+			policies.BuildPnlBoundsKillswitch().
+				BrokerBarriers(
+					policies.PnlBoundsBrokerBarrier{
+						SettlementAsset: usd,
+						LowerBound:      optional.Some(lowerBound),
+						UpperBound:      optional.Some(upperBound),
+					},
+				),
+		).
+		Build()
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	defer engine.Stop()
+
+	order := wikiExampleOrder(t, "1", "100")
+	request, rejects, err := engine.StartPreTrade(order)
+	if err != nil {
+		t.Fatalf("StartPreTrade() error = %v", err)
+	}
+	if rejects != nil {
+		t.Fatalf("StartPreTrade() unexpected rejects: %v", rejects)
+	}
+	reservation, rejects, err := request.Execute()
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if rejects != nil {
+		t.Fatalf("Execute() unexpected rejects: %v", rejects)
+	}
+	reservation.CommitAndClose()
+}
+
 // Used in: pit.wiki/Custom-Go-Types.md — Example
 // Keep this example synced with the wiki snippet when the ClientEngine API changes.
 func TestExampleWikiCustomGoTypes(t *testing.T) {
-	builder, err := NewClientPreTradeEngineBuilder[wikiStrategyOrder, wikiStrategyReport]()
-	if err != nil {
-		t.Fatalf("NewClientPreTradeEngineBuilder() error = %v", err)
-	}
-	builder.CheckPreTradeStartPolicy(&wikiStrategyTagPolicy{})
-	engine, err := builder.Build()
+	engine, err := NewClientPreTradeEngineBuilder[wikiStrategyOrder, wikiStrategyReport]().
+		WithFullSync().
+		CheckPreTradeStartPolicy(&wikiStrategyTagPolicy{}).
+		Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}

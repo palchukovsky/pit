@@ -292,6 +292,7 @@ def test_policy_callbacks_preserve_original_objects_across_interleaving(
     sequence_main = SequenceFenceMainPolicy(name="sequence-main", journal=journal)
     engine = (
         openpit.Engine.builder()
+        .with_local_sync()
         .check_pre_trade_start_policy(policy=capture_start)
         .check_pre_trade_start_policy(policy=sequence_start)
         .pre_trade_policy(policy=capture_main)

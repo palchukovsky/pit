@@ -91,6 +91,7 @@ def test_policy_decision_and_mutation_factories() -> None:
 def test_custom_start_policy_reject_is_returned_as_result() -> None:
     engine = (
         openpit.Engine.builder()
+        .with_local_sync()
         .check_pre_trade_start_policy(policy=BlockAllStartPolicy())
         .build()
     )
@@ -106,6 +107,7 @@ def test_custom_start_policy_reject_is_returned_as_result() -> None:
 def test_custom_start_policy_post_trade_hook_is_supported() -> None:
     engine = (
         openpit.Engine.builder()
+        .with_local_sync()
         .check_pre_trade_start_policy(policy=ReportHookStartPolicy())
         .build()
     )

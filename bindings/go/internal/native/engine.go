@@ -35,8 +35,24 @@ import (
 //------------------------------------------------------------------------------
 // Engine
 
-func CreateEngineBuilder() EngineBuilder {
-	return C.pit_create_engine_builder()
+type SyncPolicy = C.PitSyncPolicy
+
+const (
+	SyncPolicyFull    SyncPolicy = C.PitSyncPolicy_Full
+	SyncPolicyLocal   SyncPolicy = C.PitSyncPolicy_Local
+	SyncPolicyAccount SyncPolicy = C.PitSyncPolicy_Account
+)
+
+func CreateEngineBuilder(syncPolicy SyncPolicy) (EngineBuilder, error) {
+	var outError SharedString
+	builder := C.pit_create_engine_builder(
+		syncPolicy,
+		C.PitOutError(&outError), //nolint:gocritic
+	)
+	if builder == nil {
+		return nil, consumeSharedStringAsError(outError, "pit_create_engine_builder failed")
+	}
+	return builder, nil
 }
 
 func DestroyEngineBuilder(builder EngineBuilder) {
@@ -91,6 +107,128 @@ func EngineBuilderAddAccountAdjustmentPolicy(
 		return consumeSharedStringAsError(
 			outError,
 			"pit_engine_builder_add_account_adjustment_policy failed",
+		)
+	}
+	return nil
+}
+
+func EngineBuilderAddBuiltinOrderValidation(builder EngineBuilder) error {
+	var outError SharedString
+	if !C.pit_engine_builder_add_builtin_order_validation_policy(
+		builder,
+		C.PitOutError(&outError), //nolint:gocritic
+	) {
+		return consumeSharedStringAsError(
+			outError,
+			"pit_engine_builder_add_builtin_order_validation_policy failed",
+		)
+	}
+	return nil
+}
+
+func EngineBuilderAddBuiltinRateLimit(
+	builder EngineBuilder,
+	broker *PretradePoliciesRateLimitBrokerBarrier,
+	assets []PretradePoliciesRateLimitAssetBarrier,
+	accounts []PretradePoliciesRateLimitAccountBarrier,
+	accountAssets []PretradePoliciesRateLimitAccountAssetBarrier,
+) error {
+	var assetsPtr *C.PitPretradePoliciesRateLimitAssetBarrier
+	if len(assets) > 0 {
+		assetsPtr = (*C.PitPretradePoliciesRateLimitAssetBarrier)(unsafe.Pointer(&assets[0]))
+	}
+	var accountsPtr *C.PitPretradePoliciesRateLimitAccountBarrier
+	if len(accounts) > 0 {
+		accountsPtr = (*C.PitPretradePoliciesRateLimitAccountBarrier)(unsafe.Pointer(&accounts[0]))
+	}
+	var accountAssetsPtr *C.PitPretradePoliciesRateLimitAccountAssetBarrier
+	if len(accountAssets) > 0 {
+		accountAssetsPtr = (*C.PitPretradePoliciesRateLimitAccountAssetBarrier)(unsafe.Pointer(&accountAssets[0]))
+	}
+
+	var outError SharedString
+	if !C.pit_engine_builder_add_builtin_rate_limit_policy(
+		builder,
+		broker,
+		assetsPtr,
+		C.size_t(len(assets)),
+		accountsPtr,
+		C.size_t(len(accounts)),
+		accountAssetsPtr,
+		C.size_t(len(accountAssets)),
+		C.PitOutError(&outError), //nolint:gocritic
+	) {
+		return consumeSharedStringAsError(
+			outError,
+			"pit_engine_builder_add_builtin_rate_limit_policy failed",
+		)
+	}
+	return nil
+}
+
+func EngineBuilderAddBuiltinOrderSizeLimit(
+	builder EngineBuilder,
+	broker *PretradePoliciesOrderSizeBrokerBarrier,
+	assets []PretradePoliciesOrderSizeAssetBarrier,
+	accountAssets []PretradePoliciesOrderSizeAccountAssetBarrier,
+) error {
+	var assetsPtr *C.PitPretradePoliciesOrderSizeAssetBarrier
+	if len(assets) > 0 {
+		assetsPtr = (*C.PitPretradePoliciesOrderSizeAssetBarrier)(unsafe.Pointer(&assets[0]))
+	}
+	var accountAssetsPtr *C.PitPretradePoliciesOrderSizeAccountAssetBarrier
+	if len(accountAssets) > 0 {
+		accountAssetsPtr = (*C.PitPretradePoliciesOrderSizeAccountAssetBarrier)(
+			unsafe.Pointer(&accountAssets[0]),
+		)
+	}
+
+	var outError SharedString
+	if !C.pit_engine_builder_add_builtin_order_size_limit_policy(
+		builder,
+		broker,
+		assetsPtr,
+		C.size_t(len(assets)),
+		accountAssetsPtr,
+		C.size_t(len(accountAssets)),
+		C.PitOutError(&outError), //nolint:gocritic
+	) {
+		return consumeSharedStringAsError(
+			outError,
+			"pit_engine_builder_add_builtin_order_size_limit_policy failed",
+		)
+	}
+	return nil
+}
+
+func EngineBuilderAddBuiltinPnlBoundsKillswitch(
+	builder EngineBuilder,
+	brokerBarriers []PretradePoliciesPnlBoundsBarrier,
+	accountBarriers []PretradePoliciesPnlBoundsAccountBarrier,
+) error {
+	var brokerPtr *C.PitPretradePoliciesPnlBoundsBarrier
+	if len(brokerBarriers) > 0 {
+		brokerPtr = (*C.PitPretradePoliciesPnlBoundsBarrier)(unsafe.Pointer(&brokerBarriers[0]))
+	}
+	var accountPtr *C.PitPretradePoliciesPnlBoundsAccountBarrier
+	if len(accountBarriers) > 0 {
+		accountPtr = (*C.PitPretradePoliciesPnlBoundsAccountBarrier)(
+			unsafe.Pointer(&accountBarriers[0]),
+		)
+	}
+
+	var outError SharedString
+	if !C.pit_engine_builder_add_builtin_pnl_bounds_killswitch_policy(
+		builder,
+		brokerPtr,
+		C.size_t(len(brokerBarriers)),
+		accountPtr,
+		C.size_t(len(accountBarriers)),
+		C.PitOutError(&outError), //nolint:gocritic
+	) {
+		return consumeSharedStringAsError(
+			outError,
+			"pit_engine_builder_add_builtin_pnl_bounds_killswitch_policy failed",
 		)
 	}
 	return nil
@@ -192,8 +330,9 @@ func EngineApplyAccountAdjustment(
 	accountID ParamAccountID,
 	adjustments []AccountAdjustment,
 ) (AccountAdjustmentBatchError, error) {
-	if len(adjustments) == 0 {
-		return nil, errors.New("adjustment list is empty")
+	var adjustmentsPtr *C.PitAccountAdjustment
+	if len(adjustments) > 0 {
+		adjustmentsPtr = (*C.PitAccountAdjustment)(unsafe.Pointer(&adjustments[0]))
 	}
 
 	var reject AccountAdjustmentBatchError
@@ -201,7 +340,7 @@ func EngineApplyAccountAdjustment(
 	status := C.pit_engine_apply_account_adjustment(
 		engine,
 		accountID,
-		(*C.PitAccountAdjustment)(unsafe.Pointer(&adjustments[0])),
+		adjustmentsPtr,
 		C.size_t(len(adjustments)),
 		&reject,
 		C.PitOutError(&outError), //nolint:gocritic

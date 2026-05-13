@@ -7,10 +7,13 @@ reservation, and leaves external I/O to the caller.
 ## Engine
 
 `openpit.Engine` is the runtime object that owns policy instances. Build it once
-with `openpit.Engine.builder()` and reuse it for sequential calls.
+with `openpit.Engine.builder()`, choose a synchronization policy, and reuse it
+for the matching call pattern.
 
-The engine is single-threaded by contract. Do not call public methods on the
-same engine object concurrently.
+`with_full_sync()` allows concurrent calls on the same engine handle.
+`with_local_sync()` keeps the handle on the OS thread that created it.
+`with_account_sync()` allows concurrent calls when the caller pins each account
+to one processing chain so calls for the same account are never concurrent.
 
 ## Start stage
 

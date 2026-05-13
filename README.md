@@ -46,6 +46,11 @@ strategy and risk policies:
 - sliding-window rate limit
 - per-settlement order size limits
 
+Custom policies that maintain state across calls can use the built-in
+[Storage](https://github.com/openpitkit/pit/wiki/Storage) abstraction -
+synchronization is selected once at engine construction and applied
+transparently, with no overhead in single-threaded embeddings.
+
 The engine is intentionally in-memory and deterministic. It is designed to be
 embedded into a larger trading system rather than replace one. For custom
 policy APIs, see the wiki:

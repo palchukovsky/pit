@@ -95,9 +95,8 @@ class MissingPriceOrder(openpit.Order):
 def test_engine_builder_supports_chaining_and_main_stage_policy() -> None:
     engine = (
         openpit.Engine.builder()
-        .check_pre_trade_start_policy(
-            policy=openpit.pretrade.policies.OrderValidationPolicy(),
-        )
+        .with_local_sync()
+        .builtin(openpit.pretrade.policies.build_order_validation())
         .pre_trade_policy(policy=AcceptPolicy())
         .build()
     )
@@ -114,6 +113,7 @@ def test_builder_rejects_duplicate_policy_names() -> None:
     with pytest.raises(ValueError, match="duplicate policy name"):
         (
             openpit.Engine.builder()
+            .with_local_sync()
             .pre_trade_policy(policy=NamedRejectPolicy(policy_name="dup"))
             .pre_trade_policy(policy=NamedRejectPolicy(policy_name="dup"))
             .build()
@@ -122,7 +122,12 @@ def test_builder_rejects_duplicate_policy_names() -> None:
 
 @pytest.mark.unit
 def test_engine_start_pre_trade_accepts_order_subclass() -> None:
-    engine = openpit.Engine.builder().build()
+    engine = (
+        openpit.Engine.builder()
+        .with_local_sync()
+        .pre_trade_policy(policy=AcceptPolicy())
+        .build()
+    )
 
     order = TaggedOrder(strategy_tag="alpha-1")
     start_result = engine.start_pre_trade(order=order)
@@ -136,7 +141,12 @@ def test_engine_start_pre_trade_accepts_order_subclass() -> None:
 
 @pytest.mark.unit
 def test_engine_start_pre_trade_rejects_plain_python_object() -> None:
-    engine = openpit.Engine.builder().build()
+    engine = (
+        openpit.Engine.builder()
+        .with_local_sync()
+        .pre_trade_policy(policy=AcceptPolicy())
+        .build()
+    )
 
     with pytest.raises(TypeError, match="order must inherit from openpit.Order"):
         engine.start_pre_trade(order=object())
@@ -144,7 +154,12 @@ def test_engine_start_pre_trade_rejects_plain_python_object() -> None:
 
 @pytest.mark.unit
 def test_engine_start_pre_trade_accepts_order_subclass_without_price() -> None:
-    engine = openpit.Engine.builder().build()
+    engine = (
+        openpit.Engine.builder()
+        .with_local_sync()
+        .pre_trade_policy(policy=AcceptPolicy())
+        .build()
+    )
 
     start_result = engine.start_pre_trade(order=MissingPriceOrder())
     assert start_result.ok

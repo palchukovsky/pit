@@ -12,9 +12,8 @@ def test_start_pre_trade_order_without_operation_produces_missing_field_reject()
 ):
     engine = (
         openpit.Engine.builder()
-        .check_pre_trade_start_policy(
-            policy=openpit.pretrade.policies.OrderValidationPolicy()
-        )
+        .with_local_sync()
+        .builtin(openpit.pretrade.policies.build_order_validation())
         .build()
     )
     order = openpit.Order()
@@ -26,13 +25,19 @@ def test_start_pre_trade_order_without_operation_produces_missing_field_reject()
 
 @pytest.mark.unit
 def test_start_pre_trade_pnl_kill_switch_without_operation_rejects() -> None:
-    policy = openpit.pretrade.policies.PnlBoundsKillSwitchPolicy(
-        settlement_asset="USD",
-        lower_bound=openpit.param.Pnl("-500"),
-        initial_pnl=openpit.param.Pnl("0"),
-    )
+    policies = openpit.pretrade.policies
     engine = (
-        openpit.Engine.builder().check_pre_trade_start_policy(policy=policy).build()
+        openpit.Engine.builder()
+        .with_local_sync()
+        .builtin(
+            policies.build_pnl_bounds_killswitch().broker_barriers(
+                policies.PnlBoundsBrokerBarrier(
+                    settlement_asset="USD",
+                    lower_bound=openpit.param.Pnl("-500"),
+                )
+            )
+        )
+        .build()
     )
     order = openpit.Order()
     result = engine.start_pre_trade(order=order)
@@ -48,13 +53,19 @@ def test_apply_execution_report_without_financial_impact_does_not_panic() -> Non
 
     Kill switch must not trigger.
     """
-    policy = openpit.pretrade.policies.PnlBoundsKillSwitchPolicy(
-        settlement_asset="USD",
-        lower_bound=openpit.param.Pnl("-500"),
-        initial_pnl=openpit.param.Pnl("0"),
-    )
+    policies = openpit.pretrade.policies
     engine = (
-        openpit.Engine.builder().check_pre_trade_start_policy(policy=policy).build()
+        openpit.Engine.builder()
+        .with_local_sync()
+        .builtin(
+            policies.build_pnl_bounds_killswitch().broker_barriers(
+                policies.PnlBoundsBrokerBarrier(
+                    settlement_asset="USD",
+                    lower_bound=openpit.param.Pnl("-500"),
+                )
+            )
+        )
+        .build()
     )
     report = openpit.ExecutionReport(
         operation=openpit.ExecutionReportOperation(
@@ -72,15 +83,29 @@ def test_apply_execution_report_without_financial_impact_does_not_panic() -> Non
 
 @pytest.mark.unit
 def test_start_pre_trade_order_size_limit_without_operation_rejects() -> None:
-    limit = openpit.pretrade.policies.OrderSizeLimit(
-        settlement_asset="USD",
-        max_quantity=openpit.param.Quantity("100"),
-        max_notional=openpit.param.Volume("50000"),
-    )
+    policies = openpit.pretrade.policies
     engine = (
         openpit.Engine.builder()
-        .check_pre_trade_start_policy(
-            policy=openpit.pretrade.policies.OrderSizeLimitPolicy(limit=limit)
+        .with_local_sync()
+        .builtin(
+            policies.build_order_size_limit()
+            .broker_barrier(
+                policies.OrderSizeBrokerBarrier(
+                    limit=policies.OrderSizeLimit(
+                        max_quantity=openpit.param.Quantity("1000000"),
+                        max_notional=openpit.param.Volume("1000000000"),
+                    )
+                )
+            )
+            .asset_barriers(
+                policies.OrderSizeAssetBarrier(
+                    limit=policies.OrderSizeLimit(
+                        max_quantity=openpit.param.Quantity("100"),
+                        max_notional=openpit.param.Volume("50000"),
+                    ),
+                    settlement_asset="USD",
+                )
+            )
         )
         .build()
     )

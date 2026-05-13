@@ -109,9 +109,8 @@ class RejectWithUserDataTokenPolicy(openpit.pretrade.PreTradePolicy):
 def test_start_result_exposes_reject_without_exception() -> None:
     engine = (
         openpit.Engine.builder()
-        .check_pre_trade_start_policy(
-            policy=openpit.pretrade.policies.OrderValidationPolicy(),
-        )
+        .with_local_sync()
+        .builtin(openpit.pretrade.policies.build_order_validation())
         .build()
     )
 
@@ -121,10 +120,7 @@ def test_start_result_exposes_reject_without_exception() -> None:
     assert not start_result
     assert start_result.request is None
     assert len(start_result.rejects) == 1
-    assert (
-        start_result.rejects[0].policy
-        == openpit.pretrade.policies.OrderValidationPolicy.NAME
-    )
+    assert start_result.rejects[0].policy == "OrderValidationPolicy"
     assert start_result.rejects[0].scope == "order"
     assert "StartPreTradeResult" in repr(start_result)
 
@@ -133,6 +129,7 @@ def test_start_result_exposes_reject_without_exception() -> None:
 def test_execute_result_exposes_rejects_without_exception() -> None:
     engine = (
         openpit.Engine.builder()
+        .with_local_sync()
         .pre_trade_policy(
             policy=AlwaysRejectPolicy(),
         )
@@ -155,6 +152,7 @@ def test_execute_result_exposes_rejects_without_exception() -> None:
 def test_execute_result_reject_with_mutations_still_has_no_reservation() -> None:
     engine = (
         openpit.Engine.builder()
+        .with_local_sync()
         .pre_trade_policy(
             policy=RejectWithMutationPolicy(),
         )
@@ -176,6 +174,7 @@ def test_execute_result_reject_with_mutations_still_has_no_reservation() -> None
 def test_execute_result_reject_roundtrips_integer_user_data_token() -> None:
     engine = (
         openpit.Engine.builder()
+        .with_local_sync()
         .pre_trade_policy(policy=RejectWithUserDataTokenPolicy())
         .build()
     )
@@ -191,7 +190,10 @@ def test_execute_result_reject_roundtrips_integer_user_data_token() -> None:
 @pytest.mark.unit
 def test_execute_result_reject_user_data_defaults_to_zero() -> None:
     engine = (
-        openpit.Engine.builder().pre_trade_policy(policy=AlwaysRejectPolicy()).build()
+        openpit.Engine.builder()
+        .with_local_sync()
+        .pre_trade_policy(policy=AlwaysRejectPolicy())
+        .build()
     )
     request = engine.start_pre_trade(order=conftest.make_order()).request
     execute_result = request.execute()
@@ -236,6 +238,7 @@ class RejectWithInvalidUserDataPolicy(openpit.pretrade.PreTradePolicy):
 def test_execute_result_reject_user_data_invalid_type_raises_value_error() -> None:
     engine = (
         openpit.Engine.builder()
+        .with_local_sync()
         .pre_trade_policy(policy=RejectWithInvalidUserDataPolicy())
         .build()
     )

@@ -5,6 +5,7 @@ the reservation, and sends a post-trade report back to the engine.
 
 ```python
 import openpit
+import openpit.pretrade.policies
 
 
 def send_order_to_venue(order: openpit.Order) -> None:
@@ -14,8 +15,9 @@ def send_order_to_venue(order: openpit.Order) -> None:
 
 engine = (
     openpit.Engine.builder()
-    .check_pre_trade_start_policy(
-        policy=openpit.pretrade.policies.OrderValidationPolicy(),
+    .with_local_sync()
+    .builtin(
+        openpit.pretrade.policies.build_order_validation(),
     )
     .build()
 )

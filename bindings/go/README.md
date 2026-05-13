@@ -65,10 +65,10 @@ produced.
 
 Built-in start-stage policies currently include:
 
-- `policies.NewOrderValidation()`
-- `policies.NewPnlBoundsKillSwitchPolicy(...)`
-- `policies.NewRateLimitPolicy(...)`
-- `policies.NewOrderSizeLimitPolicy(...)`
+- `policies.BuildOrderValidation()`
+- `policies.BuildPnlBoundsKillswitch()...`
+- `policies.BuildRateLimit()...`
+- `policies.BuildOrderSizeLimit()...`
 
 The primary integration model is to write project-specific policies against the
 public Go policy API described in the wiki:
@@ -87,6 +87,11 @@ between OS threads during one SDK call is supported, and callbacks invoked by
 the SDK may run on a different OS thread than the goroutine that initiated the
 call.
 
+Custom policies that need internal state across calls use the built-in
+[Storage](https://github.com/openpitkit/pit/wiki/Storage) abstraction -
+synchronization-aware key-value storage that handles goroutine migration
+correctly without exposing locks to the policy code.
+
 ## Usage
 
 ```go
@@ -95,6 +100,7 @@ package main
 import (
  "fmt"
  "log"
+ "time"
 
  "go.openpit.dev/openpit"
  "go.openpit.dev/openpit/model"
@@ -122,43 +128,51 @@ func main() {
   log.Fatal(err)
  }
 
- // 1. Configure policies.
- pnlPolicy, err := policies.NewPnlBoundsKillSwitchPolicy(
-  policies.PnlBoundsBarrier{
-   SettlementAsset: usd,
-   LowerBound:      optional.Some(lowerBound),
-   InitialPnl:      param.PnlZero,
-  },
- )
- if err != nil {
-  log.Fatal(err)
- }
- defer pnlPolicy.Close()
-
- sizePolicy, err := policies.NewOrderSizeLimitPolicy(
-  policies.OrderSizeLimit{
-   SettlementAsset: usd,
-   MaxQuantity:     maxQty,
-   MaxNotional:     maxNotional,
-  },
- )
- if err != nil {
-  log.Fatal(err)
- }
- defer sizePolicy.Close()
-
- // 2. Build the engine (one time at the platform initialization).
- builder, err := openpit.NewEngineBuilder()
- if err != nil {
-  log.Fatal(err)
- }
- builder.BuiltinCheckPreTradeStartPolicy(
-  policies.NewOrderValidation(),
-  pnlPolicy,
-  policies.NewRateLimitPolicy(100, 1),
-  sizePolicy,
- )
- engine, err := builder.Build()
+ // 1. Build the engine (one time at the platform initialization).
+ engine, err := openpit.NewEngineBuilder().
+  WithFullSync().
+  Builtin(policies.BuildOrderValidation()).
+  Builtin(
+   policies.BuildPnlBoundsKillswitch().
+    BrokerBarriers(
+     policies.PnlBoundsBrokerBarrier{
+      SettlementAsset: usd,
+      LowerBound:      optional.Some(lowerBound),
+     },
+    ),
+  ).
+  Builtin(
+   policies.BuildRateLimit().
+    BrokerBarrier(
+     policies.RateLimitBrokerBarrier{
+      Limit: policies.RateLimit{
+       MaxOrders: 100,
+       Window:    time.Second,
+      },
+     },
+    ),
+  ).
+  Builtin(
+   policies.BuildOrderSizeLimit().
+    BrokerBarrier(
+     policies.OrderSizeBrokerBarrier{
+      Limit: policies.OrderSizeLimit{
+       MaxQuantity: maxQty,
+       MaxNotional: maxNotional,
+      },
+     },
+    ).
+    AssetBarriers(
+     policies.OrderSizeAssetBarrier{
+      SettlementAsset: usd,
+      Limit: policies.OrderSizeLimit{
+       MaxQuantity: maxQty,
+       MaxNotional: maxNotional,
+      },
+     },
+    ),
+  ).
+  Build()
  if err != nil {
   log.Fatal(err)
  }
@@ -257,7 +271,7 @@ Infrastructure failures and API misuse are returned as the third return value
 - `error` from `engine.StartPreTrade()`, `request.Execute()`, or
   `engine.ApplyExecutionReport()` indicates a transport-level or lifecycle
   failure, not a business reject
-- `error` from policy constructors such as `policies.NewPnlBoundsKillSwitchPolicy()`
+- `error` from policy builders such as `policies.BuildPnlBoundsKillswitch()`
   indicates an invalid configuration
 
 Business rejects use stable codes, for example

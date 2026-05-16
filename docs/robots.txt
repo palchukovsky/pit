@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /partials/
+
+Sitemap: https://openpit.dev/sitemap.xml

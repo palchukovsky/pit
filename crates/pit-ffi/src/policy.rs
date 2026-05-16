@@ -2033,23 +2033,25 @@ mod tests {
     }
 
     fn sample_order() -> Order {
-        Order {
-            operation: OrderOperationAccess::Populated(PopulatedOrderOperation {
-                instrument: Some(Instrument::new(
-                    Asset::new("AAPL").expect("asset code must be valid"),
-                    Asset::new("USD").expect("asset code must be valid"),
-                )),
-                account_id: Some(AccountId::from_u64(99224416)),
-                side: Some(Side::Buy),
-                trade_amount: Some(TradeAmount::Quantity(
-                    Quantity::from_str("1").expect("quantity must be valid"),
-                )),
-                price: None,
-            }),
-            position: None,
-            margin: None,
-            user_data: std::ptr::null_mut(),
-        }
+        pit_interop::RequestWithPayload::new(
+            pit_interop::Order {
+                operation: OrderOperationAccess::Populated(PopulatedOrderOperation {
+                    instrument: Some(Instrument::new(
+                        Asset::new("AAPL").expect("asset code must be valid"),
+                        Asset::new("USD").expect("asset code must be valid"),
+                    )),
+                    account_id: Some(AccountId::from_u64(99224416)),
+                    side: Some(Side::Buy),
+                    trade_amount: Some(TradeAmount::Quantity(
+                        Quantity::from_str("1").expect("quantity must be valid"),
+                    )),
+                    price: None,
+                }),
+                position: pit_interop::OrderPositionAccess::Absent,
+                margin: pit_interop::OrderMarginAccess::Absent,
+            },
+            std::ptr::null_mut(),
+        )
     }
 
     fn execute_with_custom_pre_trade_policy(

@@ -19,15 +19,12 @@
 
 use std::ffi::c_void;
 
-use openpit::param::{AccountId, Quantity, Trade};
+use openpit::param::{AccountId, Trade};
 use openpit::pretrade::PreTradeLock;
-use openpit::ExecutionReportPositionImpact;
-use openpit::{
-    HasAccountId, HasExecutionReportIsFinal, HasFee, HasInstrument, HasPnl, RequestFieldAccessError,
-};
 use pit_interop::{
-    ExecutionReportOperationAccess, FinancialImpactAccess, PopulatedExecutionReportOperation,
-    PopulatedFinancialImpact,
+    ExecutionReportFillAccess, ExecutionReportOperationAccess, ExecutionReportPositionImpactAccess,
+    FinancialImpactAccess, PopulatedExecutionReportFill, PopulatedExecutionReportOperation,
+    PopulatedExecutionReportPositionImpact, PopulatedFinancialImpact, RequestWithPayload,
 };
 
 use crate::define_optional;
@@ -203,9 +200,9 @@ fn import_last_trade(value: PitExecutionReportTradeOptional) -> Result<Option<Tr
     }))
 }
 
-fn import_fill(value: PitExecutionReportFillOptional) -> Result<Option<FillDetailsData>, String> {
+fn import_fill(value: PitExecutionReportFillOptional) -> Result<ExecutionReportFillAccess, String> {
     if !value.is_set {
-        return Ok(None);
+        return Ok(ExecutionReportFillAccess::Absent);
     }
 
     let leaves_quantity = if value.value.leaves_quantity.is_set {
@@ -220,30 +217,30 @@ fn import_fill(value: PitExecutionReportFillOptional) -> Result<Option<FillDetai
         PreTradeLock::new(None)
     };
 
-    Ok(Some(FillDetailsData {
-        last_trade: import_last_trade(value.value.last_trade)?,
-        leaves_quantity,
-        lock,
-        is_final: if value.value.is_final.is_set {
-            Some(value.value.is_final.value)
-        } else {
-            None
+    Ok(ExecutionReportFillAccess::Populated(
+        PopulatedExecutionReportFill {
+            last_trade: import_last_trade(value.value.last_trade)?,
+            leaves_quantity,
+            lock,
+            is_final: if value.value.is_final.is_set {
+                Some(value.value.is_final.value)
+            } else {
+                None
+            },
         },
-    }))
+    ))
 }
 
 fn import_position_impact(
     value: PitExecutionReportPositionImpactOptional,
-) -> Option<PositionImpactData> {
+) -> ExecutionReportPositionImpactAccess {
     if !value.is_set {
-        return None;
+        return ExecutionReportPositionImpactAccess::Absent;
     }
 
-    Some(PositionImpactData {
-        value: ExecutionReportPositionImpact {
-            position_effect: import_position_effect(value.value.position_effect),
-            position_side: import_position_side(value.value.position_side),
-        },
+    ExecutionReportPositionImpactAccess::Populated(PopulatedExecutionReportPositionImpact {
+        position_effect: import_position_effect(value.value.position_effect),
+        position_side: import_position_side(value.value.position_side),
     })
 }
 
@@ -320,9 +317,9 @@ fn export_last_trade(value: Option<Trade>) -> PitExecutionReportTradeOptional {
     }
 }
 
-fn export_fill(value: &Option<FillDetailsData>) -> PitExecutionReportFillOptional {
+fn export_fill(value: &ExecutionReportFillAccess) -> PitExecutionReportFillOptional {
     match value {
-        Some(fill) => PitExecutionReportFillOptional {
+        ExecutionReportFillAccess::Populated(fill) => PitExecutionReportFillOptional {
             is_set: true,
             value: PitExecutionReportFill {
                 last_trade: export_last_trade(fill.last_trade),
@@ -349,30 +346,32 @@ fn export_fill(value: &Option<FillDetailsData>) -> PitExecutionReportFillOptiona
                 },
             },
         },
-        None => PitExecutionReportFillOptional::default(),
+        ExecutionReportFillAccess::Absent => PitExecutionReportFillOptional::default(),
     }
 }
 
 fn export_position_impact(
-    value: &Option<PositionImpactData>,
+    value: &ExecutionReportPositionImpactAccess,
 ) -> PitExecutionReportPositionImpactOptional {
     match value {
-        Some(position_impact) => PitExecutionReportPositionImpactOptional {
-            is_set: true,
-            value: PitExecutionReportPositionImpact {
-                position_effect: position_impact
-                    .value
-                    .position_effect
-                    .map(export_position_effect)
-                    .unwrap_or_default(),
-                position_side: position_impact
-                    .value
-                    .position_side
-                    .map(export_position_side)
-                    .unwrap_or_default(),
-            },
-        },
-        None => PitExecutionReportPositionImpactOptional::default(),
+        ExecutionReportPositionImpactAccess::Populated(position_impact) => {
+            PitExecutionReportPositionImpactOptional {
+                is_set: true,
+                value: PitExecutionReportPositionImpact {
+                    position_effect: position_impact
+                        .position_effect
+                        .map(export_position_effect)
+                        .unwrap_or_default(),
+                    position_side: position_impact
+                        .position_side
+                        .map(export_position_side)
+                        .unwrap_or_default(),
+                },
+            }
+        }
+        ExecutionReportPositionImpactAccess::Absent => {
+            PitExecutionReportPositionImpactOptional::default()
+        }
     }
 }
 
@@ -381,119 +380,48 @@ pub(crate) fn import_execution_report(
 ) -> Result<ExecutionReport, String> {
     // The engine applies reports as owned domain values, so decoding a
     // borrowed report view necessarily builds owned data here.
-    Ok(ExecutionReport {
-        operation: import_operation(value.operation)?,
-        financial_impact: import_financial_impact(value.financial_impact)?,
-        fill: import_fill(value.fill)?,
-        position_impact: import_position_impact(value.position_impact),
-        user_data: value.user_data,
-    })
+    Ok(RequestWithPayload::new(
+        pit_interop::ExecutionReport {
+            operation: import_operation(value.operation)?,
+            financial_impact: import_financial_impact(value.financial_impact)?,
+            fill: import_fill(value.fill)?,
+            position_impact: import_position_impact(value.position_impact),
+        },
+        value.user_data,
+    ))
 }
 
 pub(crate) fn export_execution_report(value: &ExecutionReport) -> PitExecutionReport {
     PitExecutionReport {
-        operation: export_operation(&value.operation),
-        financial_impact: export_financial_impact(&value.financial_impact),
-        fill: export_fill(&value.fill),
-        position_impact: export_position_impact(&value.position_impact),
-        user_data: value.user_data,
+        operation: export_operation(&value.request.operation),
+        financial_impact: export_financial_impact(&value.request.financial_impact),
+        fill: export_fill(&value.request.fill),
+        position_impact: export_position_impact(&value.request.position_impact),
+        user_data: value.payload,
     }
 }
 
-/// Fill-details payload carrying validated domain values.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FillDetailsData {
-    /// Actual execution trade payload.
-    pub last_trade: Option<Trade>,
-
-    /// Remaining quantity after this report.
-    pub leaves_quantity: Option<Quantity>,
-
-    /// PreTradeReservation lock payload.
-    pub lock: PreTradeLock,
-
-    /// Whether this report closes the report stream for the order.
-    pub is_final: Option<bool>,
-}
-
-/// Position-impact payload carrying validated domain values.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PositionImpactData {
-    /// Position impact payload.
-    pub value: ExecutionReportPositionImpact,
-}
-
-/// Execution-report payload carrying validated domain values.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ExecutionReport {
-    /// Operation-identification group.
-    pub operation: ExecutionReportOperationAccess,
-
-    /// Financial-impact group.
-    pub financial_impact: FinancialImpactAccess,
-
-    /// Optional fill-details group.
-    pub fill: Option<FillDetailsData>,
-
-    /// Optional position-impact group.
-    pub position_impact: Option<PositionImpactData>,
-
-    /// Opaque caller-defined token.
-    ///
-    /// The SDK never inspects, dereferences, or frees this value. Its meaning,
-    /// lifetime, and thread-safety are the caller's responsibility. `0` / null
-    /// means "not set". See the project Threading Contract for the full lifetime
-    /// model.
-    ///
-    /// The token is preserved unchanged across every engine callback that
-    /// receives the carrying value, including policy callbacks and adjustment
-    /// callbacks.
-    pub user_data: *mut c_void,
-}
-
-impl HasInstrument for ExecutionReport {
-    fn instrument(&self) -> Result<&openpit::Instrument, RequestFieldAccessError> {
-        self.operation.instrument()
-    }
-}
-
-impl HasPnl for ExecutionReport {
-    fn pnl(&self) -> Result<openpit::param::Pnl, RequestFieldAccessError> {
-        self.financial_impact.pnl()
-    }
-}
-
-impl HasFee for ExecutionReport {
-    fn fee(&self) -> Result<openpit::param::Fee, RequestFieldAccessError> {
-        self.financial_impact.fee()
-    }
-}
-
-impl HasAccountId for ExecutionReport {
-    fn account_id(&self) -> Result<openpit::param::AccountId, RequestFieldAccessError> {
-        self.operation.account_id()
-    }
-}
-
-impl HasExecutionReportIsFinal for ExecutionReport {
-    fn is_final(&self) -> Result<bool, RequestFieldAccessError> {
-        self.fill
-            .as_ref()
-            .and_then(|fill| fill.is_final)
-            .ok_or_else(|| RequestFieldAccessError::new("fill.is_final"))
-    }
-}
+/// FFI execution-report request paired with an opaque caller-defined token.
+///
+/// The token is stored in [`RequestWithPayload::payload`]. The SDK never
+/// inspects, dereferences, or frees this value. Its meaning, lifetime, and
+/// thread-safety are the caller's responsibility. A null pointer means
+/// "not set". See the project Threading Contract for the full lifetime model.
+///
+/// The token is preserved unchanged across every engine callback that
+/// receives the carrying value, including policy callbacks and adjustment
+/// callbacks.
+pub type ExecutionReport = RequestWithPayload<pit_interop::ExecutionReport, *mut c_void>;
 
 #[cfg(test)]
 mod tests {
     use super::{
-        export_execution_report, import_execution_report, ExecutionReport, FillDetailsData,
-        PitExecutionReport, PitExecutionReportFill, PitExecutionReportFillOptional,
-        PitExecutionReportIsFinalOptional, PitExecutionReportOperation,
-        PitExecutionReportOperationOptional, PitExecutionReportPositionImpact,
-        PitExecutionReportPositionImpactOptional, PitExecutionReportTrade,
-        PitExecutionReportTradeOptional, PitFinancialImpact, PitFinancialImpactOptional,
-        PositionImpactData,
+        export_execution_report, import_execution_report, PitExecutionReport,
+        PitExecutionReportFill, PitExecutionReportFillOptional, PitExecutionReportIsFinalOptional,
+        PitExecutionReportOperation, PitExecutionReportOperationOptional,
+        PitExecutionReportPositionImpact, PitExecutionReportPositionImpactOptional,
+        PitExecutionReportTrade, PitExecutionReportTradeOptional, PitFinancialImpact,
+        PitFinancialImpactOptional,
     };
     use crate::instrument::PitInstrument;
     use crate::param::{
@@ -506,12 +434,15 @@ mod tests {
         AccountId, Asset, Fee, Pnl, PositionEffect, PositionSide, Price, Quantity, Side, Trade,
     };
     use openpit::pretrade::PreTradeLock;
-    use openpit::ExecutionReportPositionImpact;
     use openpit::Instrument;
-    use openpit::{HasExecutionReportIsFinal, HasFee, HasInstrument, HasPnl};
+    use openpit::{
+        HasExecutionReportIsFinal, HasExecutionReportPositionEffect, HasFee, HasInstrument, HasPnl,
+    };
     use pit_interop::{
-        ExecutionReportOperationAccess, FinancialImpactAccess, PopulatedExecutionReportOperation,
-        PopulatedFinancialImpact,
+        ExecutionReportFillAccess, ExecutionReportOperationAccess,
+        ExecutionReportPositionImpactAccess, FinancialImpactAccess, PopulatedExecutionReportFill,
+        PopulatedExecutionReportOperation, PopulatedExecutionReportPositionImpact,
+        PopulatedFinancialImpact, RequestWithPayload,
     };
 
     fn instrument_view(underlying: &'static [u8], settlement: &'static [u8]) -> PitInstrument {
@@ -547,33 +478,38 @@ mod tests {
 
     #[test]
     fn execution_report_exposes_all_groups() {
-        let report = ExecutionReport {
-            operation: populated_operation(),
-            financial_impact: populated_financial_impact(),
-            fill: Some(FillDetailsData {
-                last_trade: Some(Trade {
-                    price: Price::from_str("101").expect("price must be valid"),
-                    quantity: Quantity::from_str("3").expect("quantity must be valid"),
+        let report = RequestWithPayload::new(
+            pit_interop::ExecutionReport {
+                operation: populated_operation(),
+                financial_impact: populated_financial_impact(),
+                fill: ExecutionReportFillAccess::Populated(PopulatedExecutionReportFill {
+                    last_trade: Some(Trade {
+                        price: Price::from_str("101").expect("price must be valid"),
+                        quantity: Quantity::from_str("3").expect("quantity must be valid"),
+                    }),
+                    leaves_quantity: Some(Quantity::from_str("1").expect("quantity must be valid")),
+                    lock: PreTradeLock::new(Some(
+                        Price::from_str("101").expect("price must be valid"),
+                    )),
+                    is_final: Some(true),
                 }),
-                leaves_quantity: Some(Quantity::from_str("1").expect("quantity must be valid")),
-                lock: PreTradeLock::new(Some(Price::from_str("101").expect("price must be valid"))),
-                is_final: Some(true),
-            }),
-            position_impact: Some(PositionImpactData {
-                value: ExecutionReportPositionImpact {
-                    position_effect: Some(PositionEffect::Open),
-                    position_side: Some(PositionSide::Long),
-                },
-            }),
-            user_data: std::ptr::null_mut(),
-        };
+                position_impact: ExecutionReportPositionImpactAccess::Populated(
+                    PopulatedExecutionReportPositionImpact {
+                        position_effect: Some(PositionEffect::Open),
+                        position_side: Some(PositionSide::Long),
+                    },
+                ),
+            },
+            std::ptr::null_mut::<std::ffi::c_void>(),
+        );
 
-        if let ExecutionReportOperationAccess::Populated(operation) = &report.operation {
+        if let ExecutionReportOperationAccess::Populated(operation) = &report.request.operation {
             assert_eq!(operation.side, Some(Side::Sell));
         } else {
             panic!("expected populated operation");
         }
-        if let FinancialImpactAccess::Populated(financial_impact) = &report.financial_impact {
+        if let FinancialImpactAccess::Populated(financial_impact) = &report.request.financial_impact
+        {
             assert_eq!(
                 financial_impact.pnl,
                 Some(Pnl::from_str("-10").expect("pnl must be valid"))
@@ -583,35 +519,39 @@ mod tests {
         }
         assert!(report.is_final().expect("is_final"));
         assert_eq!(
-            report
-                .position_impact
-                .expect("position impact must be present")
-                .value
-                .position_effect,
+            report.position_effect().expect("position_effect"),
             Some(PositionEffect::Open)
         );
     }
 
     #[test]
     fn execution_report_returns_absent_for_missing_groups() {
-        let report = ExecutionReport {
-            operation: ExecutionReportOperationAccess::Absent,
-            financial_impact: FinancialImpactAccess::Absent,
-            fill: None,
-            position_impact: None,
-            user_data: std::ptr::null_mut(),
-        };
+        let report = RequestWithPayload::new(
+            pit_interop::ExecutionReport {
+                operation: ExecutionReportOperationAccess::Absent,
+                financial_impact: FinancialImpactAccess::Absent,
+                fill: ExecutionReportFillAccess::Absent,
+                position_impact: ExecutionReportPositionImpactAccess::Absent,
+            },
+            std::ptr::null_mut::<std::ffi::c_void>(),
+        );
 
         assert!(matches!(
-            report.operation,
+            report.request.operation,
             ExecutionReportOperationAccess::Absent
         ));
         assert!(matches!(
-            report.financial_impact,
+            report.request.financial_impact,
             FinancialImpactAccess::Absent
         ));
-        assert!(report.fill.is_none());
-        assert!(report.position_impact.is_none());
+        assert!(matches!(
+            report.request.fill,
+            ExecutionReportFillAccess::Absent
+        ));
+        assert!(matches!(
+            report.request.position_impact,
+            ExecutionReportPositionImpactAccess::Absent
+        ));
     }
 
     #[test]
@@ -633,8 +573,11 @@ mod tests {
         };
 
         let imported = import_execution_report(&report).expect("import");
-        let fill = imported.fill.as_ref().expect("fill must be present");
-        assert!(fill.leaves_quantity.is_none());
+        if let ExecutionReportFillAccess::Populated(fill) = &imported.request.fill {
+            assert!(fill.leaves_quantity.is_none());
+        } else {
+            panic!("fill must be present");
+        }
         assert!(imported.is_final().is_err());
     }
 
@@ -666,25 +609,24 @@ mod tests {
 
         let imported = import_execution_report(&report).expect("import");
         assert!(imported.is_final().is_err());
-        assert_eq!(
-            imported
-                .fill
-                .as_ref()
-                .expect("fill must be present")
-                .is_final,
-            None
-        );
+        if let ExecutionReportFillAccess::Populated(fill) = &imported.request.fill {
+            assert_eq!(fill.is_final, None);
+        } else {
+            panic!("fill must be present");
+        }
     }
 
     #[test]
     fn import_export_execution_report_roundtrip_exposes_trait_fields() {
-        let report = ExecutionReport {
-            operation: populated_operation(),
-            financial_impact: populated_financial_impact(),
-            fill: None,
-            position_impact: None,
-            user_data: std::ptr::null_mut(),
-        };
+        let report = RequestWithPayload::new(
+            pit_interop::ExecutionReport {
+                operation: populated_operation(),
+                financial_impact: populated_financial_impact(),
+                fill: ExecutionReportFillAccess::Absent,
+                position_impact: ExecutionReportPositionImpactAccess::Absent,
+            },
+            std::ptr::null_mut(),
+        );
         let exported = export_execution_report(&report);
         let imported = import_execution_report(&exported).expect("import");
 

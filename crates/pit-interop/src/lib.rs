@@ -29,6 +29,9 @@
 //
 // Please see https://github.com/openpitkit and the OWNERS file for details.
 
+pub mod request;
+pub use request::{AccountAdjustment, ExecutionReport, Order, RequestWithPayload};
+
 pub mod sync_policy;
 
 pub use sync_policy::{EngineHandle, EngineHandleWeak, EngineLocking, SyncMode, SyncPolicy};

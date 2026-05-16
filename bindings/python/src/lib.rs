@@ -47,17 +47,7 @@ use openpit::pretrade::{
 use openpit::storage::StorageBuilder;
 use openpit::{
     AccountAdjustmentBalanceOperation, AccountAdjustmentPositionOperation, Engine,
-    EngineBuildError, HasAccountAdjustmentBalanceAverageEntryPrice, HasAccountAdjustmentPending,
-    HasAccountAdjustmentPendingLowerBound, HasAccountAdjustmentPendingUpperBound,
-    HasAccountAdjustmentPositionLeverage, HasAccountAdjustmentReserved,
-    HasAccountAdjustmentReservedLowerBound, HasAccountAdjustmentReservedUpperBound,
-    HasAccountAdjustmentTotal, HasAccountAdjustmentTotalLowerBound,
-    HasAccountAdjustmentTotalUpperBound, HasAccountId, HasAutoBorrow, HasAverageEntryPrice,
-    HasBalanceAsset, HasClosePosition, HasCollateralAsset, HasExecutionReportIsFinal,
-    HasExecutionReportLastTrade, HasExecutionReportPositionEffect, HasExecutionReportPositionSide,
-    HasFee, HasInstrument, HasOrderCollateralAsset, HasOrderLeverage, HasOrderPositionSide,
-    HasOrderPrice, HasPnl, HasPositionInstrument, HasPositionMode, HasReduceOnly, HasSide,
-    HasTradeAmount, Instrument, Mutation, Mutations, PostTradeResult, RequestFieldAccessError,
+    EngineBuildError, Instrument, Mutation, Mutations, PostTradeResult,
 };
 use openpit::{AccountAdjustmentContext, AccountAdjustmentPolicy};
 use pit_interop::{
@@ -118,261 +108,9 @@ fn create_param_error(message: impl Into<String>) -> PyErr {
     ParamError::new_err(message.into())
 }
 
-struct Order {
-    operation: OrderOperationAccess,
-    position: OrderPositionAccess,
-    margin: OrderMarginAccess,
-    original: Py<PyAny>,
-}
-
-impl Order {
-    fn original(&self, py: Python<'_>) -> Py<PyAny> {
-        self.original.clone_ref(py)
-    }
-}
-
-impl HasInstrument for Order {
-    fn instrument(&self) -> Result<&Instrument, RequestFieldAccessError> {
-        self.operation.instrument()
-    }
-}
-
-impl HasSide for Order {
-    fn side(&self) -> Result<Side, RequestFieldAccessError> {
-        self.operation.side()
-    }
-}
-
-impl HasAccountId for Order {
-    fn account_id(&self) -> Result<AccountId, RequestFieldAccessError> {
-        self.operation.account_id()
-    }
-}
-
-impl HasTradeAmount for Order {
-    fn trade_amount(&self) -> Result<TradeAmount, RequestFieldAccessError> {
-        self.operation.trade_amount()
-    }
-}
-
-impl HasOrderPrice for Order {
-    fn price(&self) -> Result<Option<Price>, RequestFieldAccessError> {
-        self.operation.price()
-    }
-}
-
-impl HasOrderPositionSide for Order {
-    fn position_side(&self) -> Result<Option<PositionSide>, RequestFieldAccessError> {
-        self.position.position_side()
-    }
-}
-
-impl HasReduceOnly for Order {
-    fn reduce_only(&self) -> Result<bool, RequestFieldAccessError> {
-        self.position.reduce_only()
-    }
-}
-
-impl HasClosePosition for Order {
-    fn close_position(&self) -> Result<bool, RequestFieldAccessError> {
-        self.position.close_position()
-    }
-}
-
-impl HasOrderLeverage for Order {
-    fn leverage(&self) -> Result<Option<Leverage>, RequestFieldAccessError> {
-        self.margin.leverage()
-    }
-}
-
-impl HasOrderCollateralAsset for Order {
-    fn collateral_asset(&self) -> Result<Option<&Asset>, RequestFieldAccessError> {
-        self.margin.collateral_asset()
-    }
-}
-
-impl HasAutoBorrow for Order {
-    fn auto_borrow(&self) -> Result<bool, RequestFieldAccessError> {
-        self.margin.auto_borrow()
-    }
-}
-
-struct ExecutionReport {
-    operation: ExecutionReportOperationAccess,
-    financial_impact: FinancialImpactAccess,
-    fill: ExecutionReportFillAccess,
-    position_impact: ExecutionReportPositionImpactAccess,
-    original: Py<PyAny>,
-}
-
-impl ExecutionReport {
-    fn original(&self, py: Python<'_>) -> Py<PyAny> {
-        self.original.clone_ref(py)
-    }
-}
-
-impl HasInstrument for ExecutionReport {
-    fn instrument(&self) -> Result<&Instrument, RequestFieldAccessError> {
-        self.operation.instrument()
-    }
-}
-
-impl HasSide for ExecutionReport {
-    fn side(&self) -> Result<Side, RequestFieldAccessError> {
-        self.operation.side()
-    }
-}
-
-impl HasAccountId for ExecutionReport {
-    fn account_id(&self) -> Result<AccountId, RequestFieldAccessError> {
-        self.operation.account_id()
-    }
-}
-
-impl HasPnl for ExecutionReport {
-    fn pnl(&self) -> Result<Pnl, RequestFieldAccessError> {
-        self.financial_impact.pnl()
-    }
-}
-
-impl HasFee for ExecutionReport {
-    fn fee(&self) -> Result<Fee, RequestFieldAccessError> {
-        self.financial_impact.fee()
-    }
-}
-
-impl HasExecutionReportLastTrade for ExecutionReport {
-    fn last_trade(&self) -> Result<Option<Trade>, RequestFieldAccessError> {
-        self.fill.last_trade()
-    }
-}
-
-impl HasExecutionReportIsFinal for ExecutionReport {
-    fn is_final(&self) -> Result<bool, RequestFieldAccessError> {
-        self.fill.is_final()
-    }
-}
-
-impl HasExecutionReportPositionEffect for ExecutionReport {
-    fn position_effect(&self) -> Result<Option<PositionEffect>, RequestFieldAccessError> {
-        self.position_impact.position_effect()
-    }
-}
-
-impl HasExecutionReportPositionSide for ExecutionReport {
-    fn position_side(&self) -> Result<Option<PositionSide>, RequestFieldAccessError> {
-        self.position_impact.position_side()
-    }
-}
-
-struct AccountAdjustment {
-    operation: AccountAdjustmentOperationAccess,
-    amount: AccountAdjustmentAmountAccess,
-    bounds: AccountAdjustmentBoundsAccess,
-    original: Py<PyAny>,
-}
-
-impl AccountAdjustment {
-    fn original(&self, py: Python<'_>) -> Py<PyAny> {
-        self.original.clone_ref(py)
-    }
-}
-
-impl HasBalanceAsset for AccountAdjustment {
-    fn balance_asset(&self) -> Result<&Asset, RequestFieldAccessError> {
-        self.operation.balance_asset()
-    }
-}
-
-impl HasAccountAdjustmentBalanceAverageEntryPrice for AccountAdjustment {
-    fn balance_average_entry_price(&self) -> Result<Option<Price>, RequestFieldAccessError> {
-        self.operation.balance_average_entry_price()
-    }
-}
-
-impl HasPositionInstrument for AccountAdjustment {
-    fn position_instrument(&self) -> Result<&Instrument, RequestFieldAccessError> {
-        self.operation.position_instrument()
-    }
-}
-
-impl HasCollateralAsset for AccountAdjustment {
-    fn collateral_asset(&self) -> Result<&Asset, RequestFieldAccessError> {
-        self.operation.collateral_asset()
-    }
-}
-
-impl HasAverageEntryPrice for AccountAdjustment {
-    fn average_entry_price(&self) -> Result<Price, RequestFieldAccessError> {
-        self.operation.average_entry_price()
-    }
-}
-
-impl HasPositionMode for AccountAdjustment {
-    fn position_mode(&self) -> Result<PositionMode, RequestFieldAccessError> {
-        self.operation.position_mode()
-    }
-}
-
-impl HasAccountAdjustmentPositionLeverage for AccountAdjustment {
-    fn position_leverage(&self) -> Result<Option<Leverage>, RequestFieldAccessError> {
-        self.operation.position_leverage()
-    }
-}
-
-impl HasAccountAdjustmentTotal for AccountAdjustment {
-    fn total(&self) -> Result<Option<AdjustmentAmount>, RequestFieldAccessError> {
-        self.amount.total()
-    }
-}
-
-impl HasAccountAdjustmentReserved for AccountAdjustment {
-    fn reserved(&self) -> Result<Option<AdjustmentAmount>, RequestFieldAccessError> {
-        self.amount.reserved()
-    }
-}
-
-impl HasAccountAdjustmentPending for AccountAdjustment {
-    fn pending(&self) -> Result<Option<AdjustmentAmount>, RequestFieldAccessError> {
-        self.amount.pending()
-    }
-}
-
-impl HasAccountAdjustmentTotalUpperBound for AccountAdjustment {
-    fn total_upper(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
-        self.bounds.total_upper()
-    }
-}
-
-impl HasAccountAdjustmentTotalLowerBound for AccountAdjustment {
-    fn total_lower(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
-        self.bounds.total_lower()
-    }
-}
-
-impl HasAccountAdjustmentReservedUpperBound for AccountAdjustment {
-    fn reserved_upper(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
-        self.bounds.reserved_upper()
-    }
-}
-
-impl HasAccountAdjustmentReservedLowerBound for AccountAdjustment {
-    fn reserved_lower(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
-        self.bounds.reserved_lower()
-    }
-}
-
-impl HasAccountAdjustmentPendingUpperBound for AccountAdjustment {
-    fn pending_upper(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
-        self.bounds.pending_upper()
-    }
-}
-
-impl HasAccountAdjustmentPendingLowerBound for AccountAdjustment {
-    fn pending_lower(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
-        self.bounds.pending_lower()
-    }
-}
+type Order = pit_interop::RequestWithPayload<pit_interop::Order, Py<PyAny>>;
+type ExecutionReport = pit_interop::RequestWithPayload<pit_interop::ExecutionReport, Py<PyAny>>;
+type AccountAdjustment = pit_interop::RequestWithPayload<pit_interop::AccountAdjustment, Py<PyAny>>;
 
 #[pyclass(name = "Engine", module = "openpit")]
 struct PyEngine {
@@ -790,7 +528,10 @@ impl CheckPreTradeStartPolicy<Order, ExecutionReport> for PythonStartPolicyAdapt
             let result = self
                 .policy
                 .bind(py)
-                .call_method1("check_pre_trade_start", (policy_ctx, order.original(py)))
+                .call_method1(
+                    "check_pre_trade_start",
+                    (policy_ctx, order.payload.clone_ref(py)),
+                )
                 .map_err(|error| {
                     set_python_callback_error(error);
                     python_callback_rejects(&self.name)
@@ -811,7 +552,7 @@ impl CheckPreTradeStartPolicy<Order, ExecutionReport> for PythonStartPolicyAdapt
     fn apply_execution_report(&self, report: &ExecutionReport) -> bool {
         Python::with_gil(|py| {
             let kwargs = PyDict::new_bound(py);
-            if let Err(error) = kwargs.set_item("report", report.original(py)) {
+            if let Err(error) = kwargs.set_item("report", report.payload.clone_ref(py)) {
                 set_python_callback_error(error);
                 return false;
             }
@@ -860,7 +601,10 @@ impl PreTradePolicy<Order, ExecutionReport> for PythonMainPolicyAdapter {
             let decision = self
                 .policy
                 .bind(py)
-                .call_method1("perform_pre_trade_check", (policy_ctx, order.original(py)))
+                .call_method1(
+                    "perform_pre_trade_check",
+                    (policy_ctx, order.payload.clone_ref(py)),
+                )
                 .map_err(|error| {
                     set_python_callback_error(error);
                     python_callback_rejects(&self.name)
@@ -883,7 +627,7 @@ impl PreTradePolicy<Order, ExecutionReport> for PythonMainPolicyAdapter {
     fn apply_execution_report(&self, report: &ExecutionReport) -> bool {
         Python::with_gil(|py| {
             let kwargs = PyDict::new_bound(py);
-            if let Err(error) = kwargs.set_item("report", report.original(py)) {
+            if let Err(error) = kwargs.set_item("report", report.payload.clone_ref(py)) {
                 set_python_callback_error(error);
                 return false;
             }
@@ -940,7 +684,11 @@ impl AccountAdjustmentPolicy<AccountAdjustment> for PythonAccountAdjustmentPolic
                 .bind(py)
                 .call_method1(
                     "apply_account_adjustment",
-                    (adjustment_ctx, py_account_id, adjustment.original(py)),
+                    (
+                        adjustment_ctx,
+                        py_account_id,
+                        adjustment.payload.clone_ref(py),
+                    ),
                 )
                 .map_err(|error| {
                     set_python_callback_error(error);
@@ -1100,12 +848,14 @@ fn extract_python_order(obj: &Bound<'_, PyAny>) -> PyResult<Order> {
         }
     };
 
-    Ok(Order {
-        operation,
-        position,
-        margin,
-        original: obj.clone().unbind(),
-    })
+    Ok(pit_interop::RequestWithPayload::new(
+        pit_interop::Order {
+            operation,
+            position,
+            margin,
+        },
+        obj.clone().unbind(),
+    ))
 }
 
 fn extract_python_execution_report(obj: &Bound<'_, PyAny>) -> PyResult<ExecutionReport> {
@@ -1171,13 +921,15 @@ fn extract_python_execution_report(obj: &Bound<'_, PyAny>) -> PyResult<Execution
         }
     };
 
-    Ok(ExecutionReport {
-        operation,
-        financial_impact,
-        fill,
-        position_impact,
-        original: obj.clone().unbind(),
-    })
+    Ok(pit_interop::RequestWithPayload::new(
+        pit_interop::ExecutionReport {
+            operation,
+            financial_impact,
+            fill,
+            position_impact,
+        },
+        obj.clone().unbind(),
+    ))
 }
 
 fn extract_python_account_adjustment(obj: &Bound<'_, PyAny>) -> PyResult<AccountAdjustment> {
@@ -1277,12 +1029,14 @@ fn extract_python_account_adjustment(obj: &Bound<'_, PyAny>) -> PyResult<Account
         }
     };
 
-    Ok(AccountAdjustment {
-        operation,
-        amount,
-        bounds,
-        original: obj.clone().unbind(),
-    })
+    Ok(pit_interop::RequestWithPayload::new(
+        pit_interop::AccountAdjustment {
+            operation,
+            amount,
+            bounds,
+        },
+        obj.clone().unbind(),
+    ))
 }
 
 fn apply_policy_decision(
@@ -5206,7 +4960,10 @@ fn _openpit(py: Python<'_>, module: &Bound<'_, PyModule>) -> PyResult<()> {
 #[cfg(test)]
 mod field_access_tests {
     use super::*;
-    use openpit::RequestFieldAccessError;
+    use openpit::{
+        HasAccountId, HasFee, HasInstrument, HasPnl, HasSide, HasTradeAmount,
+        RequestFieldAccessError,
+    };
     use pyo3::types::PyList;
     use std::sync::Once;
 
@@ -5217,22 +4974,30 @@ mod field_access_tests {
 
     fn order_without_operation() -> Order {
         ensure_python_initialized();
-        Python::with_gil(|py| Order {
-            operation: OrderOperationAccess::Absent,
-            position: OrderPositionAccess::Absent,
-            margin: OrderMarginAccess::Absent,
-            original: py.None(),
+        Python::with_gil(|py| {
+            pit_interop::RequestWithPayload::new(
+                pit_interop::Order {
+                    operation: OrderOperationAccess::Absent,
+                    position: OrderPositionAccess::Absent,
+                    margin: OrderMarginAccess::Absent,
+                },
+                py.None(),
+            )
         })
     }
 
     fn report_without_groups() -> ExecutionReport {
         ensure_python_initialized();
-        Python::with_gil(|py| ExecutionReport {
-            operation: ExecutionReportOperationAccess::Absent,
-            financial_impact: FinancialImpactAccess::Absent,
-            fill: ExecutionReportFillAccess::Absent,
-            position_impact: ExecutionReportPositionImpactAccess::Absent,
-            original: py.None(),
+        Python::with_gil(|py| {
+            pit_interop::RequestWithPayload::new(
+                pit_interop::ExecutionReport {
+                    operation: ExecutionReportOperationAccess::Absent,
+                    financial_impact: FinancialImpactAccess::Absent,
+                    fill: ExecutionReportFillAccess::Absent,
+                    position_impact: ExecutionReportPositionImpactAccess::Absent,
+                },
+                py.None(),
+            )
         })
     }
 

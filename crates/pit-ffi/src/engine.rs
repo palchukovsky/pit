@@ -1942,24 +1942,21 @@ mod tests {
         let execute = engine.execute_pre_trade(crate::order::Order::default());
         assert!(execute.is_err());
 
-        let report = crate::execution_report::ExecutionReport {
-            operation: pit_interop::ExecutionReportOperationAccess::Absent,
-            financial_impact: pit_interop::FinancialImpactAccess::Absent,
-            fill: None,
-            position_impact: None,
-            user_data: std::ptr::null_mut(),
-        };
+        let report = pit_interop::RequestWithPayload::new(
+            pit_interop::ExecutionReport {
+                operation: pit_interop::ExecutionReportOperationAccess::Absent,
+                financial_impact: pit_interop::FinancialImpactAccess::Absent,
+                fill: pit_interop::ExecutionReportFillAccess::Absent,
+                position_impact: pit_interop::ExecutionReportPositionImpactAccess::Absent,
+            },
+            std::ptr::null_mut(),
+        );
         let post = engine.apply_execution_report(&report);
         assert!(!post.kill_switch_triggered);
 
         let apply = engine.apply_account_adjustment(
             openpit::param::AccountId::from_u64(1),
-            &[crate::account_adjustment::AccountAdjustment {
-                operation: None,
-                amount: None,
-                bounds: None,
-                user_data: std::ptr::null_mut(),
-            }],
+            &[crate::account_adjustment::AccountAdjustment::default()],
         );
         assert!(apply.is_ok());
     }

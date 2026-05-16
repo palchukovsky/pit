@@ -24,6 +24,10 @@ use openpit::{
     AccountAdjustmentAmount, AccountAdjustmentBalanceOperation, AccountAdjustmentBounds,
     AccountAdjustmentPositionOperation,
 };
+use pit_interop::{
+    AccountAdjustmentAmountAccess, AccountAdjustmentBoundsAccess, AccountAdjustmentOperationAccess,
+    PopulatedAccountAdjustmentOperation, RequestWithPayload,
+};
 
 use crate::define_optional;
 use crate::instrument::{import_instrument, parse_asset_view, PitInstrument};
@@ -155,37 +159,6 @@ pub enum PitAccountAdjustmentApplyStatus {
     Rejected = 2,
 }
 
-/// Account-adjustment operation payload carrying validated domain values.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum AccountAdjustmentOperation {
-    /// Balance-like state keyed only by asset.
-    Balance(AccountAdjustmentBalanceOperation),
-    /// Position-like state keyed by instrument and collateral context.
-    Position(AccountAdjustmentPositionOperation),
-}
-
-/// Account-adjustment payload carrying validated domain values.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct AccountAdjustment {
-    /// Optional operation descriptor.
-    pub operation: Option<AccountAdjustmentOperation>,
-    /// Optional amount changes to apply.
-    pub amount: Option<AccountAdjustmentAmount>,
-    /// Optional resulting-state bounds.
-    pub bounds: Option<AccountAdjustmentBounds>,
-    /// Opaque caller-defined token.
-    ///
-    /// The SDK never inspects, dereferences, or frees this value. Its meaning,
-    /// lifetime, and thread-safety are the caller's responsibility. `0` / null
-    /// means "not set". See the project Threading Contract for the full lifetime
-    /// model.
-    ///
-    /// The token is preserved unchanged across every engine callback that
-    /// receives the carrying value, including policy callbacks and adjustment
-    /// callbacks.
-    pub user_data: *mut c_void,
-}
-
 define_optional!(
     optional = PitAccountAdjustmentAmountOptional,
     value = PitAccountAdjustmentAmount
@@ -278,16 +251,18 @@ fn import_position_operation(
 
 fn import_amount(
     value: PitAccountAdjustmentAmountOptional,
-) -> Result<Option<AccountAdjustmentAmount>, String> {
+) -> Result<AccountAdjustmentAmountAccess, String> {
     if !value.is_set {
-        return Ok(None);
+        return Ok(AccountAdjustmentAmountAccess::Absent);
     }
 
-    Ok(Some(AccountAdjustmentAmount {
-        total: import_adjustment_amount(value.value.total)?,
-        reserved: import_adjustment_amount(value.value.reserved)?,
-        pending: import_adjustment_amount(value.value.pending)?,
-    }))
+    Ok(AccountAdjustmentAmountAccess::Populated(
+        AccountAdjustmentAmount {
+            total: import_adjustment_amount(value.value.total)?,
+            reserved: import_adjustment_amount(value.value.reserved)?,
+            pending: import_adjustment_amount(value.value.pending)?,
+        },
+    ))
 }
 
 fn import_bound(value: PitParamPositionSizeOptional) -> Result<Option<PositionSize>, String> {
@@ -299,19 +274,21 @@ fn import_bound(value: PitParamPositionSizeOptional) -> Result<Option<PositionSi
 
 fn import_bounds(
     value: PitAccountAdjustmentBoundsOptional,
-) -> Result<Option<AccountAdjustmentBounds>, String> {
+) -> Result<AccountAdjustmentBoundsAccess, String> {
     if !value.is_set {
-        return Ok(None);
+        return Ok(AccountAdjustmentBoundsAccess::Absent);
     }
 
-    Ok(Some(AccountAdjustmentBounds {
-        total_upper: import_bound(value.value.total_upper)?,
-        total_lower: import_bound(value.value.total_lower)?,
-        reserved_upper: import_bound(value.value.reserved_upper)?,
-        reserved_lower: import_bound(value.value.reserved_lower)?,
-        pending_upper: import_bound(value.value.pending_upper)?,
-        pending_lower: import_bound(value.value.pending_lower)?,
-    }))
+    Ok(AccountAdjustmentBoundsAccess::Populated(
+        AccountAdjustmentBounds {
+            total_upper: import_bound(value.value.total_upper)?,
+            total_lower: import_bound(value.value.total_lower)?,
+            reserved_upper: import_bound(value.value.reserved_upper)?,
+            reserved_lower: import_bound(value.value.reserved_lower)?,
+            pending_upper: import_bound(value.value.pending_upper)?,
+            pending_lower: import_bound(value.value.pending_lower)?,
+        },
+    ))
 }
 
 fn export_balance_operation(
@@ -389,39 +366,49 @@ pub(crate) fn import_account_adjustment(
     let position_operation = import_position_operation(value.position_operation)?;
 
     let operation = match (balance_operation, position_operation) {
-        (Some(balance), None) => Some(AccountAdjustmentOperation::Balance(balance)),
-        (None, Some(position)) => Some(AccountAdjustmentOperation::Position(position)),
-        (None, None) => None,
+        (Some(balance), None) => AccountAdjustmentOperationAccess::Populated(
+            PopulatedAccountAdjustmentOperation::Balance(balance),
+        ),
+        (None, Some(position)) => AccountAdjustmentOperationAccess::Populated(
+            PopulatedAccountAdjustmentOperation::Position(position),
+        ),
+        (None, None) => AccountAdjustmentOperationAccess::Absent,
         (Some(_), Some(_)) => {
             return Err("account_adjustment has both balance and position operation".to_string())
         }
     };
 
-    Ok(AccountAdjustment {
-        operation,
-        amount: import_amount(value.amount)?,
-        bounds: import_bounds(value.bounds)?,
-        user_data: value.user_data,
-    })
+    Ok(RequestWithPayload::new(
+        pit_interop::AccountAdjustment {
+            operation,
+            amount: import_amount(value.amount)?,
+            bounds: import_bounds(value.bounds)?,
+        },
+        value.user_data,
+    ))
 }
 
 pub(crate) fn export_account_adjustment(value: &AccountAdjustment) -> PitAccountAdjustment {
-    let (balance_operation, position_operation) = match &value.operation {
-        Some(AccountAdjustmentOperation::Balance(v)) => (
+    let (balance_operation, position_operation) = match &value.request.operation {
+        AccountAdjustmentOperationAccess::Populated(
+            PopulatedAccountAdjustmentOperation::Balance(v),
+        ) => (
             PitAccountAdjustmentBalanceOperationOptional {
                 value: export_balance_operation(v),
                 is_set: true,
             },
             PitAccountAdjustmentPositionOperationOptional::default(),
         ),
-        Some(AccountAdjustmentOperation::Position(v)) => (
+        AccountAdjustmentOperationAccess::Populated(
+            PopulatedAccountAdjustmentOperation::Position(v),
+        ) => (
             PitAccountAdjustmentBalanceOperationOptional::default(),
             PitAccountAdjustmentPositionOperationOptional {
                 value: export_position_operation(v),
                 is_set: true,
             },
         ),
-        None => (
+        AccountAdjustmentOperationAccess::Absent => (
             PitAccountAdjustmentBalanceOperationOptional::default(),
             PitAccountAdjustmentPositionOperationOptional::default(),
         ),
@@ -430,35 +417,47 @@ pub(crate) fn export_account_adjustment(value: &AccountAdjustment) -> PitAccount
     PitAccountAdjustment {
         balance_operation,
         position_operation,
-        amount: match &value.amount {
-            Some(v) => PitAccountAdjustmentAmountOptional {
+        amount: match &value.request.amount {
+            AccountAdjustmentAmountAccess::Populated(v) => PitAccountAdjustmentAmountOptional {
                 value: export_amount(v),
                 is_set: true,
             },
-            None => PitAccountAdjustmentAmountOptional::default(),
+            AccountAdjustmentAmountAccess::Absent => PitAccountAdjustmentAmountOptional::default(),
         },
-        bounds: match &value.bounds {
-            Some(v) => PitAccountAdjustmentBoundsOptional {
+        bounds: match &value.request.bounds {
+            AccountAdjustmentBoundsAccess::Populated(v) => PitAccountAdjustmentBoundsOptional {
                 value: export_bounds(v),
                 is_set: true,
             },
-            None => PitAccountAdjustmentBoundsOptional::default(),
+            AccountAdjustmentBoundsAccess::Absent => PitAccountAdjustmentBoundsOptional::default(),
         },
-        user_data: value.user_data,
+        user_data: value.payload,
     }
 }
+
+/// FFI account-adjustment request paired with an opaque caller-defined token.
+///
+/// The token is stored in [`RequestWithPayload::payload`]. The SDK never
+/// inspects, dereferences, or frees this value. Its meaning, lifetime, and
+/// thread-safety are the caller's responsibility. A null pointer means
+/// "not set". See the project Threading Contract for the full lifetime model.
+///
+/// The token is preserved unchanged across every engine callback that
+/// receives the carrying value, including policy callbacks and adjustment
+/// callbacks.
+pub type AccountAdjustment = RequestWithPayload<pit_interop::AccountAdjustment, *mut c_void>;
 
 #[cfg(test)]
 mod tests {
     use crate::PitStringView;
 
     use super::{
-        export_account_adjustment, import_account_adjustment, AccountAdjustment,
-        AccountAdjustmentOperation, PitAccountAdjustment, PitAccountAdjustmentAmount,
-        PitAccountAdjustmentAmountOptional, PitAccountAdjustmentBalanceOperation,
-        PitAccountAdjustmentBalanceOperationOptional, PitAccountAdjustmentBounds,
-        PitAccountAdjustmentBoundsOptional, PitAccountAdjustmentPositionOperation,
-        PitAccountAdjustmentPositionOperationOptional, PitParamAdjustmentAmount,
+        export_account_adjustment, import_account_adjustment, PitAccountAdjustment,
+        PitAccountAdjustmentAmount, PitAccountAdjustmentAmountOptional,
+        PitAccountAdjustmentBalanceOperation, PitAccountAdjustmentBalanceOperationOptional,
+        PitAccountAdjustmentBounds, PitAccountAdjustmentBoundsOptional,
+        PitAccountAdjustmentPositionOperation, PitAccountAdjustmentPositionOperationOptional,
+        PitParamAdjustmentAmount,
     };
     use crate::instrument::PitInstrument;
     use crate::param::{
@@ -469,6 +468,10 @@ mod tests {
     use openpit::{
         AccountAdjustmentAmount, AccountAdjustmentBalanceOperation, AccountAdjustmentBounds,
         AccountAdjustmentPositionOperation, Instrument,
+    };
+    use pit_interop::{
+        AccountAdjustmentAmountAccess, AccountAdjustmentBoundsAccess,
+        AccountAdjustmentOperationAccess, PopulatedAccountAdjustmentOperation, RequestWithPayload,
     };
 
     fn sample_balance_adjustment() -> PitAccountAdjustment {
@@ -540,18 +543,27 @@ mod tests {
     fn import_account_adjustment_accepts_balance_payload() {
         let imported = import_account_adjustment(&sample_balance_adjustment()).expect("import");
 
-        let operation = imported.operation.expect("operation");
+        let operation =
+            if let AccountAdjustmentOperationAccess::Populated(op) = &imported.request.operation {
+                op
+            } else {
+                panic!("operation must be populated");
+            };
         assert_eq!(
-            operation,
-            AccountAdjustmentOperation::Balance(AccountAdjustmentBalanceOperation {
+            *operation,
+            PopulatedAccountAdjustmentOperation::Balance(AccountAdjustmentBalanceOperation {
                 asset: Asset::new("USD").expect("asset"),
                 average_entry_price: Some(Price::from_str("10").expect("price")),
             })
         );
 
-        let amount = imported.amount.expect("amount");
+        let amount = if let AccountAdjustmentAmountAccess::Populated(a) = &imported.request.amount {
+            a
+        } else {
+            panic!("amount must be populated");
+        };
         assert_eq!(
-            amount,
+            *amount,
             AccountAdjustmentAmount {
                 total: Some(AdjustmentAmount::Delta(
                     PositionSize::from_str("1").expect("size"),
@@ -563,9 +575,13 @@ mod tests {
             }
         );
 
-        let bounds = imported.bounds.expect("bounds");
+        let bounds = if let AccountAdjustmentBoundsAccess::Populated(b) = &imported.request.bounds {
+            b
+        } else {
+            panic!("bounds must be populated");
+        };
         assert_eq!(
-            bounds,
+            *bounds,
             AccountAdjustmentBounds {
                 total_upper: Some(PositionSize::from_str("100").expect("size")),
                 total_lower: None,
@@ -635,23 +651,27 @@ mod tests {
 
     #[test]
     fn export_account_adjustment_produces_operation_specific_group() {
-        let domain = AccountAdjustment {
-            operation: Some(AccountAdjustmentOperation::Position(
-                AccountAdjustmentPositionOperation {
-                    instrument: Instrument::new(
-                        Asset::new("SPX").expect("asset"),
-                        Asset::new("USD").expect("asset"),
+        let domain = RequestWithPayload::new(
+            pit_interop::AccountAdjustment {
+                operation: AccountAdjustmentOperationAccess::Populated(
+                    PopulatedAccountAdjustmentOperation::Position(
+                        AccountAdjustmentPositionOperation {
+                            instrument: Instrument::new(
+                                Asset::new("SPX").expect("asset"),
+                                Asset::new("USD").expect("asset"),
+                            ),
+                            collateral_asset: Asset::new("EUR").expect("asset"),
+                            average_entry_price: Price::from_str("5").expect("price"),
+                            mode: PositionMode::Hedged,
+                            leverage: None,
+                        },
                     ),
-                    collateral_asset: Asset::new("EUR").expect("asset"),
-                    average_entry_price: Price::from_str("5").expect("price"),
-                    mode: PositionMode::Hedged,
-                    leverage: None,
-                },
-            )),
-            amount: None,
-            bounds: None,
-            user_data: std::ptr::null_mut(),
-        };
+                ),
+                amount: AccountAdjustmentAmountAccess::Absent,
+                bounds: AccountAdjustmentBoundsAccess::Absent,
+            },
+            std::ptr::null_mut(),
+        );
 
         let exported = export_account_adjustment(&domain);
         assert_eq!(
@@ -687,27 +707,29 @@ mod tests {
 
     #[test]
     fn import_export_account_adjustment_roundtrip() {
-        let domain = AccountAdjustment {
-            operation: None,
-            amount: Some(AccountAdjustmentAmount {
-                total: Some(AdjustmentAmount::Absolute(
-                    PositionSize::from_str("4").expect("size"),
-                )),
-                reserved: None,
-                pending: Some(AdjustmentAmount::Delta(
-                    PositionSize::from_str("1").expect("size"),
-                )),
-            }),
-            bounds: Some(AccountAdjustmentBounds {
-                total_upper: Some(PositionSize::from_str("8").expect("size")),
-                total_lower: None,
-                reserved_upper: None,
-                reserved_lower: None,
-                pending_upper: None,
-                pending_lower: Some(PositionSize::from_str("-2").expect("size")),
-            }),
-            user_data: std::ptr::null_mut(),
-        };
+        let domain = RequestWithPayload::new(
+            pit_interop::AccountAdjustment {
+                operation: AccountAdjustmentOperationAccess::Absent,
+                amount: AccountAdjustmentAmountAccess::Populated(AccountAdjustmentAmount {
+                    total: Some(AdjustmentAmount::Absolute(
+                        PositionSize::from_str("4").expect("size"),
+                    )),
+                    reserved: None,
+                    pending: Some(AdjustmentAmount::Delta(
+                        PositionSize::from_str("1").expect("size"),
+                    )),
+                }),
+                bounds: AccountAdjustmentBoundsAccess::Populated(AccountAdjustmentBounds {
+                    total_upper: Some(PositionSize::from_str("8").expect("size")),
+                    total_lower: None,
+                    reserved_upper: None,
+                    reserved_lower: None,
+                    pending_upper: None,
+                    pending_lower: Some(PositionSize::from_str("-2").expect("size")),
+                }),
+            },
+            std::ptr::null_mut(),
+        );
 
         let exported = export_account_adjustment(&domain);
         let imported = import_account_adjustment(&exported).expect("import");

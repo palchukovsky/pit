@@ -20,11 +20,10 @@
 use std::ffi::c_void;
 
 use openpit::param::AccountId;
-use openpit::{
-    HasAccountId, HasInstrument, HasOrderPrice, HasTradeAmount, OrderMargin, OrderPosition,
-    RequestFieldAccessError,
+use pit_interop::{
+    OrderMarginAccess, OrderOperationAccess, OrderPositionAccess, PopulatedOrderMargin,
+    PopulatedOrderOperation, PopulatedOrderPosition, RequestWithPayload,
 };
-use pit_interop::{OrderOperationAccess, PopulatedOrderOperation};
 
 use crate::instrument::{import_instrument, parse_asset_view, PitInstrument};
 use crate::param::{
@@ -59,24 +58,24 @@ fn import_operation(
     }))
 }
 
-fn import_position(value: PitOrderPositionOptional) -> Option<OrderPosition> {
+fn import_position(value: PitOrderPositionOptional) -> OrderPositionAccess {
     if !value.is_set {
-        return None;
+        return OrderPositionAccess::Absent;
     }
 
-    Some(OrderPosition {
+    OrderPositionAccess::Populated(PopulatedOrderPosition {
         position_side: import_position_side(value.value.position_side),
         reduce_only: import_bool(value.value.reduce_only).unwrap_or(false),
         close_position: import_bool(value.value.close_position).unwrap_or(false),
     })
 }
 
-fn import_margin(value: PitOrderMarginOptional) -> Result<Option<OrderMargin>, String> {
+fn import_margin(value: PitOrderMarginOptional) -> Result<OrderMarginAccess, String> {
     if !value.is_set {
-        return Ok(None);
+        return Ok(OrderMarginAccess::Absent);
     }
 
-    Ok(Some(OrderMargin {
+    Ok(OrderMarginAccess::Populated(PopulatedOrderMargin {
         leverage: import_leverage(value.value.leverage),
         collateral_asset: parse_asset_view(
             value.value.collateral_asset,
@@ -168,19 +167,21 @@ define_optional!(
 pub(crate) fn import_order(value: &PitOrder) -> Result<Order, String> {
     // The engine works with owned domain objects, so decoding a borrowed order
     // view necessarily builds owned values here.
-    Ok(Order {
-        operation: match import_operation(value.operation)? {
-            Some(v) => OrderOperationAccess::Populated(v),
-            None => OrderOperationAccess::Absent,
+    Ok(RequestWithPayload::new(
+        pit_interop::Order {
+            operation: match import_operation(value.operation)? {
+                Some(v) => OrderOperationAccess::Populated(v),
+                None => OrderOperationAccess::Absent,
+            },
+            position: import_position(value.position),
+            margin: import_margin(value.margin)?,
         },
-        position: import_position(value.position),
-        margin: import_margin(value.margin)?,
-        user_data: value.user_data,
-    })
+        value.user_data,
+    ))
 }
 
 pub(crate) fn export_order(value: &Order) -> PitOrder {
-    let operation = match &value.operation {
+    let operation = match &value.request.operation {
         OrderOperationAccess::Populated(v) => {
             let instrument = if let Some(instrument) = &v.instrument {
                 PitInstrument {
@@ -221,8 +222,8 @@ pub(crate) fn export_order(value: &Order) -> PitOrder {
         OrderOperationAccess::Absent => PitOrderOperationOptional::default(),
     };
 
-    let position = match &value.position {
-        Some(position) => PitOrderPositionOptional {
+    let position = match &value.request.position {
+        OrderPositionAccess::Populated(position) => PitOrderPositionOptional {
             is_set: true,
             value: PitOrderPosition {
                 position_side: position
@@ -233,11 +234,11 @@ pub(crate) fn export_order(value: &Order) -> PitOrder {
                 close_position: export_bool(position.close_position),
             },
         },
-        None => PitOrderPositionOptional::default(),
+        OrderPositionAccess::Absent => PitOrderPositionOptional::default(),
     };
 
-    let margin = match &value.margin {
-        Some(margin) => {
+    let margin = match &value.request.margin {
+        OrderMarginAccess::Populated(margin) => {
             let collateral_asset = if let Some(asset) = margin.collateral_asset.as_ref() {
                 PitStringView::from_utf8(asset.as_ref())
             } else {
@@ -252,81 +253,40 @@ pub(crate) fn export_order(value: &Order) -> PitOrder {
                 },
             }
         }
-        None => PitOrderMarginOptional::default(),
+        OrderMarginAccess::Absent => PitOrderMarginOptional::default(),
     };
 
     PitOrder {
         operation,
         margin,
         position,
-        user_data: value.user_data,
+        user_data: value.payload,
     }
 }
 
-/// Order payload carrying validated domain values.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Order {
-    pub operation: OrderOperationAccess,
-    pub position: Option<OrderPosition>,
-    pub margin: Option<OrderMargin>,
-    /// Opaque caller-defined token.
-    ///
-    /// The SDK never inspects, dereferences, or frees this value. Its meaning,
-    /// lifetime, and thread-safety are the caller's responsibility. `0` / null
-    /// means "not set". See the project Threading Contract for the full lifetime
-    /// model.
-    ///
-    /// The token is preserved unchanged across every engine callback that
-    /// receives the carrying value, including policy callbacks and adjustment
-    /// callbacks.
-    pub user_data: *mut c_void,
-}
-
-impl Default for Order {
-    fn default() -> Self {
-        Self {
-            operation: OrderOperationAccess::Absent,
-            position: None,
-            margin: None,
-            user_data: std::ptr::null_mut(),
-        }
-    }
-}
-
-impl HasInstrument for Order {
-    fn instrument(&self) -> Result<&openpit::Instrument, RequestFieldAccessError> {
-        self.operation.instrument()
-    }
-}
-
-impl HasTradeAmount for Order {
-    fn trade_amount(&self) -> Result<openpit::param::TradeAmount, RequestFieldAccessError> {
-        self.operation.trade_amount()
-    }
-}
-
-impl HasOrderPrice for Order {
-    fn price(&self) -> Result<Option<openpit::param::Price>, RequestFieldAccessError> {
-        self.operation.price()
-    }
-}
-
-impl HasAccountId for Order {
-    fn account_id(&self) -> Result<AccountId, RequestFieldAccessError> {
-        self.operation.account_id()
-    }
-}
+/// FFI order request paired with an opaque caller-defined token.
+///
+/// The token is stored in [`RequestWithPayload::payload`]. The SDK never
+/// inspects, dereferences, or frees this value. Its meaning, lifetime, and
+/// thread-safety are the caller's responsibility. A null pointer means
+/// "not set". See the project Threading Contract for the full lifetime model.
+///
+/// The token is preserved unchanged across every engine callback that
+/// receives the carrying value, including policy callbacks and adjustment
+/// callbacks.
+pub type Order = RequestWithPayload<pit_interop::Order, *mut c_void>;
 
 #[cfg(test)]
 mod tests {
     use openpit::param::{Asset, Price, Quantity, Side, Volume};
-    use openpit::{
-        HasInstrument, HasOrderPrice, HasTradeAmount, Instrument, OrderMargin, OrderPosition,
+    use openpit::{HasInstrument, HasOrderPrice, HasTradeAmount};
+    use pit_interop::{
+        OrderMarginAccess, OrderOperationAccess, OrderPositionAccess, PopulatedOrderMargin,
+        PopulatedOrderOperation, PopulatedOrderPosition, RequestWithPayload,
     };
-    use pit_interop::OrderOperationAccess;
 
     use super::{
-        export_order, import_order, Order, PitOrder, PitOrderMargin, PitOrderMarginOptional,
+        export_order, import_order, PitOrder, PitOrderMargin, PitOrderMarginOptional,
         PitOrderOperation, PitOrderOperationOptional, PitOrderPosition, PitOrderPositionOptional,
     };
     use crate::param::{
@@ -428,16 +388,16 @@ mod tests {
             Some(Price::from_str("100").expect("valid"))
         );
         assert_eq!(
-            imported.position,
-            Some(OrderPosition {
+            imported.request.position,
+            OrderPositionAccess::Populated(PopulatedOrderPosition {
                 position_side: Some(openpit::param::PositionSide::Long),
                 reduce_only: true,
                 close_position: false,
             })
         );
         assert_eq!(
-            imported.margin,
-            Some(OrderMargin {
+            imported.request.margin,
+            OrderMarginAccess::Populated(PopulatedOrderMargin {
                 leverage: openpit::param::Leverage::from_raw(200).ok(),
                 collateral_asset: Some(Asset::new("USD").expect("valid")),
                 auto_borrow: true,
@@ -455,27 +415,29 @@ mod tests {
 
     #[test]
     fn export_order_produces_readable_views() {
-        let order = Order {
-            operation: OrderOperationAccess::Populated(pit_interop::PopulatedOrderOperation {
-                instrument: Some(Instrument::new(
-                    Asset::new("AAPL").expect("valid"),
-                    Asset::new("USD").expect("valid"),
-                )),
-                account_id: Some(openpit::param::AccountId::from_u64(3)),
-                side: Some(Side::Sell),
-                trade_amount: Some(openpit::param::TradeAmount::Volume(
-                    Volume::from_str("1500").expect("valid"),
-                )),
-                price: None,
-            }),
-            position: None,
-            margin: Some(OrderMargin {
-                leverage: None,
-                collateral_asset: Some(Asset::new("USD").expect("valid")),
-                auto_borrow: false,
-            }),
-            user_data: std::ptr::null_mut(),
-        };
+        let order = RequestWithPayload::new(
+            pit_interop::Order {
+                operation: OrderOperationAccess::Populated(PopulatedOrderOperation {
+                    instrument: Some(openpit::Instrument::new(
+                        Asset::new("AAPL").expect("valid"),
+                        Asset::new("USD").expect("valid"),
+                    )),
+                    account_id: Some(openpit::param::AccountId::from_u64(3)),
+                    side: Some(Side::Sell),
+                    trade_amount: Some(openpit::param::TradeAmount::Volume(
+                        Volume::from_str("1500").expect("valid"),
+                    )),
+                    price: None,
+                }),
+                position: OrderPositionAccess::Absent,
+                margin: OrderMarginAccess::Populated(PopulatedOrderMargin {
+                    leverage: None,
+                    collateral_asset: Some(Asset::new("USD").expect("valid")),
+                    auto_borrow: false,
+                }),
+            },
+            std::ptr::null_mut(),
+        );
 
         let exported = export_order(&order);
         assert!(exported.operation.is_set);
@@ -517,16 +479,16 @@ mod tests {
 
         let imported = import_order(&order).expect("order must import");
         assert_eq!(
-            imported.position,
-            Some(OrderPosition {
+            imported.request.position,
+            OrderPositionAccess::Populated(PopulatedOrderPosition {
                 position_side: None,
                 reduce_only: false,
                 close_position: false,
             })
         );
         assert_eq!(
-            imported.margin,
-            Some(OrderMargin {
+            imported.request.margin,
+            OrderMarginAccess::Populated(PopulatedOrderMargin {
                 leverage: None,
                 collateral_asset: None,
                 auto_borrow: false,

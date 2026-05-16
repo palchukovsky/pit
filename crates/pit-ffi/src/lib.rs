@@ -28,8 +28,8 @@ pub(crate) mod policy;
 pub(crate) mod reject;
 pub mod string;
 
-pub use account_adjustment::{AccountAdjustment, AccountAdjustmentOperation};
-pub use execution_report::{ExecutionReport, FillDetailsData, PositionImpactData};
+pub use account_adjustment::AccountAdjustment;
+pub use execution_report::ExecutionReport;
 pub use order::Order;
 pub use policy::{PitAccountAdjustmentPolicy, PitAccountAdjustmentPolicyApplyFn};
 

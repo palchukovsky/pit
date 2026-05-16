@@ -18,6 +18,7 @@
 package loader
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	goruntime "runtime"
@@ -152,6 +153,9 @@ func TestResolvePath_Override_FileMissing(t *testing.T) {
 	if err == nil {
 		t.Fatal("resolvePath: want error for missing override, got nil")
 	}
+	if !errors.Is(err, errOverrideStatFailed) {
+		t.Fatalf("resolvePath: want errOverrideStatFailed, got %v", err)
+	}
 }
 
 func TestResolvePath_Override_RelativeRejected(t *testing.T) {
@@ -160,6 +164,9 @@ func TestResolvePath_Override_RelativeRejected(t *testing.T) {
 	_, err := resolvePath()
 	if err == nil {
 		t.Fatal("resolvePath: want error for relative override, got nil")
+	}
+	if !errors.Is(err, errOverrideStatFailed) {
+		t.Fatalf("resolvePath: want errOverrideStatFailed, got %v", err)
 	}
 }
 
@@ -190,7 +197,7 @@ func TestResolvePath_CacheHit(t *testing.T) {
 	t.Setenv(envRuntimePath, "")
 	t.Setenv(envRuntimeCache, cacheRoot)
 
-	cacheDir, err := resolveCacheDir(version)
+	cacheDir, err := resolveCacheDir(SDKVersion)
 	if err != nil {
 		t.Fatalf("resolveCacheDir: %v", err)
 	}
@@ -360,7 +367,11 @@ func TestResolvePath_CacheMissWritesAndSecondCallUsesCache(t *testing.T) {
 	}
 }
 
-func TestLoad_ReturnsErrorForCorruptCachedRuntime(t *testing.T) {
+// ---------------------------------------------------------------------------
+// load — panic contract
+// ---------------------------------------------------------------------------
+
+func TestLoad_PanicsForCorruptCachedRuntime(t *testing.T) {
 	fileName, err := pitruntime.GetName()
 	if err != nil {
 		t.Skipf("unsupported platform: %v", err)
@@ -370,7 +381,7 @@ func TestLoad_ReturnsErrorForCorruptCachedRuntime(t *testing.T) {
 	t.Setenv(envRuntimePath, "")
 	t.Setenv(envRuntimeCache, cacheRoot)
 
-	cacheDir, err := resolveCacheDir(version)
+	cacheDir, err := resolveCacheDir(SDKVersion)
 	if err != nil {
 		t.Fatalf("resolveCacheDir() error = %v", err)
 	}
@@ -383,14 +394,101 @@ func TestLoad_ReturnsErrorForCorruptCachedRuntime(t *testing.T) {
 	}
 
 	resetLoaderStateForTest()
-	load()
+	loadErr := recoverLoad(t)
 	if loadErr == nil {
-		t.Fatal("loadErr = nil, want non-nil")
+		t.Fatal("load() did not panic, want *RuntimeLoadError")
 	}
-	if !strings.Contains(loadErr.Error(), "failed to load OpenPit runtime library") {
-		t.Fatalf("loadErr = %q, want runtime-load failure", loadErr.Error())
+	if loadErr.Reason != ReasonMagicCheckFailed {
+		t.Fatalf("load() panic reason = %q, want %q",
+			loadErr.Reason, ReasonMagicCheckFailed)
+	}
+	if loadErr.Path != targetPath {
+		t.Fatalf("load() panic path = %q, want %q", loadErr.Path, targetPath)
+	}
+	if loadErr.Cause == nil {
+		t.Fatal("load() panic Cause = nil, want underlying magic-check error")
 	}
 }
+
+func TestLoad_PanicsForUnresolvableOverride(t *testing.T) {
+	t.Setenv(envRuntimePath, "/nonexistent/openpit.so")
+
+	resetLoaderStateForTest()
+	loadErr := recoverLoad(t)
+	if loadErr == nil {
+		t.Fatal("load() did not panic, want *RuntimeLoadError")
+	}
+	if loadErr.Reason != ReasonOverrideStatFailed {
+		t.Fatalf("load() panic reason = %q, want %q",
+			loadErr.Reason, ReasonOverrideStatFailed)
+	}
+	if !errors.Is(loadErr, errOverrideStatFailed) {
+		t.Fatalf("errors.Is(load panic, errOverrideStatFailed) = false; got %v", loadErr.Cause)
+	}
+}
+
+func TestLoad_NoPanicAndSecondInitIsNoop(t *testing.T) {
+	forcedPath := strings.TrimSpace(os.Getenv(envRuntimePath))
+	if forcedPath == "" {
+		t.Skipf("%s not set; package init has already loaded the runtime", envRuntimePath)
+	}
+
+	resetLoaderStateForTest()
+	if loadErr := recoverLoad(t); loadErr != nil {
+		t.Fatalf("load() panicked unexpectedly: %v", loadErr)
+	}
+	if LoadedPath() == "" {
+		t.Fatal("LoadedPath() empty after successful load()")
+	}
+
+	// Second init through loadOnce must be a no-op.
+	prev := LoadedPath()
+	loadOnce.Do(func() {
+		t.Fatal("loadOnce.Do invoked again after a successful load")
+	})
+	if LoadedPath() != prev {
+		t.Fatalf("LoadedPath changed after no-op re-init: was %q, now %q", prev, LoadedPath())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// RuntimeLoadError
+// ---------------------------------------------------------------------------
+
+func TestRuntimeLoadError_FieldsAndUnwrap(t *testing.T) {
+	cause := errors.New("underlying")
+	e := &RuntimeLoadError{
+		Reason: ReasonDlopenFailed,
+		Path:   "/tmp/libopenpit.so",
+		Cause:  cause,
+	}
+
+	if e.Reason != ReasonDlopenFailed {
+		t.Fatalf("Reason = %q, want %q", e.Reason, ReasonDlopenFailed)
+	}
+	if e.Path != "/tmp/libopenpit.so" {
+		t.Fatalf("Path = %q, want %q", e.Path, "/tmp/libopenpit.so")
+	}
+	if errors.Unwrap(e) != cause {
+		t.Fatalf("errors.Unwrap = %v, want %v", errors.Unwrap(e), cause)
+	}
+	if !errors.Is(e, cause) {
+		t.Fatal("errors.Is(e, cause) = false, want true")
+	}
+	if !strings.Contains(e.Error(), ReasonDlopenFailed) {
+		t.Fatalf("Error() = %q, want it to contain Reason", e.Error())
+	}
+	if !strings.Contains(e.Error(), "/tmp/libopenpit.so") {
+		t.Fatalf("Error() = %q, want it to contain Path", e.Error())
+	}
+	if !strings.Contains(e.Error(), "underlying") {
+		t.Fatalf("Error() = %q, want it to contain underlying cause", e.Error())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// loadRuntimeLibrary
+// ---------------------------------------------------------------------------
 
 func TestLoadRuntimeLibraryReturnsErrorForInvalidPath(t *testing.T) {
 	err := loadRuntimeLibrary(filepath.Join(t.TempDir(), "missing-runtime"))
@@ -420,9 +518,30 @@ func TestLoadRuntimeLibraryLoadsResolvedPath(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
 func resetLoaderStateForTest() {
 	loadOnce = sync.Once{}
-	loadErr = nil
+	loadedPath = ""
+}
+
+func recoverLoad(t *testing.T) (out *RuntimeLoadError) {
+	t.Helper()
+	defer func() {
+		r := recover()
+		if r == nil {
+			return
+		}
+		rle, ok := r.(*RuntimeLoadError)
+		if !ok {
+			t.Fatalf("load() panicked with non-*RuntimeLoadError value: %#v", r)
+		}
+		out = rle
+	}()
+	loadOnce.Do(load)
+	return nil
 }
 
 func runtimeOverridePathIfEmbeddedUnavailable(t *testing.T) (string, bool) {

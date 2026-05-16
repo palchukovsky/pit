@@ -18,6 +18,8 @@
 package param
 
 import (
+	"sync"
+
 	"github.com/shopspring/decimal"
 	"go.openpit.dev/openpit/internal/native"
 	"go.openpit.dev/openpit/pkg/optional"
@@ -40,7 +42,10 @@ type Pnl struct {
 	native native.ParamPnl
 }
 
-var PnlZero = newPnlOrPanic(NewPnlFromInt(0))
+var pnlZero = sync.OnceValue(func() Pnl { return newPnlOrPanic(NewPnlFromInt(0)) })
+
+// PnlZero returns the canonical zero value of Pnl.
+func PnlZero() Pnl { return pnlZero() }
 
 func newPnlOrPanic(value Pnl, err error) Pnl {
 	if err != nil {

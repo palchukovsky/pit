@@ -18,6 +18,8 @@
 package param
 
 import (
+	"sync"
+
 	"github.com/shopspring/decimal"
 	"go.openpit.dev/openpit/internal/native"
 	"go.openpit.dev/openpit/pkg/optional"
@@ -45,7 +47,10 @@ type Notional struct {
 	native native.ParamNotional
 }
 
-var NotionalZero = newNotionalOrPanic(NewNotionalFromInt(0))
+var notionalZero = sync.OnceValue(func() Notional { return newNotionalOrPanic(NewNotionalFromInt(0)) })
+
+// NotionalZero returns the canonical zero value of Notional.
+func NotionalZero() Notional { return notionalZero() }
 
 func newNotionalOrPanic(value Notional, err error) Notional {
 	if err != nil {

@@ -18,6 +18,8 @@
 package param
 
 import (
+	"sync"
+
 	"github.com/shopspring/decimal"
 	"go.openpit.dev/openpit/internal/native"
 	"go.openpit.dev/openpit/pkg/optional"
@@ -40,7 +42,10 @@ type Quantity struct {
 	native native.ParamQuantity
 }
 
-var QuantityZero = newQuantityOrPanic(NewQuantityFromInt(0))
+var quantityZero = sync.OnceValue(func() Quantity { return newQuantityOrPanic(NewQuantityFromInt(0)) })
+
+// QuantityZero returns the canonical zero value of Quantity.
+func QuantityZero() Quantity { return quantityZero() }
 
 func newQuantityOrPanic(value Quantity, err error) Quantity {
 	if err != nil {

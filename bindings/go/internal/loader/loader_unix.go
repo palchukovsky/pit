@@ -36,7 +36,7 @@ import (
 
 func loadRuntimeLibrary(path string) error {
 	if err := validateSharedLibraryMagic(path); err != nil {
-		return err
+		return fmt.Errorf("%w: %w", errMagicCheckFailed, err)
 	}
 
 	cPath := C.CString(path)

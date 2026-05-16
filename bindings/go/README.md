@@ -38,6 +38,10 @@ Visit the [Go module page](https://go.openpit.dev/openpit) and the
 [project wiki](https://github.com/openpitkit/pit/wiki) for conceptual pages
 and architecture notes.
 
+## Examples
+
+Runnable end-to-end examples live in the monorepo under: [`examples/go/`](https://github.com/openpitkit/pit/tree/main/examples/go).
+
 ## Install
 
 ```bash

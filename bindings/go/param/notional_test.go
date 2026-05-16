@@ -45,8 +45,8 @@ func TestNewNotionalFromStringRejectsNegative(t *testing.T) {
 func TestNotionalZeroIsZero(t *testing.T) {
 	t.Parallel()
 
-	if !NotionalZero.IsZero() {
-		t.Fatal("NotionalZero.IsZero() must be true")
+	if !NotionalZero().IsZero() {
+		t.Fatal("NotionalZero().IsZero() must be true")
 	}
 }
 

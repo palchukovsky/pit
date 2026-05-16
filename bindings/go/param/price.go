@@ -18,6 +18,8 @@
 package param
 
 import (
+	"sync"
+
 	"github.com/shopspring/decimal"
 	"go.openpit.dev/openpit/internal/native"
 	"go.openpit.dev/openpit/pkg/optional"
@@ -40,7 +42,10 @@ type Price struct {
 	native native.ParamPrice
 }
 
-var PriceZero = newPriceOrPanic(NewPriceFromInt(0))
+var priceZero = sync.OnceValue(func() Price { return newPriceOrPanic(NewPriceFromInt(0)) })
+
+// PriceZero returns the canonical zero value of Price.
+func PriceZero() Price { return priceZero() }
 
 func newPriceOrPanic(value Price, err error) Price {
 	if err != nil {

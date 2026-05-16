@@ -18,6 +18,8 @@
 package param
 
 import (
+	"sync"
+
 	"github.com/shopspring/decimal"
 	"go.openpit.dev/openpit/internal/native"
 	"go.openpit.dev/openpit/pkg/optional"
@@ -40,7 +42,10 @@ type PositionSize struct {
 	native native.ParamPositionSize
 }
 
-var PositionSizeZero = newPositionSizeOrPanic(NewPositionSizeFromInt(0))
+var positionSizeZero = sync.OnceValue(func() PositionSize { return newPositionSizeOrPanic(NewPositionSizeFromInt(0)) })
+
+// PositionSizeZero returns the canonical zero value of PositionSize.
+func PositionSizeZero() PositionSize { return positionSizeZero() }
 
 func newPositionSizeOrPanic(value PositionSize, err error) PositionSize {
 	if err != nil {

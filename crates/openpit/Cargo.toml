@@ -24,5 +24,6 @@ smol_str = "0.3"
 
 [package.metadata.release]
 pre-release-replacements = [
-  { file = "../../bindings/go/internal/loader/loader.go", search = 'const version = "[0-9]+\.[0-9]+\.[0-9]+"', replace = "const version = \"{{version}}\"", exactly = 1 },
+  { file = "../../bindings/go/internal/loader/loader.go", search = 'const SDKVersion = "[0-9]+\.[0-9]+\.[0-9]+"', replace = "const SDKVersion = \"{{version}}\"", exactly = 1 },
+  { file = "../../examples/go/rate_pnl_killswitch/go.mod", search = 'require go\.openpit\.dev/openpit v[0-9]+\.[0-9]+\.[0-9]+', replace = "require go.openpit.dev/openpit v{{version}}", exactly = 1 },
 ]

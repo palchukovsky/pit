@@ -18,6 +18,8 @@
 package param
 
 import (
+	"sync"
+
 	"github.com/shopspring/decimal"
 	"go.openpit.dev/openpit/internal/native"
 	"go.openpit.dev/openpit/pkg/optional"
@@ -40,7 +42,10 @@ type CashFlow struct {
 	native native.ParamCashFlow
 }
 
-var CashFlowZero = newCashFlowOrPanic(NewCashFlowFromInt(0))
+var cashFlowZero = sync.OnceValue(func() CashFlow { return newCashFlowOrPanic(NewCashFlowFromInt(0)) })
+
+// CashFlowZero returns the canonical zero value of CashFlow.
+func CashFlowZero() CashFlow { return cashFlowZero() }
 
 func newCashFlowOrPanic(value CashFlow, err error) CashFlow {
 	if err != nil {

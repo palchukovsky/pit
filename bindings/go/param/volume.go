@@ -18,6 +18,8 @@
 package param
 
 import (
+	"sync"
+
 	"github.com/shopspring/decimal"
 	"go.openpit.dev/openpit/internal/native"
 	"go.openpit.dev/openpit/pkg/optional"
@@ -40,7 +42,10 @@ type Volume struct {
 	native native.ParamVolume
 }
 
-var VolumeZero = newVolumeOrPanic(NewVolumeFromInt(0))
+var volumeZero = sync.OnceValue(func() Volume { return newVolumeOrPanic(NewVolumeFromInt(0)) })
+
+// VolumeZero returns the canonical zero value of Volume.
+func VolumeZero() Volume { return volumeZero() }
 
 func newVolumeOrPanic(value Volume, err error) Volume {
 	if err != nil {

@@ -45,6 +45,9 @@ lint-go:
     cd bindings/go && gofmt -l . | (! grep .)
     cd bindings/go && go vet -all ./... > /dev/null
     cd bindings/go && golangci-lint run ./...
+    cd examples/go/rate_pnl_killswitch && gofmt -l . | (! grep .)
+    just _go-in examples/go/rate_pnl_killswitch "go vet -all ./..."
+    just _go-in examples/go/rate_pnl_killswitch "golangci-lint run ./..."
 
 # Run all tests.
 test-all: test-rust test-python test-go test-go-race test-c-examples
@@ -80,16 +83,21 @@ test-python-unit: python-develop
 test-python-integration: python-develop
     just _pytest bindings/python/tests/integration
 
-# Full Go test suite.
+# Full Go test suite (bindings + workspace examples).
 test-go:
     just _go "go test ./..."
+    just _go-in examples/go/rate_pnl_killswitch "go test ./..."
 # Go race test suite.
 test-go-race:
     just _go "go test -race ./..."
+    just _go-in examples/go/rate_pnl_killswitch "go test -race ./..."
 # Go tests with actionable coverage summary.
 test-go-cov:
     just _go "go test -coverprofile=coverage.out -coverpkg=./... ./..."
     cd bindings/go && go tool cover -func=coverage.out | grep -v '100.0%'
+# Run a workspace Go examples from examples/go against local sources.
+run-go-examples:
+    just _go-in examples/go/rate_pnl_killswitch "go run ."
 
 # Compile C examples embedded in public README files.
 test-c-examples:
@@ -131,8 +139,12 @@ gen-api-c:
 _build-ffi:
     cargo build -p openpit-ffi --release --locked
 
-# Run a Go command with FFI runtime/linker environment configured.
-_go args: _build-ffi
+# Run a Go command in the bindings/go module with FFI runtime path configured.
+_go args:
+    just _go-in bindings/go "{{ args }}"
+
+# Run a Go command in a workspace-level subdirectory with FFI runtime path configured.
+_go-in dir args: _build-ffi
     OPENPIT_RUNTIME_LIBRARY_PATH="$(if [ "$(uname -s)" = "Darwin" ]; then \
       echo "$(pwd)/target/release/libopenpit_ffi.dylib"; \
     elif [ "$(uname -s)" = "Linux" ]; then \
@@ -140,11 +152,4 @@ _go args: _build-ffi
     else \
       echo "unsupported OS for pit-ffi runtime lookup" >&2; \
       exit 1; \
-    fi)" && CGO_LDFLAGS="$(if [ "$(uname -s)" = "Darwin" ]; then \
-      echo "-Wl,-no_warn_duplicate_libraries -L$(pwd)/target/release -lopenpit_ffi"; \
-    elif [ "$(uname -s)" = "Linux" ]; then \
-      echo "-L$(pwd)/target/release -lopenpit_ffi"; \
-    else \
-      echo "unsupported OS for pit-ffi linker flags" >&2; \
-      exit 1; \
-    fi)" && RUNTIME_DIR="$(pwd)/target/release" && cd bindings/go && OPENPIT_RUNTIME_LIBRARY_PATH="$OPENPIT_RUNTIME_LIBRARY_PATH" CGO_LDFLAGS="$CGO_LDFLAGS" LD_LIBRARY_PATH="${RUNTIME_DIR}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" DYLD_LIBRARY_PATH="${RUNTIME_DIR}${DYLD_LIBRARY_PATH:+:${DYLD_LIBRARY_PATH}}" {{ args }}
+    fi)" && cd {{ dir }} && OPENPIT_RUNTIME_LIBRARY_PATH="$OPENPIT_RUNTIME_LIBRARY_PATH" {{ args }}

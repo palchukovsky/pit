@@ -80,7 +80,8 @@ evolution during the pre‑stable phase.
 The project website [openpit.dev](https://openpit.dev/) for an overview
 and links to all documentation.
 
-[The Go SDK README](bindings/go/README.md) if you want to integrate OpenPit from Go.
+[The Go SDK README](bindings/go/README.md) if you want to integrate OpenPit
+from Go.
 
 [The Python SDK README](bindings/python/README.md) if you want to work
 with OpenPit from Python via the `openpit` package.
@@ -90,6 +91,9 @@ with the Rust interface and a runnable example.
 
 [The C SDK README](bindings/c/README.md) if you want to integrate OpenPit
 from C or from environments that integrate through a C ABI.
+
+[Runnable examples](examples/) end-to-end scenarios you can copy into your own
+application.
 
 [Conceptual pages and longer architecture notes wiki](https://github.com/openpitkit/pit/wiki).
 
@@ -160,12 +164,16 @@ Manual:
 ```bash
 cargo build -p openpit-ffi --release --locked
 cd bindings/go
+# Linux:
 export OPENPIT_RUNTIME_LIBRARY_PATH="$(pwd)/../../target/release/libopenpit_ffi.so"
-export LD_LIBRARY_PATH="$(pwd)/../../target/release${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
-export CGO_LDFLAGS="-L$(pwd)/../../target/release -lopenpit_ffi"
+# macOS: use libopenpit_ffi.dylib instead.
 go test ./...
 go test -race ./...
 ```
+
+`OPENPIT_RUNTIME_LIBRARY_PATH` is needed only for local development inside the
+`pit` repository. Consumers installing the Go SDK with `go get` do not need to
+set environment variables.
 
 ### Tests
 
@@ -208,9 +216,9 @@ python -m pytest bindings/python/tests/integration
 # Go:
 cargo build -p openpit-ffi --release --locked
 cd bindings/go
+# Linux:
 export OPENPIT_RUNTIME_LIBRARY_PATH="$(pwd)/../../target/release/libopenpit_ffi.so"
-export LD_LIBRARY_PATH="$(pwd)/../../target/release${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
-export CGO_LDFLAGS="-L$(pwd)/../../target/release -lopenpit_ffi"
+# macOS: use libopenpit_ffi.dylib instead.
 go test ./...
 go test -race ./...
 ```

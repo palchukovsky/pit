@@ -20,6 +20,7 @@ set -euo pipefail
 
 : "${OPENPIT_VERSION:?OPENPIT_VERSION is required}"
 
+# 1. Minimal smoke consumer: ensures `go get go.openpit.dev/openpit` works.
 rm -rf /tmp/openpit-go-consumer
 mkdir -p /tmp/openpit-go-consumer
 cp -R /opt/e2e/go-consumer/. /tmp/openpit-go-consumer
@@ -28,31 +29,35 @@ cd /tmp/openpit-go-consumer
 sed "s/__OPENPIT_VERSION__/${OPENPIT_VERSION}/g" go.mod.in > go.mod
 rm go.mod.in
 
-go mod download go.openpit.dev/openpit
-module_dir="$(go list -m -f '{{.Dir}}' go.openpit.dev/openpit)"
-goos="$(go env GOOS)"
-goarch="$(go env GOARCH)"
-case "${goos}" in
-  linux)
-    runtime_lib="libopenpit_ffi.so"
-    ;;
-  darwin)
-    runtime_lib="libopenpit_ffi.dylib"
-    ;;
-  *)
-    echo "unsupported Go release e2e platform: ${goos}/${goarch}" >&2
-    exit 1
-    ;;
-esac
-runtime_dir="${module_dir}/internal/runtime/${goos}-${goarch}"
-runtime_path="${runtime_dir}/${runtime_lib}"
-if [[ ! -f "${runtime_path}" ]]; then
-  echo "published Go module runtime library not found: ${runtime_path}" >&2
-  exit 1
-fi
-
-export CGO_LDFLAGS="-L${runtime_dir} -lopenpit_ffi -Wl,-rpath,${runtime_dir}"
-export OPENPIT_RUNTIME_LIBRARY_PATH="${runtime_path}"
-
 go mod tidy
 go test ./...
+
+# 2. Real examples from examples/go/*: each is tested against the published
+#    module by stripping its local `replace` directive and pinning the version.
+#    This exercises exactly what an SDK consumer sees when they copy the
+#    example from the repository.
+for example_src in /opt/e2e/examples/*/; do
+  name="$(basename "${example_src}")"
+  workdir="/tmp/openpit-go-example-${name}"
+  echo "==> Testing example ${name} against go.openpit.dev/openpit ${OPENPIT_VERSION}"
+  rm -rf "${workdir}"
+  mkdir -p "${workdir}"
+  cp -R "${example_src}." "${workdir}"
+
+  cd "${workdir}"
+  # Drop the local replace and pin the require to the released version. Any
+  # require line referencing go.openpit.dev/openpit is rewritten regardless of
+  # the version the source tree pinned for development.
+  rm -f go.sum
+  awk -v ver="${OPENPIT_VERSION}" '
+    /^replace go\.openpit\.dev\/openpit/ { next }
+    /^require go\.openpit\.dev\/openpit/ {
+      print "require go.openpit.dev/openpit v" ver
+      next
+    }
+    { print }
+  ' go.mod > go.mod.tmp && mv go.mod.tmp go.mod
+
+  go mod tidy
+  go test ./...
+done

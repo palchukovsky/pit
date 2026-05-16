@@ -186,18 +186,21 @@ func (e *Engine) ApplyAccountAdjustment(
 //------------------------------------------------------------------------------
 // EngineBuilder
 
+// Version is the SDK release version. It must match the runtime library
+// version reported by the loaded native runtime; the compatibility check runs
+// during initialization of the internal/native package.
+const Version = loader.SDKVersion
+
 // EngineBuilder is the initial stage of the engine builder. It only exposes
 // sync-policy selection methods. Call FullSync, NoSync, or AccountSync to
 // advance to SyncedEngineBuilder where policies can be registered.
-type EngineBuilder struct {
-	err error
-}
+type EngineBuilder struct{}
 
 // NewEngineBuilder returns a new engine builder.
 // Call FullSync, NoSync, or AccountSync to obtain a
 // SyncedEngineBuilder on which policies can be registered.
 func NewEngineBuilder() *EngineBuilder {
-	return &EngineBuilder{err: loader.EnsureRuntimeLoaded()}
+	return &EngineBuilder{}
 }
 
 // FullSync configures full thread-safety synchronization and returns a
@@ -206,8 +209,8 @@ func NewEngineBuilder() *EngineBuilder {
 // cross-thread access. Use this when the engine is shared across multiple
 // goroutines or when goroutine migration patterns make sequential thread
 // pinning impractical.
-func (b *EngineBuilder) FullSync() *SyncedEngineBuilder {
-	return &SyncedEngineBuilder{syncPolicy: native.SyncPolicyFull, err: b.err}
+func (*EngineBuilder) FullSync() *SyncedEngineBuilder {
+	return &SyncedEngineBuilder{syncPolicy: native.SyncPolicyFull}
 }
 
 // NoSync configures single-thread synchronization and returns a
@@ -215,8 +218,8 @@ func (b *EngineBuilder) FullSync() *SyncedEngineBuilder {
 // must stay on the OS thread that created it; calls from any other OS thread
 // are undefined behavior. Use this for single-threaded embeddings where
 // synchronization overhead must be zero.
-func (b *EngineBuilder) NoSync() *SyncedEngineBuilder {
-	return &SyncedEngineBuilder{syncPolicy: native.SyncPolicyLocal, err: b.err}
+func (*EngineBuilder) NoSync() *SyncedEngineBuilder {
+	return &SyncedEngineBuilder{syncPolicy: native.SyncPolicyLocal}
 }
 
 // AccountSync configures account-sharded synchronization and returns a
@@ -224,8 +227,8 @@ func (b *EngineBuilder) NoSync() *SyncedEngineBuilder {
 // safe for concurrent invocation when the caller pins each account to a single
 // processing chain (one queue or one worker at a time), so calls for the same
 // account are never concurrent.
-func (b *EngineBuilder) AccountSync() *SyncedEngineBuilder {
-	return &SyncedEngineBuilder{syncPolicy: native.SyncPolicyAccount, err: b.err}
+func (*EngineBuilder) AccountSync() *SyncedEngineBuilder {
+	return &SyncedEngineBuilder{syncPolicy: native.SyncPolicyAccount}
 }
 
 //------------------------------------------------------------------------------
@@ -236,7 +239,6 @@ func (b *EngineBuilder) AccountSync() *SyncedEngineBuilder {
 // policy to advance to ReadyEngineBuilder where Build is available.
 type SyncedEngineBuilder struct {
 	syncPolicy native.SyncPolicy
-	err        error
 }
 
 func (b *SyncedEngineBuilder) PreTrade(policy ...pretrade.Policy) *ReadyEngineBuilder {
@@ -262,9 +264,6 @@ type ReadyEngineBuilder struct {
 }
 
 func newReadyEngineBuilder(sb *SyncedEngineBuilder) *ReadyEngineBuilder {
-	if sb.err != nil {
-		return &ReadyEngineBuilder{err: sb.err}
-	}
 	handle, err := native.CreateEngineBuilder(sb.syncPolicy)
 	if err != nil {
 		return &ReadyEngineBuilder{err: err}

@@ -542,7 +542,7 @@ func TestExampleWikiPolicyRollbackSafety(t *testing.T) {
 	}
 
 	policy := &wikiReserveThenValidatePolicy{
-		reserved: param.VolumeZero,
+		reserved: param.VolumeZero(),
 		limit:    limit,
 	}
 
@@ -577,7 +577,7 @@ func TestExampleWikiPolicyRollbackSafety(t *testing.T) {
 	}
 
 	// The rollback mutation must have restored reserved to zero.
-	if !policy.reserved.Equal(param.VolumeZero) {
+	if !policy.reserved.Equal(param.VolumeZero()) {
 		t.Fatalf("reserved after rollback = %v, want zero", policy.reserved)
 	}
 }

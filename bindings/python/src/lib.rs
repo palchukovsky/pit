@@ -50,7 +50,7 @@ use openpit::{
     EngineBuildError, Instrument, Mutation, Mutations, PostTradeResult,
 };
 use openpit::{AccountAdjustmentContext, AccountAdjustmentPolicy};
-use pit_interop::{
+use openpit_interop::{
     AccountAdjustmentAmountAccess, AccountAdjustmentBoundsAccess, AccountAdjustmentOperationAccess,
     ExecutionReportFillAccess, ExecutionReportOperationAccess, ExecutionReportPositionImpactAccess,
     FinancialImpactAccess, OrderMarginAccess, OrderOperationAccess, OrderPositionAccess,
@@ -108,13 +108,15 @@ fn create_param_error(message: impl Into<String>) -> PyErr {
     ParamError::new_err(message.into())
 }
 
-type Order = pit_interop::RequestWithPayload<pit_interop::Order, Py<PyAny>>;
-type ExecutionReport = pit_interop::RequestWithPayload<pit_interop::ExecutionReport, Py<PyAny>>;
-type AccountAdjustment = pit_interop::RequestWithPayload<pit_interop::AccountAdjustment, Py<PyAny>>;
+type Order = openpit_interop::RequestWithPayload<openpit_interop::Order, Py<PyAny>>;
+type ExecutionReport =
+    openpit_interop::RequestWithPayload<openpit_interop::ExecutionReport, Py<PyAny>>;
+type AccountAdjustment =
+    openpit_interop::RequestWithPayload<openpit_interop::AccountAdjustment, Py<PyAny>>;
 
 #[pyclass(name = "Engine", module = "openpit")]
 struct PyEngine {
-    inner: Engine<Order, ExecutionReport, AccountAdjustment, pit_interop::EngineLocking>,
+    inner: Engine<Order, ExecutionReport, AccountAdjustment, openpit_interop::EngineLocking>,
 }
 
 #[pymethods]
@@ -848,8 +850,8 @@ fn extract_python_order(obj: &Bound<'_, PyAny>) -> PyResult<Order> {
         }
     };
 
-    Ok(pit_interop::RequestWithPayload::new(
-        pit_interop::Order {
+    Ok(openpit_interop::RequestWithPayload::new(
+        openpit_interop::Order {
             operation,
             position,
             margin,
@@ -921,8 +923,8 @@ fn extract_python_execution_report(obj: &Bound<'_, PyAny>) -> PyResult<Execution
         }
     };
 
-    Ok(pit_interop::RequestWithPayload::new(
-        pit_interop::ExecutionReport {
+    Ok(openpit_interop::RequestWithPayload::new(
+        openpit_interop::ExecutionReport {
             operation,
             financial_impact,
             fill,
@@ -1029,8 +1031,8 @@ fn extract_python_account_adjustment(obj: &Bound<'_, PyAny>) -> PyResult<Account
         }
     };
 
-    Ok(pit_interop::RequestWithPayload::new(
-        pit_interop::AccountAdjustment {
+    Ok(openpit_interop::RequestWithPayload::new(
+        openpit_interop::AccountAdjustment {
             operation,
             amount,
             bounds,
@@ -1236,7 +1238,7 @@ fn parse_reject_code(value: &str) -> PyResult<RejectCode> {
     }
 }
 
-use pit_interop::SyncMode as PySyncPolicy;
+use openpit_interop::SyncMode as PySyncPolicy;
 
 enum PyBuilderState {
     Synced(
@@ -1244,7 +1246,7 @@ enum PyBuilderState {
             Order,
             ExecutionReport,
             AccountAdjustment,
-            pit_interop::SyncPolicy,
+            openpit_interop::SyncPolicy,
         >,
     ),
     Ready(
@@ -1252,7 +1254,7 @@ enum PyBuilderState {
             Order,
             ExecutionReport,
             AccountAdjustment,
-            pit_interop::SyncPolicy,
+            openpit_interop::SyncPolicy,
         >,
     ),
 }
@@ -1260,7 +1262,7 @@ enum PyBuilderState {
 impl PyBuilderState {
     fn storage_builder(
         &self,
-    ) -> &StorageBuilder<pit_interop::sync_policy::StorageLockingPolicyFactory> {
+    ) -> &StorageBuilder<openpit_interop::sync_policy::StorageLockingPolicyFactory> {
         match self {
             Self::Synced(builder) => builder.storage_builder(),
             Self::Ready(builder) => builder.storage_builder(),
@@ -1347,7 +1349,7 @@ impl PyReadyEngineBuilder {
         PyReadyEngineBuilder {
             state: RefCell::new(Some(PyBuilderState::Synced(
                 Engine::<Order, ExecutionReport, AccountAdjustment>::builder()
-                    .with_sync(pit_interop::SyncPolicy::new(sync_policy)),
+                    .with_sync(openpit_interop::SyncPolicy::new(sync_policy)),
             ))),
         }
     }
@@ -1645,7 +1647,7 @@ fn parse_rate_limit_barriers(
 }
 
 fn make_rate_limit_start_policy(
-    storage_builder: &StorageBuilder<pit_interop::sync_policy::StorageLockingPolicyFactory>,
+    storage_builder: &StorageBuilder<openpit_interop::sync_policy::StorageLockingPolicyFactory>,
     broker: Option<(usize, u64)>,
     asset_barriers: Vec<(String, usize, u64)>,
     account_barriers: Vec<(u64, usize, u64)>,
@@ -1773,7 +1775,7 @@ fn parse_pnl_killswitch_barriers<'py>(
 }
 
 fn make_pnl_killswitch_start_policy(
-    storage_builder: &StorageBuilder<pit_interop::sync_policy::StorageLockingPolicyFactory>,
+    storage_builder: &StorageBuilder<openpit_interop::sync_policy::StorageLockingPolicyFactory>,
     broker_barriers: Vec<Bound<'_, PyAny>>,
     account_barriers: Vec<Bound<'_, PyAny>>,
 ) -> PyResult<BoxedStartPolicy> {
@@ -4975,8 +4977,8 @@ mod field_access_tests {
     fn order_without_operation() -> Order {
         ensure_python_initialized();
         Python::with_gil(|py| {
-            pit_interop::RequestWithPayload::new(
-                pit_interop::Order {
+            openpit_interop::RequestWithPayload::new(
+                openpit_interop::Order {
                     operation: OrderOperationAccess::Absent,
                     position: OrderPositionAccess::Absent,
                     margin: OrderMarginAccess::Absent,
@@ -4989,8 +4991,8 @@ mod field_access_tests {
     fn report_without_groups() -> ExecutionReport {
         ensure_python_initialized();
         Python::with_gil(|py| {
-            pit_interop::RequestWithPayload::new(
-                pit_interop::ExecutionReport {
+            openpit_interop::RequestWithPayload::new(
+                openpit_interop::ExecutionReport {
                     operation: ExecutionReportOperationAccess::Absent,
                     financial_impact: FinancialImpactAccess::Absent,
                     fill: ExecutionReportFillAccess::Absent,

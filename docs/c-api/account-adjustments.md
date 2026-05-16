@@ -4,7 +4,7 @@
 
 [Back to index](index.md)
 
-## `PitParamAdjustmentAmount`
+## `OpenPitParamAdjustmentAmount`
 
 One amount component inside an account adjustment.
 
@@ -14,137 +14,137 @@ The numeric value is interpreted according to `kind`:
 - `Absolute` means "set current state to this signed amount".
 
 ```c
-typedef struct PitParamAdjustmentAmount {
-    PitParamPositionSize value;
-    PitParamAdjustmentAmountKind kind;
-} PitParamAdjustmentAmount;
+typedef struct OpenPitParamAdjustmentAmount {
+    OpenPitParamPositionSize value;
+    OpenPitParamAdjustmentAmountKind kind;
+} OpenPitParamAdjustmentAmount;
 ```
 
-## `PitAccountAdjustmentBalanceOperation`
+## `OpenPitAccountAdjustmentBalanceOperation`
 
 Balance-operation payload for account adjustment.
 
 ```c
-typedef struct PitAccountAdjustmentBalanceOperation {
-    PitStringView asset;
-    PitParamPriceOptional average_entry_price;
-} PitAccountAdjustmentBalanceOperation;
+typedef struct OpenPitAccountAdjustmentBalanceOperation {
+    OpenPitStringView asset;
+    OpenPitParamPriceOptional average_entry_price;
+} OpenPitAccountAdjustmentBalanceOperation;
 ```
 
-## `PitAccountAdjustmentPositionOperation`
+## `OpenPitAccountAdjustmentPositionOperation`
 
 Position-operation payload for account adjustment.
 
 ```c
-typedef struct PitAccountAdjustmentPositionOperation {
-    PitInstrument instrument;
-    PitStringView collateral_asset;
-    PitParamPriceOptional average_entry_price;
-    PitParamLeverage leverage;
-    PitParamPositionMode mode;
-} PitAccountAdjustmentPositionOperation;
+typedef struct OpenPitAccountAdjustmentPositionOperation {
+    OpenPitInstrument instrument;
+    OpenPitStringView collateral_asset;
+    OpenPitParamPriceOptional average_entry_price;
+    OpenPitParamLeverage leverage;
+    OpenPitParamPositionMode mode;
+} OpenPitAccountAdjustmentPositionOperation;
 ```
 
-## `PitAccountAdjustmentBalanceOperationOptional`
+## `OpenPitAccountAdjustmentBalanceOperationOptional`
 
 ```c
-typedef struct PitAccountAdjustmentBalanceOperationOptional {
-    PitAccountAdjustmentBalanceOperation value;
+typedef struct OpenPitAccountAdjustmentBalanceOperationOptional {
+    OpenPitAccountAdjustmentBalanceOperation value;
     bool is_set;
-} PitAccountAdjustmentBalanceOperationOptional;
+} OpenPitAccountAdjustmentBalanceOperationOptional;
 ```
 
-## `PitAccountAdjustmentPositionOperationOptional`
+## `OpenPitAccountAdjustmentPositionOperationOptional`
 
 ```c
-typedef struct PitAccountAdjustmentPositionOperationOptional {
-    PitAccountAdjustmentPositionOperation value;
+typedef struct OpenPitAccountAdjustmentPositionOperationOptional {
+    OpenPitAccountAdjustmentPositionOperation value;
     bool is_set;
-} PitAccountAdjustmentPositionOperationOptional;
+} OpenPitAccountAdjustmentPositionOperationOptional;
 ```
 
-## `PitAccountAdjustmentAmount`
+## `OpenPitAccountAdjustmentAmount`
 
 Optional amount-change group for account adjustment.
 
 The group is absent when every field is absent.
 
 ```c
-typedef struct PitAccountAdjustmentAmount {
-    PitParamAdjustmentAmount total;
-    PitParamAdjustmentAmount reserved;
-    PitParamAdjustmentAmount pending;
-} PitAccountAdjustmentAmount;
+typedef struct OpenPitAccountAdjustmentAmount {
+    OpenPitParamAdjustmentAmount total;
+    OpenPitParamAdjustmentAmount reserved;
+    OpenPitParamAdjustmentAmount pending;
+} OpenPitAccountAdjustmentAmount;
 ```
 
-## `PitAccountAdjustmentBounds`
+## `OpenPitAccountAdjustmentBounds`
 
 Optional bounds group for account adjustment.
 
 The group is absent when every bound is absent.
 
 ```c
-typedef struct PitAccountAdjustmentBounds {
-    PitParamPositionSizeOptional total_upper;
-    PitParamPositionSizeOptional total_lower;
-    PitParamPositionSizeOptional reserved_upper;
-    PitParamPositionSizeOptional reserved_lower;
-    PitParamPositionSizeOptional pending_upper;
-    PitParamPositionSizeOptional pending_lower;
-} PitAccountAdjustmentBounds;
+typedef struct OpenPitAccountAdjustmentBounds {
+    OpenPitParamPositionSizeOptional total_upper;
+    OpenPitParamPositionSizeOptional total_lower;
+    OpenPitParamPositionSizeOptional reserved_upper;
+    OpenPitParamPositionSizeOptional reserved_lower;
+    OpenPitParamPositionSizeOptional pending_upper;
+    OpenPitParamPositionSizeOptional pending_lower;
+} OpenPitAccountAdjustmentBounds;
 ```
 
-## `PitAccountAdjustment`
+## `OpenPitAccountAdjustment`
 
 Full caller-owned account-adjustment payload.
 
 ```c
-typedef struct PitAccountAdjustment {
-    PitAccountAdjustmentBalanceOperationOptional balance_operation;
-    PitAccountAdjustmentPositionOperationOptional position_operation;
-    PitAccountAdjustmentAmountOptional amount;
-    PitAccountAdjustmentBoundsOptional bounds;
+typedef struct OpenPitAccountAdjustment {
+    OpenPitAccountAdjustmentBalanceOperationOptional balance_operation;
+    OpenPitAccountAdjustmentPositionOperationOptional position_operation;
+    OpenPitAccountAdjustmentAmountOptional amount;
+    OpenPitAccountAdjustmentBoundsOptional bounds;
     void * user_data;
-} PitAccountAdjustment;
+} OpenPitAccountAdjustment;
 ```
 
-## `PitAccountAdjustmentApplyStatus`
+## `OpenPitAccountAdjustmentApplyStatus`
 
-Result of `pit_engine_apply_account_adjustment`.
+Result of `openpit_engine_apply_account_adjustment`.
 
 ```c
-typedef uint8_t PitAccountAdjustmentApplyStatus;
+typedef uint8_t OpenPitAccountAdjustmentApplyStatus;
 /**
  * The call failed before the batch could be evaluated.
  */
-#define PitAccountAdjustmentApplyStatus_Error \
-    ((PitAccountAdjustmentApplyStatus) 0)
+#define OpenPitAccountAdjustmentApplyStatus_Error \
+    ((OpenPitAccountAdjustmentApplyStatus) 0)
 /**
  * The batch was accepted and applied.
  */
-#define PitAccountAdjustmentApplyStatus_Applied \
-    ((PitAccountAdjustmentApplyStatus) 1)
+#define OpenPitAccountAdjustmentApplyStatus_Applied \
+    ((OpenPitAccountAdjustmentApplyStatus) 1)
 /**
  * The batch was evaluated and rejected by policy or validation logic.
  */
-#define PitAccountAdjustmentApplyStatus_Rejected \
-    ((PitAccountAdjustmentApplyStatus) 2)
+#define OpenPitAccountAdjustmentApplyStatus_Rejected \
+    ((OpenPitAccountAdjustmentApplyStatus) 2)
 ```
 
-## `PitAccountAdjustmentAmountOptional`
+## `OpenPitAccountAdjustmentAmountOptional`
 
 ```c
-typedef struct PitAccountAdjustmentAmountOptional {
-    PitAccountAdjustmentAmount value;
+typedef struct OpenPitAccountAdjustmentAmountOptional {
+    OpenPitAccountAdjustmentAmount value;
     bool is_set;
-} PitAccountAdjustmentAmountOptional;
+} OpenPitAccountAdjustmentAmountOptional;
 ```
 
-## `PitAccountAdjustmentBoundsOptional`
+## `OpenPitAccountAdjustmentBoundsOptional`
 
 ```c
-typedef struct PitAccountAdjustmentBoundsOptional {
-    PitAccountAdjustmentBounds value;
+typedef struct OpenPitAccountAdjustmentBoundsOptional {
+    OpenPitAccountAdjustmentBounds value;
     bool is_set;
-} PitAccountAdjustmentBoundsOptional;
+} OpenPitAccountAdjustmentBoundsOptional;
 ```

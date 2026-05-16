@@ -21,7 +21,7 @@ package runtime
 
 import "embed"
 
-const name = "libpit_ffi.so"
+const name = "libopenpit_ffi.so"
 
 //go:embed all:linux-arm64
 var embeddedFS embed.FS

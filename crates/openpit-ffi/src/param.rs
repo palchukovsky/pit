@@ -26,10 +26,10 @@ use rust_decimal::Decimal;
 use std::cmp::Ordering;
 
 use crate::last_error::{
-    consume_param_error_with_code, write_param_error_unspecified, PitOutParamError,
+    consume_param_error_with_code, write_param_error_unspecified, OpenPitOutParamError,
 };
-use crate::string::PitSharedString;
-use crate::PitStringView;
+use crate::string::OpenPitSharedString;
+use crate::OpenPitStringView;
 
 //--------------------------------------------------------------------------------------------------
 
@@ -42,124 +42,126 @@ use crate::PitStringView;
 ///
 /// Valid range: `10..=30000`.
 ///
-/// A value of `PIT_PARAM_LEVERAGE_NOT_SET` (`0`) means leverage is not
+/// A value of `OPENPIT_PARAM_LEVERAGE_NOT_SET` (`0`) means leverage is not
 /// specified.
-pub type PitParamLeverage = u16;
+pub type OpenPitParamLeverage = u16;
 
 /// Sentinel value indicating leverage is not set.
-pub const PIT_PARAM_LEVERAGE_NOT_SET: PitParamLeverage = 0;
+pub const OPENPIT_PARAM_LEVERAGE_NOT_SET: OpenPitParamLeverage = 0;
 /// Fixed-point scale used by leverage payloads.
-pub const PIT_PARAM_LEVERAGE_SCALE: PitParamLeverage = Leverage::SCALE;
+pub const OPENPIT_PARAM_LEVERAGE_SCALE: OpenPitParamLeverage = Leverage::SCALE;
 /// Minimum leverage in whole units.
-pub const PIT_PARAM_LEVERAGE_MIN: PitParamLeverage = Leverage::MIN;
+pub const OPENPIT_PARAM_LEVERAGE_MIN: OpenPitParamLeverage = Leverage::MIN;
 /// Maximum leverage in whole units.
-pub const PIT_PARAM_LEVERAGE_MAX: PitParamLeverage = Leverage::MAX;
+pub const OPENPIT_PARAM_LEVERAGE_MAX: OpenPitParamLeverage = Leverage::MAX;
 /// Supported leverage increment step.
-pub const PIT_PARAM_LEVERAGE_STEP: f32 = Leverage::STEP;
+pub const OPENPIT_PARAM_LEVERAGE_STEP: f32 = Leverage::STEP;
 
-pub(crate) fn import_leverage(value: PitParamLeverage) -> Option<Leverage> {
-    if value == PIT_PARAM_LEVERAGE_NOT_SET {
+pub(crate) fn import_leverage(value: OpenPitParamLeverage) -> Option<Leverage> {
+    if value == OPENPIT_PARAM_LEVERAGE_NOT_SET {
         return None;
     }
     Leverage::from_raw(value).ok()
 }
 
-pub(crate) fn export_leverage(value: Option<Leverage>) -> PitParamLeverage {
-    value.map(|v| v.raw()).unwrap_or(PIT_PARAM_LEVERAGE_NOT_SET)
+pub(crate) fn export_leverage(value: Option<Leverage>) -> OpenPitParamLeverage {
+    value
+        .map(|v| v.raw())
+        .unwrap_or(OPENPIT_PARAM_LEVERAGE_NOT_SET)
 }
 
 /// Stable account identifier type for FFI payloads.
 ///
 /// WARNING:
 /// Use exactly one account-id source model per runtime:
-/// - either purely numeric IDs (`pit_create_param_account_id_from_u64`),
-/// - or purely string-derived IDs (`pit_create_param_account_id_from_str`).
+/// - either purely numeric IDs (`openpit_create_param_account_id_from_u64`),
+/// - or purely string-derived IDs (`openpit_create_param_account_id_from_str`).
 ///
 /// Do not mix both models in the same runtime state. A hashed string value can
 /// coincide with a direct numeric ID, and then two distinct accounts become one
 /// logical key in maps and engine state.
-pub type PitParamAccountId = u64;
+pub type OpenPitParamAccountId = u64;
 
-pub(crate) fn import_side(value: PitParamSide) -> Option<Side> {
+pub(crate) fn import_side(value: OpenPitParamSide) -> Option<Side> {
     match value {
-        PitParamSide::Buy => Some(Side::Buy),
-        PitParamSide::Sell => Some(Side::Sell),
-        PitParamSide::NotSet => None,
+        OpenPitParamSide::Buy => Some(Side::Buy),
+        OpenPitParamSide::Sell => Some(Side::Sell),
+        OpenPitParamSide::NotSet => None,
     }
 }
 
-pub(crate) fn export_side(value: Side) -> PitParamSide {
+pub(crate) fn export_side(value: Side) -> OpenPitParamSide {
     match value {
-        Side::Buy => PitParamSide::Buy,
-        Side::Sell => PitParamSide::Sell,
+        Side::Buy => OpenPitParamSide::Buy,
+        Side::Sell => OpenPitParamSide::Sell,
     }
 }
 
-pub(crate) fn import_position_side(value: PitParamPositionSide) -> Option<PositionSide> {
+pub(crate) fn import_position_side(value: OpenPitParamPositionSide) -> Option<PositionSide> {
     match value {
-        PitParamPositionSide::Long => Some(PositionSide::Long),
-        PitParamPositionSide::Short => Some(PositionSide::Short),
-        PitParamPositionSide::NotSet => None,
+        OpenPitParamPositionSide::Long => Some(PositionSide::Long),
+        OpenPitParamPositionSide::Short => Some(PositionSide::Short),
+        OpenPitParamPositionSide::NotSet => None,
     }
 }
 
-pub(crate) fn export_position_side(value: PositionSide) -> PitParamPositionSide {
+pub(crate) fn export_position_side(value: PositionSide) -> OpenPitParamPositionSide {
     match value {
-        PositionSide::Long => PitParamPositionSide::Long,
-        PositionSide::Short => PitParamPositionSide::Short,
+        PositionSide::Long => OpenPitParamPositionSide::Long,
+        PositionSide::Short => OpenPitParamPositionSide::Short,
     }
 }
 
-pub(crate) fn import_position_effect(value: PitParamPositionEffect) -> Option<PositionEffect> {
+pub(crate) fn import_position_effect(value: OpenPitParamPositionEffect) -> Option<PositionEffect> {
     match value {
-        PitParamPositionEffect::Open => Some(PositionEffect::Open),
-        PitParamPositionEffect::Close => Some(PositionEffect::Close),
-        PitParamPositionEffect::NotSet => None,
+        OpenPitParamPositionEffect::Open => Some(PositionEffect::Open),
+        OpenPitParamPositionEffect::Close => Some(PositionEffect::Close),
+        OpenPitParamPositionEffect::NotSet => None,
     }
 }
 
-pub(crate) fn export_position_effect(value: PositionEffect) -> PitParamPositionEffect {
+pub(crate) fn export_position_effect(value: PositionEffect) -> OpenPitParamPositionEffect {
     match value {
-        PositionEffect::Open => PitParamPositionEffect::Open,
-        PositionEffect::Close => PitParamPositionEffect::Close,
+        PositionEffect::Open => OpenPitParamPositionEffect::Open,
+        PositionEffect::Close => OpenPitParamPositionEffect::Close,
     }
 }
 
-pub(crate) fn import_position_mode(value: PitParamPositionMode) -> Option<PositionMode> {
+pub(crate) fn import_position_mode(value: OpenPitParamPositionMode) -> Option<PositionMode> {
     match value {
-        PitParamPositionMode::Netting => Some(PositionMode::Netting),
-        PitParamPositionMode::Hedged => Some(PositionMode::Hedged),
-        PitParamPositionMode::NotSet => None,
+        OpenPitParamPositionMode::Netting => Some(PositionMode::Netting),
+        OpenPitParamPositionMode::Hedged => Some(PositionMode::Hedged),
+        OpenPitParamPositionMode::NotSet => None,
     }
 }
 
-pub(crate) fn export_position_mode(value: PositionMode) -> PitParamPositionMode {
+pub(crate) fn export_position_mode(value: PositionMode) -> OpenPitParamPositionMode {
     match value {
-        PositionMode::Netting => PitParamPositionMode::Netting,
-        PositionMode::Hedged => PitParamPositionMode::Hedged,
+        PositionMode::Netting => OpenPitParamPositionMode::Netting,
+        PositionMode::Hedged => OpenPitParamPositionMode::Hedged,
     }
 }
 
-pub(crate) fn import_bool(value: PitTriBool) -> Option<bool> {
+pub(crate) fn import_bool(value: OpenPitTriBool) -> Option<bool> {
     match value {
-        PitTriBool::False => Some(false),
-        PitTriBool::True => Some(true),
-        PitTriBool::NotSet => None,
+        OpenPitTriBool::False => Some(false),
+        OpenPitTriBool::True => Some(true),
+        OpenPitTriBool::NotSet => None,
     }
 }
 
-pub(crate) fn export_bool(value: bool) -> PitTriBool {
+pub(crate) fn export_bool(value: bool) -> OpenPitTriBool {
     if value {
-        PitTriBool::True
+        OpenPitTriBool::True
     } else {
-        PitTriBool::False
+        OpenPitTriBool::False
     }
 }
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 /// Order side.
-pub enum PitParamSide {
+pub enum OpenPitParamSide {
     /// Value is absent.
     #[default]
     NotSet = 0,
@@ -172,7 +174,7 @@ pub enum PitParamSide {
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 /// Position direction.
-pub enum PitParamPositionSide {
+pub enum OpenPitParamPositionSide {
     /// Value is absent.
     #[default]
     NotSet = 0,
@@ -185,7 +187,7 @@ pub enum PitParamPositionSide {
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 /// Position accounting mode.
-pub enum PitParamPositionMode {
+pub enum OpenPitParamPositionMode {
     /// Value is absent.
     #[default]
     NotSet = 0,
@@ -198,7 +200,7 @@ pub enum PitParamPositionMode {
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 /// Whether a trade opens or closes exposure.
-pub enum PitParamPositionEffect {
+pub enum OpenPitParamPositionEffect {
     /// Value is absent.
     #[default]
     NotSet = 0,
@@ -211,7 +213,7 @@ pub enum PitParamPositionEffect {
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 /// Selects how one trade-amount numeric value should be interpreted.
-pub enum PitParamTradeAmountKind {
+pub enum OpenPitParamTradeAmountKind {
     /// No amount field is selected.
     #[default]
     NotSet = 0,
@@ -224,7 +226,7 @@ pub enum PitParamTradeAmountKind {
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 /// Decimal rounding strategy for typed parameter constructors.
-pub enum PitParamRoundingStrategy {
+pub enum OpenPitParamRoundingStrategy {
     /// Round half to nearest even number.
     #[default]
     MidpointNearestEven = 0,
@@ -237,32 +239,32 @@ pub enum PitParamRoundingStrategy {
 }
 
 /// Default rounding strategy alias.
-pub const PIT_PARAM_ROUNDING_STRATEGY_DEFAULT: PitParamRoundingStrategy =
-    PitParamRoundingStrategy::MidpointNearestEven;
+pub const OPENPIT_PARAM_ROUNDING_STRATEGY_DEFAULT: OpenPitParamRoundingStrategy =
+    OpenPitParamRoundingStrategy::MidpointNearestEven;
 /// Banker's rounding alias.
-pub const PIT_PARAM_ROUNDING_STRATEGY_BANKER: PitParamRoundingStrategy =
-    PitParamRoundingStrategy::MidpointNearestEven;
+pub const OPENPIT_PARAM_ROUNDING_STRATEGY_BANKER: OpenPitParamRoundingStrategy =
+    OpenPitParamRoundingStrategy::MidpointNearestEven;
 /// Conservative profit rounding alias.
-pub const PIT_PARAM_ROUNDING_STRATEGY_CONSERVATIVE_PROFIT: PitParamRoundingStrategy =
-    PitParamRoundingStrategy::Down;
+pub const OPENPIT_PARAM_ROUNDING_STRATEGY_CONSERVATIVE_PROFIT: OpenPitParamRoundingStrategy =
+    OpenPitParamRoundingStrategy::Down;
 /// Conservative loss rounding alias.
-pub const PIT_PARAM_ROUNDING_STRATEGY_CONSERVATIVE_LOSS: PitParamRoundingStrategy =
-    PitParamRoundingStrategy::Down;
+pub const OPENPIT_PARAM_ROUNDING_STRATEGY_CONSERVATIVE_LOSS: OpenPitParamRoundingStrategy =
+    OpenPitParamRoundingStrategy::Down;
 
 const _: () = assert!(
-    PIT_PARAM_ROUNDING_STRATEGY_DEFAULT as u8
+    OPENPIT_PARAM_ROUNDING_STRATEGY_DEFAULT as u8
         == export_rounding_strategy(RoundingStrategy::DEFAULT) as u8
 );
 const _: () = assert!(
-    PIT_PARAM_ROUNDING_STRATEGY_BANKER as u8
+    OPENPIT_PARAM_ROUNDING_STRATEGY_BANKER as u8
         == export_rounding_strategy(RoundingStrategy::BANKER) as u8
 );
 const _: () = assert!(
-    PIT_PARAM_ROUNDING_STRATEGY_CONSERVATIVE_PROFIT as u8
+    OPENPIT_PARAM_ROUNDING_STRATEGY_CONSERVATIVE_PROFIT as u8
         == export_rounding_strategy(RoundingStrategy::CONSERVATIVE_PROFIT) as u8
 );
 const _: () = assert!(
-    PIT_PARAM_ROUNDING_STRATEGY_CONSERVATIVE_LOSS as u8
+    OPENPIT_PARAM_ROUNDING_STRATEGY_CONSERVATIVE_LOSS as u8
         == export_rounding_strategy(RoundingStrategy::CONSERVATIVE_LOSS) as u8
 );
 
@@ -273,17 +275,17 @@ const _: () = assert!(
 /// The numeric value is interpreted according to `kind`:
 /// - `Quantity` means instrument quantity;
 /// - `Volume` means settlement notional volume.
-pub struct PitParamTradeAmount {
+pub struct OpenPitParamTradeAmount {
     /// Non-negative numeric payload.
-    pub value: PitParamDecimal,
+    pub value: OpenPitParamDecimal,
     /// Interpretation mode for `value`.
-    pub kind: PitParamTradeAmountKind,
+    pub kind: OpenPitParamTradeAmountKind,
 }
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 /// Tri-state boolean value.
-pub enum PitTriBool {
+pub enum OpenPitTriBool {
     /// Value is absent.
     #[default]
     NotSet = 0,
@@ -296,7 +298,7 @@ pub enum PitTriBool {
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 /// Selects how an account-adjustment amount should be interpreted.
-pub enum PitParamAdjustmentAmountKind {
+pub enum OpenPitParamAdjustmentAmountKind {
     /// No amount is specified.
     #[default]
     NotSet = 0,
@@ -311,7 +313,7 @@ pub enum PitParamAdjustmentAmountKind {
 /// Decimal value represented as `mantissa * 10^-scale`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub struct PitParamDecimal {
+pub struct OpenPitParamDecimal {
     /// Lower 64 bits of the i128 mantissa.
     pub mantissa_lo: i64,
     /// Upper 64 bits of the i128 mantissa (sign-extended).
@@ -320,13 +322,13 @@ pub struct PitParamDecimal {
     pub scale: i32,
 }
 
-impl From<Decimal> for PitParamDecimal {
+impl From<Decimal> for OpenPitParamDecimal {
     fn from(value: Decimal) -> Self {
         Self::from_decimal(value)
     }
 }
 
-impl PitParamDecimal {
+impl OpenPitParamDecimal {
     pub(crate) fn from_decimal(d: Decimal) -> Self {
         let m = d.mantissa();
         Self {
@@ -341,7 +343,7 @@ impl PitParamDecimal {
     }
 }
 
-fn import_decimal(value: PitParamDecimal) -> Result<Decimal, String> {
+fn import_decimal(value: OpenPitParamDecimal) -> Result<Decimal, String> {
     let scale: u32 = value
         .scale
         .try_into()
@@ -349,7 +351,7 @@ fn import_decimal(value: PitParamDecimal) -> Result<Decimal, String> {
     Ok(Decimal::from_i128_with_scale(value.to_mantissa(), scale))
 }
 
-unsafe fn parse_string_view(value: PitStringView) -> Result<String, String> {
+unsafe fn parse_string_view(value: OpenPitStringView) -> Result<String, String> {
     if value.ptr.is_null() {
         if value.len == 0 {
             return Ok(String::new());
@@ -371,21 +373,25 @@ fn compare_decimals(lhs: Decimal, rhs: Decimal) -> i8 {
     }
 }
 
-fn import_rounding_strategy(value: PitParamRoundingStrategy) -> RoundingStrategy {
+fn import_rounding_strategy(value: OpenPitParamRoundingStrategy) -> RoundingStrategy {
     match value {
-        PitParamRoundingStrategy::MidpointNearestEven => RoundingStrategy::MidpointNearestEven,
-        PitParamRoundingStrategy::MidpointAwayFromZero => RoundingStrategy::MidpointAwayFromZero,
-        PitParamRoundingStrategy::Up => RoundingStrategy::Up,
-        PitParamRoundingStrategy::Down => RoundingStrategy::Down,
+        OpenPitParamRoundingStrategy::MidpointNearestEven => RoundingStrategy::MidpointNearestEven,
+        OpenPitParamRoundingStrategy::MidpointAwayFromZero => {
+            RoundingStrategy::MidpointAwayFromZero
+        }
+        OpenPitParamRoundingStrategy::Up => RoundingStrategy::Up,
+        OpenPitParamRoundingStrategy::Down => RoundingStrategy::Down,
     }
 }
 
-const fn export_rounding_strategy(value: RoundingStrategy) -> PitParamRoundingStrategy {
+const fn export_rounding_strategy(value: RoundingStrategy) -> OpenPitParamRoundingStrategy {
     match value {
-        RoundingStrategy::MidpointNearestEven => PitParamRoundingStrategy::MidpointNearestEven,
-        RoundingStrategy::MidpointAwayFromZero => PitParamRoundingStrategy::MidpointAwayFromZero,
-        RoundingStrategy::Up => PitParamRoundingStrategy::Up,
-        RoundingStrategy::Down => PitParamRoundingStrategy::Down,
+        RoundingStrategy::MidpointNearestEven => OpenPitParamRoundingStrategy::MidpointNearestEven,
+        RoundingStrategy::MidpointAwayFromZero => {
+            OpenPitParamRoundingStrategy::MidpointAwayFromZero
+        }
+        RoundingStrategy::Up => OpenPitParamRoundingStrategy::Up,
+        RoundingStrategy::Down => OpenPitParamRoundingStrategy::Down,
     }
 }
 
@@ -420,7 +426,7 @@ macro_rules! define_decimal_param_wrapper {
                                                             )]
         #[repr(transparent)]
         #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-        pub struct $wrapper(pub PitParamDecimal);
+        pub struct $wrapper(pub OpenPitParamDecimal);
 
         impl $wrapper {
             #[doc = concat!(
@@ -455,9 +461,9 @@ macro_rules! define_decimal_param_wrapper {
         /// - on error read `out_error` for the message.
         #[no_mangle]
         pub unsafe extern "C" fn $create_fn(
-            value: PitParamDecimal,
+            value: OpenPitParamDecimal,
             out: *mut $wrapper,
-            out_error: PitOutParamError,
+            out_error: OpenPitOutParamError,
         ) -> bool {
             if out.is_null() {
                 write_param_error_unspecified(out_error, "result place pointer is null");
@@ -481,9 +487,9 @@ macro_rules! define_decimal_param_wrapper {
                                                     "`."
                                                     )]
         #[no_mangle]
-        pub extern "C" fn $get_decimal_fn(value: $wrapper) -> PitParamDecimal {
+        pub extern "C" fn $get_decimal_fn(value: $wrapper) -> OpenPitParamDecimal {
             if let Ok(inner) = value.to_param() {
-                PitParamDecimal::from_decimal(inner.to_decimal())
+                OpenPitParamDecimal::from_decimal(inner.to_decimal())
             } else {
                 value.0
             }
@@ -492,70 +498,70 @@ macro_rules! define_decimal_param_wrapper {
 }
 
 define_decimal_param_wrapper!(
-    wrapper = PitParamPnl,
+    wrapper = OpenPitParamPnl,
     domain = Pnl,
     about = "Profit and loss value; positive means profit, negative means loss.",
-    create_fn = pit_create_param_pnl,
-    get_decimal_fn = pit_param_pnl_get_decimal
+    create_fn = openpit_create_param_pnl,
+    get_decimal_fn = openpit_param_pnl_get_decimal
 );
 
 define_decimal_param_wrapper!(
-    wrapper = PitParamPrice,
+    wrapper = OpenPitParamPrice,
     domain = Price,
     about = "Price per one instrument unit; may be negative in some derivative markets.",
-    create_fn = pit_create_param_price,
-    get_decimal_fn = pit_param_price_get_decimal
+    create_fn = openpit_create_param_price,
+    get_decimal_fn = openpit_param_price_get_decimal
 );
 
 define_decimal_param_wrapper!(
-    wrapper = PitParamQuantity,
+    wrapper = OpenPitParamQuantity,
     domain = Quantity,
     about = "Instrument quantity; non-negative amount in instrument units.",
-    create_fn = pit_create_param_quantity,
-    get_decimal_fn = pit_param_quantity_get_decimal
+    create_fn = openpit_create_param_quantity,
+    get_decimal_fn = openpit_param_quantity_get_decimal
 );
 
 define_decimal_param_wrapper!(
-    wrapper = PitParamVolume,
+    wrapper = OpenPitParamVolume,
     domain = Volume,
     about = "Settlement notional volume; non-negative amount in settlement units.",
-    create_fn = pit_create_param_volume,
-    get_decimal_fn = pit_param_volume_get_decimal
+    create_fn = openpit_create_param_volume,
+    get_decimal_fn = openpit_param_volume_get_decimal
 );
 
 define_decimal_param_wrapper!(
-    wrapper = PitParamCashFlow,
+    wrapper = OpenPitParamCashFlow,
     domain = CashFlow,
     about = "Cash flow contribution; positive is inflow, negative is outflow.",
-    create_fn = pit_create_param_cash_flow,
-    get_decimal_fn = pit_param_cash_flow_get_decimal
+    create_fn = openpit_create_param_cash_flow,
+    get_decimal_fn = openpit_param_cash_flow_get_decimal
 );
 
 define_decimal_param_wrapper!(
-    wrapper = PitParamPositionSize,
+    wrapper = OpenPitParamPositionSize,
     domain = PositionSize,
     about = "Signed position size; long is positive, short is negative.",
-    create_fn = pit_create_param_position_size,
-    get_decimal_fn = pit_param_position_size_get_decimal
+    create_fn = openpit_create_param_position_size,
+    get_decimal_fn = openpit_param_position_size_get_decimal
 );
 
 define_decimal_param_wrapper!(
-    wrapper = PitParamFee,
+    wrapper = OpenPitParamFee,
     domain = Fee,
     about = "Fee amount; can be negative for rebates or reconciliation adjustments.",
-    create_fn = pit_create_param_fee,
-    get_decimal_fn = pit_param_fee_get_decimal
+    create_fn = openpit_create_param_fee,
+    get_decimal_fn = openpit_param_fee_get_decimal
 );
 
 define_decimal_param_wrapper!(
-    wrapper = PitParamNotional,
+    wrapper = OpenPitParamNotional,
     domain = Notional,
     about = "Monetary position exposure for margin and risk calculation; always non-negative.",
-    create_fn = pit_create_param_notional,
-    get_decimal_fn = pit_param_notional_get_decimal
+    create_fn = openpit_create_param_notional,
+    get_decimal_fn = openpit_param_notional_get_decimal
 );
 
-fn write_out<T: Copy>(out: *mut T, value: T, out_error: PitOutParamError) -> bool {
+fn write_out<T: Copy>(out: *mut T, value: T, out_error: OpenPitOutParamError) -> bool {
     if out.is_null() {
         write_param_error_unspecified(out_error, "result place pointer is null");
         return false;
@@ -596,9 +602,9 @@ macro_rules! define_decimal_param_ffi_common {
     ) => {
         #[no_mangle]
         pub unsafe extern "C" fn $from_str_fn(
-            value: PitStringView,
+            value: OpenPitStringView,
             out: *mut $wrapper,
-            out_error: PitOutParamError,
+            out_error: OpenPitOutParamError,
         ) -> bool {
             let text = match unsafe { parse_string_view(value) } {
                 Ok(text) => text,
@@ -611,7 +617,7 @@ macro_rules! define_decimal_param_ffi_common {
             match <$domain>::from_str(text.as_str()) {
                 Ok(parsed) => write_out(
                     out,
-                    $wrapper(PitParamDecimal::from_decimal(parsed.to_decimal())),
+                    $wrapper(OpenPitParamDecimal::from_decimal(parsed.to_decimal())),
                     out_error,
                 ),
                 Err(error) => {
@@ -625,12 +631,12 @@ macro_rules! define_decimal_param_ffi_common {
         pub unsafe extern "C" fn $from_f64_fn(
             value: f64,
             out: *mut $wrapper,
-            out_error: PitOutParamError,
+            out_error: OpenPitOutParamError,
         ) -> bool {
             match <$domain>::from_f64(value) {
                 Ok(parsed) => write_out(
                     out,
-                    $wrapper(PitParamDecimal::from_decimal(parsed.to_decimal())),
+                    $wrapper(OpenPitParamDecimal::from_decimal(parsed.to_decimal())),
                     out_error,
                 ),
                 Err(error) => {
@@ -644,14 +650,14 @@ macro_rules! define_decimal_param_ffi_common {
         pub unsafe extern "C" fn $from_i64_fn(
             value: i64,
             out: *mut $wrapper,
-            out_error: PitOutParamError,
+            out_error: OpenPitOutParamError,
         ) -> bool {
             let new_value: Result<$domain, _> =
                 <$domain>::new(Decimal::from(value)).into_param_result($type_name);
             match new_value {
                 Ok(parsed) => write_out(
                     out,
-                    $wrapper(PitParamDecimal::from_decimal(parsed.to_decimal())),
+                    $wrapper(OpenPitParamDecimal::from_decimal(parsed.to_decimal())),
                     out_error,
                 ),
                 Err(error) => {
@@ -665,14 +671,14 @@ macro_rules! define_decimal_param_ffi_common {
         pub unsafe extern "C" fn $from_u64_fn(
             value: u64,
             out: *mut $wrapper,
-            out_error: PitOutParamError,
+            out_error: OpenPitOutParamError,
         ) -> bool {
             let new_value: Result<$domain, _> =
                 <$domain>::new(Decimal::from(value)).into_param_result($type_name);
             match new_value {
                 Ok(parsed) => write_out(
                     out,
-                    $wrapper(PitParamDecimal::from_decimal(parsed.to_decimal())),
+                    $wrapper(OpenPitParamDecimal::from_decimal(parsed.to_decimal())),
                     out_error,
                 ),
                 Err(error) => {
@@ -684,11 +690,11 @@ macro_rules! define_decimal_param_ffi_common {
 
         #[no_mangle]
         pub unsafe extern "C" fn $from_str_rounded_fn(
-            value: PitStringView,
+            value: OpenPitStringView,
             scale: u32,
-            rounding: PitParamRoundingStrategy,
+            rounding: OpenPitParamRoundingStrategy,
             out: *mut $wrapper,
-            out_error: PitOutParamError,
+            out_error: OpenPitOutParamError,
         ) -> bool {
             let text = match unsafe { parse_string_view(value) } {
                 Ok(text) => text,
@@ -705,7 +711,7 @@ macro_rules! define_decimal_param_ffi_common {
             ) {
                 Ok(parsed) => write_out(
                     out,
-                    $wrapper(PitParamDecimal::from_decimal(parsed.to_decimal())),
+                    $wrapper(OpenPitParamDecimal::from_decimal(parsed.to_decimal())),
                     out_error,
                 ),
                 Err(error) => {
@@ -719,14 +725,14 @@ macro_rules! define_decimal_param_ffi_common {
         pub unsafe extern "C" fn $from_f64_rounded_fn(
             value: f64,
             scale: u32,
-            rounding: PitParamRoundingStrategy,
+            rounding: OpenPitParamRoundingStrategy,
             out: *mut $wrapper,
-            out_error: PitOutParamError,
+            out_error: OpenPitOutParamError,
         ) -> bool {
             match <$domain>::from_f64_rounded(value, scale, import_rounding_strategy(rounding)) {
                 Ok(parsed) => write_out(
                     out,
-                    $wrapper(PitParamDecimal::from_decimal(parsed.to_decimal())),
+                    $wrapper(OpenPitParamDecimal::from_decimal(parsed.to_decimal())),
                     out_error,
                 ),
                 Err(error) => {
@@ -738,11 +744,11 @@ macro_rules! define_decimal_param_ffi_common {
 
         #[no_mangle]
         pub unsafe extern "C" fn $from_decimal_rounded_fn(
-            value: PitParamDecimal,
+            value: OpenPitParamDecimal,
             scale: u32,
-            rounding: PitParamRoundingStrategy,
+            rounding: OpenPitParamRoundingStrategy,
             out: *mut $wrapper,
-            out_error: PitOutParamError,
+            out_error: OpenPitOutParamError,
         ) -> bool {
             let decimal = match import_decimal(value) {
                 Ok(decimal) => decimal,
@@ -758,7 +764,7 @@ macro_rules! define_decimal_param_ffi_common {
             ) {
                 Ok(parsed) => write_out(
                     out,
-                    $wrapper(PitParamDecimal::from_decimal(parsed.to_decimal())),
+                    $wrapper(OpenPitParamDecimal::from_decimal(parsed.to_decimal())),
                     out_error,
                 ),
                 Err(error) => {
@@ -772,7 +778,7 @@ macro_rules! define_decimal_param_ffi_common {
         pub unsafe extern "C" fn $to_f64_fn(
             value: $wrapper,
             out: *mut f64,
-            out_error: PitOutParamError,
+            out_error: OpenPitOutParamError,
         ) -> bool {
             let parsed = match value.to_param() {
                 Ok(parsed) => parsed,
@@ -798,7 +804,7 @@ macro_rules! define_decimal_param_ffi_common {
         pub unsafe extern "C" fn $is_zero_fn(
             value: $wrapper,
             out: *mut bool,
-            out_error: PitOutParamError,
+            out_error: OpenPitOutParamError,
         ) -> bool {
             let parsed = match value.to_param() {
                 Ok(parsed) => parsed,
@@ -815,7 +821,7 @@ macro_rules! define_decimal_param_ffi_common {
             lhs: $wrapper,
             rhs: $wrapper,
             out: *mut i8,
-            out_error: PitOutParamError,
+            out_error: OpenPitOutParamError,
         ) -> bool {
             let lhs = match lhs.to_param() {
                 Ok(parsed) => parsed,
@@ -841,10 +847,10 @@ macro_rules! define_decimal_param_ffi_common {
         #[no_mangle]
         pub unsafe extern "C" fn $to_string_fn(
             value: $wrapper,
-            out_error: PitOutParamError,
-        ) -> *mut PitSharedString {
+            out_error: OpenPitOutParamError,
+        ) -> *mut OpenPitSharedString {
             match value.to_param() {
-                Ok(parsed) => PitSharedString::new_handle(parsed.to_string().as_str()),
+                Ok(parsed) => OpenPitSharedString::new_handle(parsed.to_string().as_str()),
                 Err(error) => {
                     write_param_error_unspecified(out_error, error.as_str());
                     std::ptr::null_mut()
@@ -857,7 +863,7 @@ macro_rules! define_decimal_param_ffi_common {
             lhs: $wrapper,
             rhs: $wrapper,
             out: *mut $wrapper,
-            out_error: PitOutParamError,
+            out_error: OpenPitOutParamError,
         ) -> bool {
             let lhs = match lhs.to_param() {
                 Ok(value) => value,
@@ -876,7 +882,7 @@ macro_rules! define_decimal_param_ffi_common {
             match lhs.checked_add(rhs) {
                 Ok(parsed) => write_out(
                     out,
-                    $wrapper(PitParamDecimal::from_decimal(parsed.to_decimal())),
+                    $wrapper(OpenPitParamDecimal::from_decimal(parsed.to_decimal())),
                     out_error,
                 ),
                 Err(error) => {
@@ -891,7 +897,7 @@ macro_rules! define_decimal_param_ffi_common {
             lhs: $wrapper,
             rhs: $wrapper,
             out: *mut $wrapper,
-            out_error: PitOutParamError,
+            out_error: OpenPitOutParamError,
         ) -> bool {
             let lhs = match lhs.to_param() {
                 Ok(value) => value,
@@ -910,7 +916,7 @@ macro_rules! define_decimal_param_ffi_common {
             match lhs.checked_sub(rhs) {
                 Ok(parsed) => write_out(
                     out,
-                    $wrapper(PitParamDecimal::from_decimal(parsed.to_decimal())),
+                    $wrapper(OpenPitParamDecimal::from_decimal(parsed.to_decimal())),
                     out_error,
                 ),
                 Err(error) => {
@@ -925,7 +931,7 @@ macro_rules! define_decimal_param_ffi_common {
             value: $wrapper,
             scalar: i64,
             out: *mut $wrapper,
-            out_error: PitOutParamError,
+            out_error: OpenPitOutParamError,
         ) -> bool {
             let value = match value.to_param() {
                 Ok(value) => value,
@@ -937,7 +943,7 @@ macro_rules! define_decimal_param_ffi_common {
             match value.checked_mul_i64(scalar) {
                 Ok(parsed) => write_out(
                     out,
-                    $wrapper(PitParamDecimal::from_decimal(parsed.to_decimal())),
+                    $wrapper(OpenPitParamDecimal::from_decimal(parsed.to_decimal())),
                     out_error,
                 ),
                 Err(error) => {
@@ -952,7 +958,7 @@ macro_rules! define_decimal_param_ffi_common {
             value: $wrapper,
             scalar: u64,
             out: *mut $wrapper,
-            out_error: PitOutParamError,
+            out_error: OpenPitOutParamError,
         ) -> bool {
             let value = match value.to_param() {
                 Ok(value) => value,
@@ -964,7 +970,7 @@ macro_rules! define_decimal_param_ffi_common {
             match value.checked_mul_u64(scalar) {
                 Ok(parsed) => write_out(
                     out,
-                    $wrapper(PitParamDecimal::from_decimal(parsed.to_decimal())),
+                    $wrapper(OpenPitParamDecimal::from_decimal(parsed.to_decimal())),
                     out_error,
                 ),
                 Err(error) => {
@@ -979,7 +985,7 @@ macro_rules! define_decimal_param_ffi_common {
             value: $wrapper,
             scalar: f64,
             out: *mut $wrapper,
-            out_error: PitOutParamError,
+            out_error: OpenPitOutParamError,
         ) -> bool {
             let value = match value.to_param() {
                 Ok(value) => value,
@@ -991,7 +997,7 @@ macro_rules! define_decimal_param_ffi_common {
             match value.checked_mul_f64(scalar) {
                 Ok(parsed) => write_out(
                     out,
-                    $wrapper(PitParamDecimal::from_decimal(parsed.to_decimal())),
+                    $wrapper(OpenPitParamDecimal::from_decimal(parsed.to_decimal())),
                     out_error,
                 ),
                 Err(error) => {
@@ -1006,7 +1012,7 @@ macro_rules! define_decimal_param_ffi_common {
             value: $wrapper,
             divisor: i64,
             out: *mut $wrapper,
-            out_error: PitOutParamError,
+            out_error: OpenPitOutParamError,
         ) -> bool {
             let value = match value.to_param() {
                 Ok(value) => value,
@@ -1018,7 +1024,7 @@ macro_rules! define_decimal_param_ffi_common {
             match value.checked_div_i64(divisor) {
                 Ok(parsed) => write_out(
                     out,
-                    $wrapper(PitParamDecimal::from_decimal(parsed.to_decimal())),
+                    $wrapper(OpenPitParamDecimal::from_decimal(parsed.to_decimal())),
                     out_error,
                 ),
                 Err(error) => {
@@ -1033,7 +1039,7 @@ macro_rules! define_decimal_param_ffi_common {
             value: $wrapper,
             divisor: u64,
             out: *mut $wrapper,
-            out_error: PitOutParamError,
+            out_error: OpenPitOutParamError,
         ) -> bool {
             let value = match value.to_param() {
                 Ok(value) => value,
@@ -1045,7 +1051,7 @@ macro_rules! define_decimal_param_ffi_common {
             match value.checked_div_u64(divisor) {
                 Ok(parsed) => write_out(
                     out,
-                    $wrapper(PitParamDecimal::from_decimal(parsed.to_decimal())),
+                    $wrapper(OpenPitParamDecimal::from_decimal(parsed.to_decimal())),
                     out_error,
                 ),
                 Err(error) => {
@@ -1060,7 +1066,7 @@ macro_rules! define_decimal_param_ffi_common {
             value: $wrapper,
             divisor: f64,
             out: *mut $wrapper,
-            out_error: PitOutParamError,
+            out_error: OpenPitOutParamError,
         ) -> bool {
             let value = match value.to_param() {
                 Ok(value) => value,
@@ -1072,7 +1078,7 @@ macro_rules! define_decimal_param_ffi_common {
             match value.checked_div_f64(divisor) {
                 Ok(parsed) => write_out(
                     out,
-                    $wrapper(PitParamDecimal::from_decimal(parsed.to_decimal())),
+                    $wrapper(OpenPitParamDecimal::from_decimal(parsed.to_decimal())),
                     out_error,
                 ),
                 Err(error) => {
@@ -1087,7 +1093,7 @@ macro_rules! define_decimal_param_ffi_common {
             value: $wrapper,
             divisor: i64,
             out: *mut $wrapper,
-            out_error: PitOutParamError,
+            out_error: OpenPitOutParamError,
         ) -> bool {
             let value = match value.to_param() {
                 Ok(value) => value,
@@ -1099,7 +1105,7 @@ macro_rules! define_decimal_param_ffi_common {
             match value.checked_rem_i64(divisor) {
                 Ok(parsed) => write_out(
                     out,
-                    $wrapper(PitParamDecimal::from_decimal(parsed.to_decimal())),
+                    $wrapper(OpenPitParamDecimal::from_decimal(parsed.to_decimal())),
                     out_error,
                 ),
                 Err(error) => {
@@ -1114,7 +1120,7 @@ macro_rules! define_decimal_param_ffi_common {
             value: $wrapper,
             divisor: u64,
             out: *mut $wrapper,
-            out_error: PitOutParamError,
+            out_error: OpenPitOutParamError,
         ) -> bool {
             let value = match value.to_param() {
                 Ok(value) => value,
@@ -1126,7 +1132,7 @@ macro_rules! define_decimal_param_ffi_common {
             match value.checked_rem_u64(divisor) {
                 Ok(parsed) => write_out(
                     out,
-                    $wrapper(PitParamDecimal::from_decimal(parsed.to_decimal())),
+                    $wrapper(OpenPitParamDecimal::from_decimal(parsed.to_decimal())),
                     out_error,
                 ),
                 Err(error) => {
@@ -1141,7 +1147,7 @@ macro_rules! define_decimal_param_ffi_common {
             value: $wrapper,
             divisor: f64,
             out: *mut $wrapper,
-            out_error: PitOutParamError,
+            out_error: OpenPitOutParamError,
         ) -> bool {
             let value = match value.to_param() {
                 Ok(value) => value,
@@ -1153,7 +1159,7 @@ macro_rules! define_decimal_param_ffi_common {
             match value.checked_rem_f64(divisor) {
                 Ok(parsed) => write_out(
                     out,
-                    $wrapper(PitParamDecimal::from_decimal(parsed.to_decimal())),
+                    $wrapper(OpenPitParamDecimal::from_decimal(parsed.to_decimal())),
                     out_error,
                 ),
                 Err(error) => {
@@ -1176,7 +1182,7 @@ macro_rules! define_decimal_param_ffi_signed {
         pub unsafe extern "C" fn $checked_neg_fn(
             value: $wrapper,
             out: *mut $wrapper,
-            out_error: PitOutParamError,
+            out_error: OpenPitOutParamError,
         ) -> bool {
             let value = match value.to_param() {
                 Ok(value) => value,
@@ -1188,7 +1194,7 @@ macro_rules! define_decimal_param_ffi_signed {
             match value.checked_neg() {
                 Ok(parsed) => write_out(
                     out,
-                    $wrapper(PitParamDecimal::from_decimal(parsed.to_decimal())),
+                    $wrapper(OpenPitParamDecimal::from_decimal(parsed.to_decimal())),
                     out_error,
                 ),
                 Err(error) => {
@@ -1201,320 +1207,326 @@ macro_rules! define_decimal_param_ffi_signed {
 }
 
 define_decimal_param_ffi_common!(
-    wrapper = PitParamPnl,
+    wrapper = OpenPitParamPnl,
     domain = Pnl,
     type_name = "Pnl",
-    from_str_fn = pit_create_param_pnl_from_str,
-    from_f64_fn = pit_create_param_pnl_from_f64,
-    from_i64_fn = pit_create_param_pnl_from_i64,
-    from_u64_fn = pit_create_param_pnl_from_u64,
-    from_str_rounded_fn = pit_create_param_pnl_from_str_rounded,
-    from_f64_rounded_fn = pit_create_param_pnl_from_f64_rounded,
-    from_decimal_rounded_fn = pit_create_param_pnl_from_decimal_rounded,
-    to_f64_fn = pit_param_pnl_to_f64,
-    is_zero_fn = pit_param_pnl_is_zero,
-    compare_fn = pit_param_pnl_compare,
-    to_string_fn = pit_param_pnl_to_string,
-    checked_add_fn = pit_param_pnl_checked_add,
-    checked_sub_fn = pit_param_pnl_checked_sub,
-    checked_mul_i64_fn = pit_param_pnl_checked_mul_i64,
-    checked_mul_u64_fn = pit_param_pnl_checked_mul_u64,
-    checked_mul_f64_fn = pit_param_pnl_checked_mul_f64,
-    checked_div_i64_fn = pit_param_pnl_checked_div_i64,
-    checked_div_u64_fn = pit_param_pnl_checked_div_u64,
-    checked_div_f64_fn = pit_param_pnl_checked_div_f64,
-    checked_rem_i64_fn = pit_param_pnl_checked_rem_i64,
-    checked_rem_u64_fn = pit_param_pnl_checked_rem_u64,
-    checked_rem_f64_fn = pit_param_pnl_checked_rem_f64
+    from_str_fn = openpit_create_param_pnl_from_str,
+    from_f64_fn = openpit_create_param_pnl_from_f64,
+    from_i64_fn = openpit_create_param_pnl_from_i64,
+    from_u64_fn = openpit_create_param_pnl_from_u64,
+    from_str_rounded_fn = openpit_create_param_pnl_from_str_rounded,
+    from_f64_rounded_fn = openpit_create_param_pnl_from_f64_rounded,
+    from_decimal_rounded_fn = openpit_create_param_pnl_from_decimal_rounded,
+    to_f64_fn = openpit_param_pnl_to_f64,
+    is_zero_fn = openpit_param_pnl_is_zero,
+    compare_fn = openpit_param_pnl_compare,
+    to_string_fn = openpit_param_pnl_to_string,
+    checked_add_fn = openpit_param_pnl_checked_add,
+    checked_sub_fn = openpit_param_pnl_checked_sub,
+    checked_mul_i64_fn = openpit_param_pnl_checked_mul_i64,
+    checked_mul_u64_fn = openpit_param_pnl_checked_mul_u64,
+    checked_mul_f64_fn = openpit_param_pnl_checked_mul_f64,
+    checked_div_i64_fn = openpit_param_pnl_checked_div_i64,
+    checked_div_u64_fn = openpit_param_pnl_checked_div_u64,
+    checked_div_f64_fn = openpit_param_pnl_checked_div_f64,
+    checked_rem_i64_fn = openpit_param_pnl_checked_rem_i64,
+    checked_rem_u64_fn = openpit_param_pnl_checked_rem_u64,
+    checked_rem_f64_fn = openpit_param_pnl_checked_rem_f64
 );
 define_decimal_param_ffi_signed!(
-    wrapper = PitParamPnl,
+    wrapper = OpenPitParamPnl,
     domain = Pnl,
     type_name = "Pnl",
-    checked_neg_fn = pit_param_pnl_checked_neg
+    checked_neg_fn = openpit_param_pnl_checked_neg
 );
 
 define_decimal_param_ffi_common!(
-    wrapper = PitParamPrice,
+    wrapper = OpenPitParamPrice,
     domain = Price,
     type_name = "Price",
-    from_str_fn = pit_create_param_price_from_str,
-    from_f64_fn = pit_create_param_price_from_f64,
-    from_i64_fn = pit_create_param_price_from_i64,
-    from_u64_fn = pit_create_param_price_from_u64,
-    from_str_rounded_fn = pit_create_param_price_from_str_rounded,
-    from_f64_rounded_fn = pit_create_param_price_from_f64_rounded,
-    from_decimal_rounded_fn = pit_create_param_price_from_decimal_rounded,
-    to_f64_fn = pit_param_price_to_f64,
-    is_zero_fn = pit_param_price_is_zero,
-    compare_fn = pit_param_price_compare,
-    to_string_fn = pit_param_price_to_string,
-    checked_add_fn = pit_param_price_checked_add,
-    checked_sub_fn = pit_param_price_checked_sub,
-    checked_mul_i64_fn = pit_param_price_checked_mul_i64,
-    checked_mul_u64_fn = pit_param_price_checked_mul_u64,
-    checked_mul_f64_fn = pit_param_price_checked_mul_f64,
-    checked_div_i64_fn = pit_param_price_checked_div_i64,
-    checked_div_u64_fn = pit_param_price_checked_div_u64,
-    checked_div_f64_fn = pit_param_price_checked_div_f64,
-    checked_rem_i64_fn = pit_param_price_checked_rem_i64,
-    checked_rem_u64_fn = pit_param_price_checked_rem_u64,
-    checked_rem_f64_fn = pit_param_price_checked_rem_f64
+    from_str_fn = openpit_create_param_price_from_str,
+    from_f64_fn = openpit_create_param_price_from_f64,
+    from_i64_fn = openpit_create_param_price_from_i64,
+    from_u64_fn = openpit_create_param_price_from_u64,
+    from_str_rounded_fn = openpit_create_param_price_from_str_rounded,
+    from_f64_rounded_fn = openpit_create_param_price_from_f64_rounded,
+    from_decimal_rounded_fn = openpit_create_param_price_from_decimal_rounded,
+    to_f64_fn = openpit_param_price_to_f64,
+    is_zero_fn = openpit_param_price_is_zero,
+    compare_fn = openpit_param_price_compare,
+    to_string_fn = openpit_param_price_to_string,
+    checked_add_fn = openpit_param_price_checked_add,
+    checked_sub_fn = openpit_param_price_checked_sub,
+    checked_mul_i64_fn = openpit_param_price_checked_mul_i64,
+    checked_mul_u64_fn = openpit_param_price_checked_mul_u64,
+    checked_mul_f64_fn = openpit_param_price_checked_mul_f64,
+    checked_div_i64_fn = openpit_param_price_checked_div_i64,
+    checked_div_u64_fn = openpit_param_price_checked_div_u64,
+    checked_div_f64_fn = openpit_param_price_checked_div_f64,
+    checked_rem_i64_fn = openpit_param_price_checked_rem_i64,
+    checked_rem_u64_fn = openpit_param_price_checked_rem_u64,
+    checked_rem_f64_fn = openpit_param_price_checked_rem_f64
 );
 define_decimal_param_ffi_signed!(
-    wrapper = PitParamPrice,
+    wrapper = OpenPitParamPrice,
     domain = Price,
     type_name = "Price",
-    checked_neg_fn = pit_param_price_checked_neg
+    checked_neg_fn = openpit_param_price_checked_neg
 );
 
 define_decimal_param_ffi_common!(
-    wrapper = PitParamQuantity,
+    wrapper = OpenPitParamQuantity,
     domain = Quantity,
     type_name = "Quantity",
-    from_str_fn = pit_create_param_quantity_from_str,
-    from_f64_fn = pit_create_param_quantity_from_f64,
-    from_i64_fn = pit_create_param_quantity_from_i64,
-    from_u64_fn = pit_create_param_quantity_from_u64,
-    from_str_rounded_fn = pit_create_param_quantity_from_str_rounded,
-    from_f64_rounded_fn = pit_create_param_quantity_from_f64_rounded,
-    from_decimal_rounded_fn = pit_create_param_quantity_from_decimal_rounded,
-    to_f64_fn = pit_param_quantity_to_f64,
-    is_zero_fn = pit_param_quantity_is_zero,
-    compare_fn = pit_param_quantity_compare,
-    to_string_fn = pit_param_quantity_to_string,
-    checked_add_fn = pit_param_quantity_checked_add,
-    checked_sub_fn = pit_param_quantity_checked_sub,
-    checked_mul_i64_fn = pit_param_quantity_checked_mul_i64,
-    checked_mul_u64_fn = pit_param_quantity_checked_mul_u64,
-    checked_mul_f64_fn = pit_param_quantity_checked_mul_f64,
-    checked_div_i64_fn = pit_param_quantity_checked_div_i64,
-    checked_div_u64_fn = pit_param_quantity_checked_div_u64,
-    checked_div_f64_fn = pit_param_quantity_checked_div_f64,
-    checked_rem_i64_fn = pit_param_quantity_checked_rem_i64,
-    checked_rem_u64_fn = pit_param_quantity_checked_rem_u64,
-    checked_rem_f64_fn = pit_param_quantity_checked_rem_f64
+    from_str_fn = openpit_create_param_quantity_from_str,
+    from_f64_fn = openpit_create_param_quantity_from_f64,
+    from_i64_fn = openpit_create_param_quantity_from_i64,
+    from_u64_fn = openpit_create_param_quantity_from_u64,
+    from_str_rounded_fn = openpit_create_param_quantity_from_str_rounded,
+    from_f64_rounded_fn = openpit_create_param_quantity_from_f64_rounded,
+    from_decimal_rounded_fn = openpit_create_param_quantity_from_decimal_rounded,
+    to_f64_fn = openpit_param_quantity_to_f64,
+    is_zero_fn = openpit_param_quantity_is_zero,
+    compare_fn = openpit_param_quantity_compare,
+    to_string_fn = openpit_param_quantity_to_string,
+    checked_add_fn = openpit_param_quantity_checked_add,
+    checked_sub_fn = openpit_param_quantity_checked_sub,
+    checked_mul_i64_fn = openpit_param_quantity_checked_mul_i64,
+    checked_mul_u64_fn = openpit_param_quantity_checked_mul_u64,
+    checked_mul_f64_fn = openpit_param_quantity_checked_mul_f64,
+    checked_div_i64_fn = openpit_param_quantity_checked_div_i64,
+    checked_div_u64_fn = openpit_param_quantity_checked_div_u64,
+    checked_div_f64_fn = openpit_param_quantity_checked_div_f64,
+    checked_rem_i64_fn = openpit_param_quantity_checked_rem_i64,
+    checked_rem_u64_fn = openpit_param_quantity_checked_rem_u64,
+    checked_rem_f64_fn = openpit_param_quantity_checked_rem_f64
 );
 
 define_decimal_param_ffi_common!(
-    wrapper = PitParamVolume,
+    wrapper = OpenPitParamVolume,
     domain = Volume,
     type_name = "Volume",
-    from_str_fn = pit_create_param_volume_from_str,
-    from_f64_fn = pit_create_param_volume_from_f64,
-    from_i64_fn = pit_create_param_volume_from_i64,
-    from_u64_fn = pit_create_param_volume_from_u64,
-    from_str_rounded_fn = pit_create_param_volume_from_str_rounded,
-    from_f64_rounded_fn = pit_create_param_volume_from_f64_rounded,
-    from_decimal_rounded_fn = pit_create_param_volume_from_decimal_rounded,
-    to_f64_fn = pit_param_volume_to_f64,
-    is_zero_fn = pit_param_volume_is_zero,
-    compare_fn = pit_param_volume_compare,
-    to_string_fn = pit_param_volume_to_string,
-    checked_add_fn = pit_param_volume_checked_add,
-    checked_sub_fn = pit_param_volume_checked_sub,
-    checked_mul_i64_fn = pit_param_volume_checked_mul_i64,
-    checked_mul_u64_fn = pit_param_volume_checked_mul_u64,
-    checked_mul_f64_fn = pit_param_volume_checked_mul_f64,
-    checked_div_i64_fn = pit_param_volume_checked_div_i64,
-    checked_div_u64_fn = pit_param_volume_checked_div_u64,
-    checked_div_f64_fn = pit_param_volume_checked_div_f64,
-    checked_rem_i64_fn = pit_param_volume_checked_rem_i64,
-    checked_rem_u64_fn = pit_param_volume_checked_rem_u64,
-    checked_rem_f64_fn = pit_param_volume_checked_rem_f64
+    from_str_fn = openpit_create_param_volume_from_str,
+    from_f64_fn = openpit_create_param_volume_from_f64,
+    from_i64_fn = openpit_create_param_volume_from_i64,
+    from_u64_fn = openpit_create_param_volume_from_u64,
+    from_str_rounded_fn = openpit_create_param_volume_from_str_rounded,
+    from_f64_rounded_fn = openpit_create_param_volume_from_f64_rounded,
+    from_decimal_rounded_fn = openpit_create_param_volume_from_decimal_rounded,
+    to_f64_fn = openpit_param_volume_to_f64,
+    is_zero_fn = openpit_param_volume_is_zero,
+    compare_fn = openpit_param_volume_compare,
+    to_string_fn = openpit_param_volume_to_string,
+    checked_add_fn = openpit_param_volume_checked_add,
+    checked_sub_fn = openpit_param_volume_checked_sub,
+    checked_mul_i64_fn = openpit_param_volume_checked_mul_i64,
+    checked_mul_u64_fn = openpit_param_volume_checked_mul_u64,
+    checked_mul_f64_fn = openpit_param_volume_checked_mul_f64,
+    checked_div_i64_fn = openpit_param_volume_checked_div_i64,
+    checked_div_u64_fn = openpit_param_volume_checked_div_u64,
+    checked_div_f64_fn = openpit_param_volume_checked_div_f64,
+    checked_rem_i64_fn = openpit_param_volume_checked_rem_i64,
+    checked_rem_u64_fn = openpit_param_volume_checked_rem_u64,
+    checked_rem_f64_fn = openpit_param_volume_checked_rem_f64
 );
 
 define_decimal_param_ffi_common!(
-    wrapper = PitParamCashFlow,
+    wrapper = OpenPitParamCashFlow,
     domain = CashFlow,
     type_name = "CashFlow",
-    from_str_fn = pit_create_param_cash_flow_from_str,
-    from_f64_fn = pit_create_param_cash_flow_from_f64,
-    from_i64_fn = pit_create_param_cash_flow_from_i64,
-    from_u64_fn = pit_create_param_cash_flow_from_u64,
-    from_str_rounded_fn = pit_create_param_cash_flow_from_str_rounded,
-    from_f64_rounded_fn = pit_create_param_cash_flow_from_f64_rounded,
-    from_decimal_rounded_fn = pit_create_param_cash_flow_from_decimal_rounded,
-    to_f64_fn = pit_param_cash_flow_to_f64,
-    is_zero_fn = pit_param_cash_flow_is_zero,
-    compare_fn = pit_param_cash_flow_compare,
-    to_string_fn = pit_param_cash_flow_to_string,
-    checked_add_fn = pit_param_cash_flow_checked_add,
-    checked_sub_fn = pit_param_cash_flow_checked_sub,
-    checked_mul_i64_fn = pit_param_cash_flow_checked_mul_i64,
-    checked_mul_u64_fn = pit_param_cash_flow_checked_mul_u64,
-    checked_mul_f64_fn = pit_param_cash_flow_checked_mul_f64,
-    checked_div_i64_fn = pit_param_cash_flow_checked_div_i64,
-    checked_div_u64_fn = pit_param_cash_flow_checked_div_u64,
-    checked_div_f64_fn = pit_param_cash_flow_checked_div_f64,
-    checked_rem_i64_fn = pit_param_cash_flow_checked_rem_i64,
-    checked_rem_u64_fn = pit_param_cash_flow_checked_rem_u64,
-    checked_rem_f64_fn = pit_param_cash_flow_checked_rem_f64
+    from_str_fn = openpit_create_param_cash_flow_from_str,
+    from_f64_fn = openpit_create_param_cash_flow_from_f64,
+    from_i64_fn = openpit_create_param_cash_flow_from_i64,
+    from_u64_fn = openpit_create_param_cash_flow_from_u64,
+    from_str_rounded_fn = openpit_create_param_cash_flow_from_str_rounded,
+    from_f64_rounded_fn = openpit_create_param_cash_flow_from_f64_rounded,
+    from_decimal_rounded_fn = openpit_create_param_cash_flow_from_decimal_rounded,
+    to_f64_fn = openpit_param_cash_flow_to_f64,
+    is_zero_fn = openpit_param_cash_flow_is_zero,
+    compare_fn = openpit_param_cash_flow_compare,
+    to_string_fn = openpit_param_cash_flow_to_string,
+    checked_add_fn = openpit_param_cash_flow_checked_add,
+    checked_sub_fn = openpit_param_cash_flow_checked_sub,
+    checked_mul_i64_fn = openpit_param_cash_flow_checked_mul_i64,
+    checked_mul_u64_fn = openpit_param_cash_flow_checked_mul_u64,
+    checked_mul_f64_fn = openpit_param_cash_flow_checked_mul_f64,
+    checked_div_i64_fn = openpit_param_cash_flow_checked_div_i64,
+    checked_div_u64_fn = openpit_param_cash_flow_checked_div_u64,
+    checked_div_f64_fn = openpit_param_cash_flow_checked_div_f64,
+    checked_rem_i64_fn = openpit_param_cash_flow_checked_rem_i64,
+    checked_rem_u64_fn = openpit_param_cash_flow_checked_rem_u64,
+    checked_rem_f64_fn = openpit_param_cash_flow_checked_rem_f64
 );
 define_decimal_param_ffi_signed!(
-    wrapper = PitParamCashFlow,
+    wrapper = OpenPitParamCashFlow,
     domain = CashFlow,
     type_name = "CashFlow",
-    checked_neg_fn = pit_param_cash_flow_checked_neg
+    checked_neg_fn = openpit_param_cash_flow_checked_neg
 );
 
 define_decimal_param_ffi_common!(
-    wrapper = PitParamPositionSize,
+    wrapper = OpenPitParamPositionSize,
     domain = PositionSize,
     type_name = "PositionSize",
-    from_str_fn = pit_create_param_position_size_from_str,
-    from_f64_fn = pit_create_param_position_size_from_f64,
-    from_i64_fn = pit_create_param_position_size_from_i64,
-    from_u64_fn = pit_create_param_position_size_from_u64,
-    from_str_rounded_fn = pit_create_param_position_size_from_str_rounded,
-    from_f64_rounded_fn = pit_create_param_position_size_from_f64_rounded,
-    from_decimal_rounded_fn = pit_create_param_position_size_from_decimal_rounded,
-    to_f64_fn = pit_param_position_size_to_f64,
-    is_zero_fn = pit_param_position_size_is_zero,
-    compare_fn = pit_param_position_size_compare,
-    to_string_fn = pit_param_position_size_to_string,
-    checked_add_fn = pit_param_position_size_checked_add,
-    checked_sub_fn = pit_param_position_size_checked_sub,
-    checked_mul_i64_fn = pit_param_position_size_checked_mul_i64,
-    checked_mul_u64_fn = pit_param_position_size_checked_mul_u64,
-    checked_mul_f64_fn = pit_param_position_size_checked_mul_f64,
-    checked_div_i64_fn = pit_param_position_size_checked_div_i64,
-    checked_div_u64_fn = pit_param_position_size_checked_div_u64,
-    checked_div_f64_fn = pit_param_position_size_checked_div_f64,
-    checked_rem_i64_fn = pit_param_position_size_checked_rem_i64,
-    checked_rem_u64_fn = pit_param_position_size_checked_rem_u64,
-    checked_rem_f64_fn = pit_param_position_size_checked_rem_f64
+    from_str_fn = openpit_create_param_position_size_from_str,
+    from_f64_fn = openpit_create_param_position_size_from_f64,
+    from_i64_fn = openpit_create_param_position_size_from_i64,
+    from_u64_fn = openpit_create_param_position_size_from_u64,
+    from_str_rounded_fn = openpit_create_param_position_size_from_str_rounded,
+    from_f64_rounded_fn = openpit_create_param_position_size_from_f64_rounded,
+    from_decimal_rounded_fn = openpit_create_param_position_size_from_decimal_rounded,
+    to_f64_fn = openpit_param_position_size_to_f64,
+    is_zero_fn = openpit_param_position_size_is_zero,
+    compare_fn = openpit_param_position_size_compare,
+    to_string_fn = openpit_param_position_size_to_string,
+    checked_add_fn = openpit_param_position_size_checked_add,
+    checked_sub_fn = openpit_param_position_size_checked_sub,
+    checked_mul_i64_fn = openpit_param_position_size_checked_mul_i64,
+    checked_mul_u64_fn = openpit_param_position_size_checked_mul_u64,
+    checked_mul_f64_fn = openpit_param_position_size_checked_mul_f64,
+    checked_div_i64_fn = openpit_param_position_size_checked_div_i64,
+    checked_div_u64_fn = openpit_param_position_size_checked_div_u64,
+    checked_div_f64_fn = openpit_param_position_size_checked_div_f64,
+    checked_rem_i64_fn = openpit_param_position_size_checked_rem_i64,
+    checked_rem_u64_fn = openpit_param_position_size_checked_rem_u64,
+    checked_rem_f64_fn = openpit_param_position_size_checked_rem_f64
 );
 define_decimal_param_ffi_signed!(
-    wrapper = PitParamPositionSize,
+    wrapper = OpenPitParamPositionSize,
     domain = PositionSize,
     type_name = "PositionSize",
-    checked_neg_fn = pit_param_position_size_checked_neg
+    checked_neg_fn = openpit_param_position_size_checked_neg
 );
 
 define_decimal_param_ffi_common!(
-    wrapper = PitParamFee,
+    wrapper = OpenPitParamFee,
     domain = Fee,
     type_name = "Fee",
-    from_str_fn = pit_create_param_fee_from_str,
-    from_f64_fn = pit_create_param_fee_from_f64,
-    from_i64_fn = pit_create_param_fee_from_i64,
-    from_u64_fn = pit_create_param_fee_from_u64,
-    from_str_rounded_fn = pit_create_param_fee_from_str_rounded,
-    from_f64_rounded_fn = pit_create_param_fee_from_f64_rounded,
-    from_decimal_rounded_fn = pit_create_param_fee_from_decimal_rounded,
-    to_f64_fn = pit_param_fee_to_f64,
-    is_zero_fn = pit_param_fee_is_zero,
-    compare_fn = pit_param_fee_compare,
-    to_string_fn = pit_param_fee_to_string,
-    checked_add_fn = pit_param_fee_checked_add,
-    checked_sub_fn = pit_param_fee_checked_sub,
-    checked_mul_i64_fn = pit_param_fee_checked_mul_i64,
-    checked_mul_u64_fn = pit_param_fee_checked_mul_u64,
-    checked_mul_f64_fn = pit_param_fee_checked_mul_f64,
-    checked_div_i64_fn = pit_param_fee_checked_div_i64,
-    checked_div_u64_fn = pit_param_fee_checked_div_u64,
-    checked_div_f64_fn = pit_param_fee_checked_div_f64,
-    checked_rem_i64_fn = pit_param_fee_checked_rem_i64,
-    checked_rem_u64_fn = pit_param_fee_checked_rem_u64,
-    checked_rem_f64_fn = pit_param_fee_checked_rem_f64
+    from_str_fn = openpit_create_param_fee_from_str,
+    from_f64_fn = openpit_create_param_fee_from_f64,
+    from_i64_fn = openpit_create_param_fee_from_i64,
+    from_u64_fn = openpit_create_param_fee_from_u64,
+    from_str_rounded_fn = openpit_create_param_fee_from_str_rounded,
+    from_f64_rounded_fn = openpit_create_param_fee_from_f64_rounded,
+    from_decimal_rounded_fn = openpit_create_param_fee_from_decimal_rounded,
+    to_f64_fn = openpit_param_fee_to_f64,
+    is_zero_fn = openpit_param_fee_is_zero,
+    compare_fn = openpit_param_fee_compare,
+    to_string_fn = openpit_param_fee_to_string,
+    checked_add_fn = openpit_param_fee_checked_add,
+    checked_sub_fn = openpit_param_fee_checked_sub,
+    checked_mul_i64_fn = openpit_param_fee_checked_mul_i64,
+    checked_mul_u64_fn = openpit_param_fee_checked_mul_u64,
+    checked_mul_f64_fn = openpit_param_fee_checked_mul_f64,
+    checked_div_i64_fn = openpit_param_fee_checked_div_i64,
+    checked_div_u64_fn = openpit_param_fee_checked_div_u64,
+    checked_div_f64_fn = openpit_param_fee_checked_div_f64,
+    checked_rem_i64_fn = openpit_param_fee_checked_rem_i64,
+    checked_rem_u64_fn = openpit_param_fee_checked_rem_u64,
+    checked_rem_f64_fn = openpit_param_fee_checked_rem_f64
 );
 define_decimal_param_ffi_signed!(
-    wrapper = PitParamFee,
+    wrapper = OpenPitParamFee,
     domain = Fee,
     type_name = "Fee",
-    checked_neg_fn = pit_param_fee_checked_neg
+    checked_neg_fn = openpit_param_fee_checked_neg
 );
 
 define_decimal_param_ffi_common!(
-    wrapper = PitParamNotional,
+    wrapper = OpenPitParamNotional,
     domain = Notional,
     type_name = "Notional",
-    from_str_fn = pit_create_param_notional_from_str,
-    from_f64_fn = pit_create_param_notional_from_f64,
-    from_i64_fn = pit_create_param_notional_from_i64,
-    from_u64_fn = pit_create_param_notional_from_u64,
-    from_str_rounded_fn = pit_create_param_notional_from_str_rounded,
-    from_f64_rounded_fn = pit_create_param_notional_from_f64_rounded,
-    from_decimal_rounded_fn = pit_create_param_notional_from_decimal_rounded,
-    to_f64_fn = pit_param_notional_to_f64,
-    is_zero_fn = pit_param_notional_is_zero,
-    compare_fn = pit_param_notional_compare,
-    to_string_fn = pit_param_notional_to_string,
-    checked_add_fn = pit_param_notional_checked_add,
-    checked_sub_fn = pit_param_notional_checked_sub,
-    checked_mul_i64_fn = pit_param_notional_checked_mul_i64,
-    checked_mul_u64_fn = pit_param_notional_checked_mul_u64,
-    checked_mul_f64_fn = pit_param_notional_checked_mul_f64,
-    checked_div_i64_fn = pit_param_notional_checked_div_i64,
-    checked_div_u64_fn = pit_param_notional_checked_div_u64,
-    checked_div_f64_fn = pit_param_notional_checked_div_f64,
-    checked_rem_i64_fn = pit_param_notional_checked_rem_i64,
-    checked_rem_u64_fn = pit_param_notional_checked_rem_u64,
-    checked_rem_f64_fn = pit_param_notional_checked_rem_f64
+    from_str_fn = openpit_create_param_notional_from_str,
+    from_f64_fn = openpit_create_param_notional_from_f64,
+    from_i64_fn = openpit_create_param_notional_from_i64,
+    from_u64_fn = openpit_create_param_notional_from_u64,
+    from_str_rounded_fn = openpit_create_param_notional_from_str_rounded,
+    from_f64_rounded_fn = openpit_create_param_notional_from_f64_rounded,
+    from_decimal_rounded_fn = openpit_create_param_notional_from_decimal_rounded,
+    to_f64_fn = openpit_param_notional_to_f64,
+    is_zero_fn = openpit_param_notional_is_zero,
+    compare_fn = openpit_param_notional_compare,
+    to_string_fn = openpit_param_notional_to_string,
+    checked_add_fn = openpit_param_notional_checked_add,
+    checked_sub_fn = openpit_param_notional_checked_sub,
+    checked_mul_i64_fn = openpit_param_notional_checked_mul_i64,
+    checked_mul_u64_fn = openpit_param_notional_checked_mul_u64,
+    checked_mul_f64_fn = openpit_param_notional_checked_mul_f64,
+    checked_div_i64_fn = openpit_param_notional_checked_div_i64,
+    checked_div_u64_fn = openpit_param_notional_checked_div_u64,
+    checked_div_f64_fn = openpit_param_notional_checked_div_f64,
+    checked_rem_i64_fn = openpit_param_notional_checked_rem_i64,
+    checked_rem_u64_fn = openpit_param_notional_checked_rem_u64,
+    checked_rem_f64_fn = openpit_param_notional_checked_rem_f64
 );
 
 define_optional!(
-    optional = PitParamNotionalOptional,
-    value = PitParamNotional
+    optional = OpenPitParamNotionalOptional,
+    value = OpenPitParamNotional
 );
-define_optional!(optional = PitParamPnlOptional, value = PitParamPnl);
-define_optional!(optional = PitParamPriceOptional, value = PitParamPrice);
+define_optional!(optional = OpenPitParamPnlOptional, value = OpenPitParamPnl);
 define_optional!(
-    optional = PitParamQuantityOptional,
-    value = PitParamQuantity
-);
-define_optional!(optional = PitParamVolumeOptional, value = PitParamVolume);
-define_optional!(
-    optional = PitParamCashFlowOptional,
-    value = PitParamCashFlow
+    optional = OpenPitParamPriceOptional,
+    value = OpenPitParamPrice
 );
 define_optional!(
-    optional = PitParamPositionSizeOptional,
-    value = PitParamPositionSize
+    optional = OpenPitParamQuantityOptional,
+    value = OpenPitParamQuantity
 );
-define_optional!(optional = PitParamFeeOptional, value = PitParamFee);
 define_optional!(
-    optional = PitParamAccountIdOptional,
-    value = PitParamAccountId
+    optional = OpenPitParamVolumeOptional,
+    value = OpenPitParamVolume
+);
+define_optional!(
+    optional = OpenPitParamCashFlowOptional,
+    value = OpenPitParamCashFlow
+);
+define_optional!(
+    optional = OpenPitParamPositionSizeOptional,
+    value = OpenPitParamPositionSize
+);
+define_optional!(optional = OpenPitParamFeeOptional, value = OpenPitParamFee);
+define_optional!(
+    optional = OpenPitParamAccountIdOptional,
+    value = OpenPitParamAccountId
 );
 
 pub(crate) fn import_trade_amount(
-    value: PitParamTradeAmount,
+    value: OpenPitParamTradeAmount,
 ) -> Result<Option<TradeAmount>, String> {
     match value.kind {
-        PitParamTradeAmountKind::NotSet => Ok(None),
-        PitParamTradeAmountKind::Quantity => Ok(Some(TradeAmount::Quantity(
-            PitParamQuantity(value.value).to_param()?,
+        OpenPitParamTradeAmountKind::NotSet => Ok(None),
+        OpenPitParamTradeAmountKind::Quantity => Ok(Some(TradeAmount::Quantity(
+            OpenPitParamQuantity(value.value).to_param()?,
         ))),
-        PitParamTradeAmountKind::Volume => Ok(Some(TradeAmount::Volume(
-            PitParamVolume(value.value).to_param()?,
+        OpenPitParamTradeAmountKind::Volume => Ok(Some(TradeAmount::Volume(
+            OpenPitParamVolume(value.value).to_param()?,
         ))),
     }
 }
 
-pub(crate) fn export_trade_amount(value: Option<TradeAmount>) -> PitParamTradeAmount {
+pub(crate) fn export_trade_amount(value: Option<TradeAmount>) -> OpenPitParamTradeAmount {
     match value {
-        Some(TradeAmount::Quantity(quantity)) => PitParamTradeAmount {
+        Some(TradeAmount::Quantity(quantity)) => OpenPitParamTradeAmount {
             value: quantity.to_decimal().into(),
-            kind: PitParamTradeAmountKind::Quantity,
+            kind: OpenPitParamTradeAmountKind::Quantity,
         },
-        Some(TradeAmount::Volume(volume)) => PitParamTradeAmount {
+        Some(TradeAmount::Volume(volume)) => OpenPitParamTradeAmount {
             value: volume.to_decimal().into(),
-            kind: PitParamTradeAmountKind::Volume,
+            kind: OpenPitParamTradeAmountKind::Volume,
         },
-        _ => PitParamTradeAmount::default(),
+        _ => OpenPitParamTradeAmount::default(),
     }
 }
 
 //--------------------------------------------------------------------------------------------------
 
 #[no_mangle]
-pub unsafe extern "C" fn pit_param_leverage_calculate_margin_required(
-    leverage: PitParamLeverage,
-    notional: PitParamNotional,
-    out: *mut PitParamNotional,
-    out_error: PitOutParamError,
+pub unsafe extern "C" fn openpit_param_leverage_calculate_margin_required(
+    leverage: OpenPitParamLeverage,
+    notional: OpenPitParamNotional,
+    out: *mut OpenPitParamNotional,
+    out_error: OpenPitOutParamError,
 ) -> bool {
     let leverage = match import_leverage(leverage) {
         Some(lev) => lev,
@@ -1533,7 +1545,7 @@ pub unsafe extern "C" fn pit_param_leverage_calculate_margin_required(
     match leverage.calculate_margin_required(notional) {
         Ok(margin) => write_out(
             out,
-            PitParamNotional(PitParamDecimal::from_decimal(margin.to_decimal())),
+            OpenPitParamNotional(OpenPitParamDecimal::from_decimal(margin.to_decimal())),
             out_error,
         ),
         Err(error) => {
@@ -1544,11 +1556,11 @@ pub unsafe extern "C" fn pit_param_leverage_calculate_margin_required(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn pit_param_price_calculate_volume(
-    price: PitParamPrice,
-    quantity: PitParamQuantity,
-    out: *mut PitParamVolume,
-    out_error: PitOutParamError,
+pub unsafe extern "C" fn openpit_param_price_calculate_volume(
+    price: OpenPitParamPrice,
+    quantity: OpenPitParamQuantity,
+    out: *mut OpenPitParamVolume,
+    out_error: OpenPitOutParamError,
 ) -> bool {
     let price = match price.to_param() {
         Ok(value) => value,
@@ -1567,7 +1579,7 @@ pub unsafe extern "C" fn pit_param_price_calculate_volume(
     match price.calculate_volume(quantity) {
         Ok(volume) => write_out(
             out,
-            PitParamVolume(PitParamDecimal::from_decimal(volume.to_decimal())),
+            OpenPitParamVolume(OpenPitParamDecimal::from_decimal(volume.to_decimal())),
             out_error,
         ),
         Err(error) => {
@@ -1578,11 +1590,11 @@ pub unsafe extern "C" fn pit_param_price_calculate_volume(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn pit_param_quantity_calculate_volume(
-    quantity: PitParamQuantity,
-    price: PitParamPrice,
-    out: *mut PitParamVolume,
-    out_error: PitOutParamError,
+pub unsafe extern "C" fn openpit_param_quantity_calculate_volume(
+    quantity: OpenPitParamQuantity,
+    price: OpenPitParamPrice,
+    out: *mut OpenPitParamVolume,
+    out_error: OpenPitOutParamError,
 ) -> bool {
     let quantity = match quantity.to_param() {
         Ok(value) => value,
@@ -1601,7 +1613,7 @@ pub unsafe extern "C" fn pit_param_quantity_calculate_volume(
     match quantity.calculate_volume(price) {
         Ok(volume) => write_out(
             out,
-            PitParamVolume(PitParamDecimal::from_decimal(volume.to_decimal())),
+            OpenPitParamVolume(OpenPitParamDecimal::from_decimal(volume.to_decimal())),
             out_error,
         ),
         Err(error) => {
@@ -1612,11 +1624,11 @@ pub unsafe extern "C" fn pit_param_quantity_calculate_volume(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn pit_param_volume_calculate_quantity(
-    volume: PitParamVolume,
-    price: PitParamPrice,
-    out: *mut PitParamQuantity,
-    out_error: PitOutParamError,
+pub unsafe extern "C" fn openpit_param_volume_calculate_quantity(
+    volume: OpenPitParamVolume,
+    price: OpenPitParamPrice,
+    out: *mut OpenPitParamQuantity,
+    out_error: OpenPitOutParamError,
 ) -> bool {
     let volume = match volume.to_param() {
         Ok(value) => value,
@@ -1635,7 +1647,7 @@ pub unsafe extern "C" fn pit_param_volume_calculate_quantity(
     match volume.calculate_quantity(price) {
         Ok(quantity) => write_out(
             out,
-            PitParamQuantity(PitParamDecimal::from_decimal(quantity.to_decimal())),
+            OpenPitParamQuantity(OpenPitParamDecimal::from_decimal(quantity.to_decimal())),
             out_error,
         ),
         Err(error) => {
@@ -1646,10 +1658,10 @@ pub unsafe extern "C" fn pit_param_volume_calculate_quantity(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn pit_param_pnl_to_cash_flow(
-    value: PitParamPnl,
-    out: *mut PitParamCashFlow,
-    out_error: PitOutParamError,
+pub unsafe extern "C" fn openpit_param_pnl_to_cash_flow(
+    value: OpenPitParamPnl,
+    out: *mut OpenPitParamCashFlow,
+    out_error: OpenPitOutParamError,
 ) -> bool {
     let parsed = match value.to_param() {
         Ok(parsed) => parsed,
@@ -1660,7 +1672,7 @@ pub unsafe extern "C" fn pit_param_pnl_to_cash_flow(
     };
     write_out(
         out,
-        PitParamCashFlow(PitParamDecimal::from_decimal(
+        OpenPitParamCashFlow(OpenPitParamDecimal::from_decimal(
             parsed.to_cash_flow().to_decimal(),
         )),
         out_error,
@@ -1668,10 +1680,10 @@ pub unsafe extern "C" fn pit_param_pnl_to_cash_flow(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn pit_param_pnl_to_position_size(
-    value: PitParamPnl,
-    out: *mut PitParamPositionSize,
-    out_error: PitOutParamError,
+pub unsafe extern "C" fn openpit_param_pnl_to_position_size(
+    value: OpenPitParamPnl,
+    out: *mut OpenPitParamPositionSize,
+    out_error: OpenPitOutParamError,
 ) -> bool {
     let parsed = match value.to_param() {
         Ok(parsed) => parsed,
@@ -1682,7 +1694,7 @@ pub unsafe extern "C" fn pit_param_pnl_to_position_size(
     };
     write_out(
         out,
-        PitParamPositionSize(PitParamDecimal::from_decimal(
+        OpenPitParamPositionSize(OpenPitParamDecimal::from_decimal(
             parsed.to_position_size().to_decimal(),
         )),
         out_error,
@@ -1690,10 +1702,10 @@ pub unsafe extern "C" fn pit_param_pnl_to_position_size(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn pit_param_pnl_from_fee(
-    fee: PitParamFee,
-    out: *mut PitParamPnl,
-    out_error: PitOutParamError,
+pub unsafe extern "C" fn openpit_param_pnl_from_fee(
+    fee: OpenPitParamFee,
+    out: *mut OpenPitParamPnl,
+    out_error: OpenPitOutParamError,
 ) -> bool {
     let parsed = match fee.to_param() {
         Ok(parsed) => parsed,
@@ -1704,7 +1716,7 @@ pub unsafe extern "C" fn pit_param_pnl_from_fee(
     };
     write_out(
         out,
-        PitParamPnl(PitParamDecimal::from_decimal(
+        OpenPitParamPnl(OpenPitParamDecimal::from_decimal(
             Pnl::from_fee(parsed).to_decimal(),
         )),
         out_error,
@@ -1712,10 +1724,10 @@ pub unsafe extern "C" fn pit_param_pnl_from_fee(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn pit_param_cash_flow_from_pnl(
-    pnl: PitParamPnl,
-    out: *mut PitParamCashFlow,
-    out_error: PitOutParamError,
+pub unsafe extern "C" fn openpit_param_cash_flow_from_pnl(
+    pnl: OpenPitParamPnl,
+    out: *mut OpenPitParamCashFlow,
+    out_error: OpenPitOutParamError,
 ) -> bool {
     let parsed = match pnl.to_param() {
         Ok(parsed) => parsed,
@@ -1726,7 +1738,7 @@ pub unsafe extern "C" fn pit_param_cash_flow_from_pnl(
     };
     write_out(
         out,
-        PitParamCashFlow(PitParamDecimal::from_decimal(
+        OpenPitParamCashFlow(OpenPitParamDecimal::from_decimal(
             CashFlow::from_pnl(parsed).to_decimal(),
         )),
         out_error,
@@ -1734,10 +1746,10 @@ pub unsafe extern "C" fn pit_param_cash_flow_from_pnl(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn pit_param_cash_flow_from_fee(
-    fee: PitParamFee,
-    out: *mut PitParamCashFlow,
-    out_error: PitOutParamError,
+pub unsafe extern "C" fn openpit_param_cash_flow_from_fee(
+    fee: OpenPitParamFee,
+    out: *mut OpenPitParamCashFlow,
+    out_error: OpenPitOutParamError,
 ) -> bool {
     let parsed = match fee.to_param() {
         Ok(parsed) => parsed,
@@ -1748,7 +1760,7 @@ pub unsafe extern "C" fn pit_param_cash_flow_from_fee(
     };
     write_out(
         out,
-        PitParamCashFlow(PitParamDecimal::from_decimal(
+        OpenPitParamCashFlow(OpenPitParamDecimal::from_decimal(
             CashFlow::from_fee(parsed).to_decimal(),
         )),
         out_error,
@@ -1756,10 +1768,10 @@ pub unsafe extern "C" fn pit_param_cash_flow_from_fee(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn pit_param_cash_flow_from_volume_inflow(
-    volume: PitParamVolume,
-    out: *mut PitParamCashFlow,
-    out_error: PitOutParamError,
+pub unsafe extern "C" fn openpit_param_cash_flow_from_volume_inflow(
+    volume: OpenPitParamVolume,
+    out: *mut OpenPitParamCashFlow,
+    out_error: OpenPitOutParamError,
 ) -> bool {
     let parsed = match volume.to_param() {
         Ok(parsed) => parsed,
@@ -1770,7 +1782,7 @@ pub unsafe extern "C" fn pit_param_cash_flow_from_volume_inflow(
     };
     write_out(
         out,
-        PitParamCashFlow(PitParamDecimal::from_decimal(
+        OpenPitParamCashFlow(OpenPitParamDecimal::from_decimal(
             CashFlow::from_volume_inflow(parsed).to_decimal(),
         )),
         out_error,
@@ -1778,10 +1790,10 @@ pub unsafe extern "C" fn pit_param_cash_flow_from_volume_inflow(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn pit_param_cash_flow_from_volume_outflow(
-    volume: PitParamVolume,
-    out: *mut PitParamCashFlow,
-    out_error: PitOutParamError,
+pub unsafe extern "C" fn openpit_param_cash_flow_from_volume_outflow(
+    volume: OpenPitParamVolume,
+    out: *mut OpenPitParamCashFlow,
+    out_error: OpenPitOutParamError,
 ) -> bool {
     let parsed = match volume.to_param() {
         Ok(parsed) => parsed,
@@ -1792,7 +1804,7 @@ pub unsafe extern "C" fn pit_param_cash_flow_from_volume_outflow(
     };
     write_out(
         out,
-        PitParamCashFlow(PitParamDecimal::from_decimal(
+        OpenPitParamCashFlow(OpenPitParamDecimal::from_decimal(
             CashFlow::from_volume_outflow(parsed).to_decimal(),
         )),
         out_error,
@@ -1800,10 +1812,10 @@ pub unsafe extern "C" fn pit_param_cash_flow_from_volume_outflow(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn pit_param_fee_to_pnl(
-    fee: PitParamFee,
-    out: *mut PitParamPnl,
-    out_error: PitOutParamError,
+pub unsafe extern "C" fn openpit_param_fee_to_pnl(
+    fee: OpenPitParamFee,
+    out: *mut OpenPitParamPnl,
+    out_error: OpenPitOutParamError,
 ) -> bool {
     let parsed = match fee.to_param() {
         Ok(parsed) => parsed,
@@ -1814,16 +1826,18 @@ pub unsafe extern "C" fn pit_param_fee_to_pnl(
     };
     write_out(
         out,
-        PitParamPnl(PitParamDecimal::from_decimal(parsed.to_pnl().to_decimal())),
+        OpenPitParamPnl(OpenPitParamDecimal::from_decimal(
+            parsed.to_pnl().to_decimal(),
+        )),
         out_error,
     )
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn pit_param_fee_to_position_size(
-    fee: PitParamFee,
-    out: *mut PitParamPositionSize,
-    out_error: PitOutParamError,
+pub unsafe extern "C" fn openpit_param_fee_to_position_size(
+    fee: OpenPitParamFee,
+    out: *mut OpenPitParamPositionSize,
+    out_error: OpenPitOutParamError,
 ) -> bool {
     let parsed = match fee.to_param() {
         Ok(parsed) => parsed,
@@ -1834,7 +1848,7 @@ pub unsafe extern "C" fn pit_param_fee_to_position_size(
     };
     write_out(
         out,
-        PitParamPositionSize(PitParamDecimal::from_decimal(
+        OpenPitParamPositionSize(OpenPitParamDecimal::from_decimal(
             parsed.to_position_size().to_decimal(),
         )),
         out_error,
@@ -1842,10 +1856,10 @@ pub unsafe extern "C" fn pit_param_fee_to_position_size(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn pit_param_fee_to_cash_flow(
-    fee: PitParamFee,
-    out: *mut PitParamCashFlow,
-    out_error: PitOutParamError,
+pub unsafe extern "C" fn openpit_param_fee_to_cash_flow(
+    fee: OpenPitParamFee,
+    out: *mut OpenPitParamCashFlow,
+    out_error: OpenPitOutParamError,
 ) -> bool {
     let parsed = match fee.to_param() {
         Ok(parsed) => parsed,
@@ -1856,7 +1870,7 @@ pub unsafe extern "C" fn pit_param_fee_to_cash_flow(
     };
     write_out(
         out,
-        PitParamCashFlow(PitParamDecimal::from_decimal(
+        OpenPitParamCashFlow(OpenPitParamDecimal::from_decimal(
             parsed.to_cash_flow().to_decimal(),
         )),
         out_error,
@@ -1864,10 +1878,10 @@ pub unsafe extern "C" fn pit_param_fee_to_cash_flow(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn pit_param_volume_to_cash_flow_inflow(
-    volume: PitParamVolume,
-    out: *mut PitParamCashFlow,
-    out_error: PitOutParamError,
+pub unsafe extern "C" fn openpit_param_volume_to_cash_flow_inflow(
+    volume: OpenPitParamVolume,
+    out: *mut OpenPitParamCashFlow,
+    out_error: OpenPitOutParamError,
 ) -> bool {
     let parsed = match volume.to_param() {
         Ok(parsed) => parsed,
@@ -1878,7 +1892,7 @@ pub unsafe extern "C" fn pit_param_volume_to_cash_flow_inflow(
     };
     write_out(
         out,
-        PitParamCashFlow(PitParamDecimal::from_decimal(
+        OpenPitParamCashFlow(OpenPitParamDecimal::from_decimal(
             parsed.to_cash_flow_inflow().to_decimal(),
         )),
         out_error,
@@ -1886,10 +1900,10 @@ pub unsafe extern "C" fn pit_param_volume_to_cash_flow_inflow(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn pit_param_volume_to_cash_flow_outflow(
-    volume: PitParamVolume,
-    out: *mut PitParamCashFlow,
-    out_error: PitOutParamError,
+pub unsafe extern "C" fn openpit_param_volume_to_cash_flow_outflow(
+    volume: OpenPitParamVolume,
+    out: *mut OpenPitParamCashFlow,
+    out_error: OpenPitOutParamError,
 ) -> bool {
     let parsed = match volume.to_param() {
         Ok(parsed) => parsed,
@@ -1900,7 +1914,7 @@ pub unsafe extern "C" fn pit_param_volume_to_cash_flow_outflow(
     };
     write_out(
         out,
-        PitParamCashFlow(PitParamDecimal::from_decimal(
+        OpenPitParamCashFlow(OpenPitParamDecimal::from_decimal(
             parsed.to_cash_flow_outflow().to_decimal(),
         )),
         out_error,
@@ -1908,10 +1922,10 @@ pub unsafe extern "C" fn pit_param_volume_to_cash_flow_outflow(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn pit_param_position_size_from_pnl(
-    pnl: PitParamPnl,
-    out: *mut PitParamPositionSize,
-    out_error: PitOutParamError,
+pub unsafe extern "C" fn openpit_param_position_size_from_pnl(
+    pnl: OpenPitParamPnl,
+    out: *mut OpenPitParamPositionSize,
+    out_error: OpenPitOutParamError,
 ) -> bool {
     let parsed = match pnl.to_param() {
         Ok(parsed) => parsed,
@@ -1922,7 +1936,7 @@ pub unsafe extern "C" fn pit_param_position_size_from_pnl(
     };
     write_out(
         out,
-        PitParamPositionSize(PitParamDecimal::from_decimal(
+        OpenPitParamPositionSize(OpenPitParamDecimal::from_decimal(
             PositionSize::from_pnl(parsed).to_decimal(),
         )),
         out_error,
@@ -1930,10 +1944,10 @@ pub unsafe extern "C" fn pit_param_position_size_from_pnl(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn pit_param_position_size_from_fee(
-    fee: PitParamFee,
-    out: *mut PitParamPositionSize,
-    out_error: PitOutParamError,
+pub unsafe extern "C" fn openpit_param_position_size_from_fee(
+    fee: OpenPitParamFee,
+    out: *mut OpenPitParamPositionSize,
+    out_error: OpenPitOutParamError,
 ) -> bool {
     let parsed = match fee.to_param() {
         Ok(parsed) => parsed,
@@ -1944,7 +1958,7 @@ pub unsafe extern "C" fn pit_param_position_size_from_fee(
     };
     write_out(
         out,
-        PitParamPositionSize(PitParamDecimal::from_decimal(
+        OpenPitParamPositionSize(OpenPitParamDecimal::from_decimal(
             PositionSize::from_fee(parsed).to_decimal(),
         )),
         out_error,
@@ -1952,11 +1966,11 @@ pub unsafe extern "C" fn pit_param_position_size_from_fee(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn pit_param_position_size_from_quantity_and_side(
-    quantity: PitParamQuantity,
-    side: PitParamSide,
-    out: *mut PitParamPositionSize,
-    out_error: PitOutParamError,
+pub unsafe extern "C" fn openpit_param_position_size_from_quantity_and_side(
+    quantity: OpenPitParamQuantity,
+    side: OpenPitParamSide,
+    out: *mut OpenPitParamPositionSize,
+    out_error: OpenPitOutParamError,
 ) -> bool {
     let parsed = match quantity.to_param() {
         Ok(parsed) => parsed,
@@ -1968,7 +1982,7 @@ pub unsafe extern "C" fn pit_param_position_size_from_quantity_and_side(
     let parsed_side = import_side(side).unwrap_or(Side::Buy);
     write_out(
         out,
-        PitParamPositionSize(PitParamDecimal::from_decimal(
+        OpenPitParamPositionSize(OpenPitParamDecimal::from_decimal(
             PositionSize::from_quantity_and_side(parsed, parsed_side).to_decimal(),
         )),
         out_error,
@@ -1976,11 +1990,11 @@ pub unsafe extern "C" fn pit_param_position_size_from_quantity_and_side(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn pit_param_position_size_to_open_quantity(
-    value: PitParamPositionSize,
-    out_quantity: *mut PitParamQuantity,
-    out_side: *mut PitParamSide,
-    out_error: PitOutParamError,
+pub unsafe extern "C" fn openpit_param_position_size_to_open_quantity(
+    value: OpenPitParamPositionSize,
+    out_quantity: *mut OpenPitParamQuantity,
+    out_side: *mut OpenPitParamSide,
+    out_error: OpenPitOutParamError,
 ) -> bool {
     if out_quantity.is_null() || out_side.is_null() {
         write_param_error_unspecified(out_error, "result place pointer is null");
@@ -1996,18 +2010,19 @@ pub unsafe extern "C" fn pit_param_position_size_to_open_quantity(
     };
     let (quantity, side) = position_size.to_open_quantity();
     unsafe {
-        *out_quantity = PitParamQuantity(PitParamDecimal::from_decimal(quantity.to_decimal()));
+        *out_quantity =
+            OpenPitParamQuantity(OpenPitParamDecimal::from_decimal(quantity.to_decimal()));
         *out_side = export_side(side);
     }
     true
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn pit_param_position_size_to_close_quantity(
-    value: PitParamPositionSize,
-    out_quantity: *mut PitParamQuantity,
-    out_side: *mut PitParamSide,
-    out_error: PitOutParamError,
+pub unsafe extern "C" fn openpit_param_position_size_to_close_quantity(
+    value: OpenPitParamPositionSize,
+    out_quantity: *mut OpenPitParamQuantity,
+    out_side: *mut OpenPitParamSide,
+    out_error: OpenPitOutParamError,
 ) -> bool {
     if out_quantity.is_null() || out_side.is_null() {
         write_param_error_unspecified(out_error, "result place pointer is null");
@@ -2022,19 +2037,20 @@ pub unsafe extern "C" fn pit_param_position_size_to_close_quantity(
     };
     let (quantity, side) = position_size.to_close_quantity();
     unsafe {
-        *out_quantity = PitParamQuantity(PitParamDecimal::from_decimal(quantity.to_decimal()));
-        *out_side = side.map(export_side).unwrap_or(PitParamSide::NotSet);
+        *out_quantity =
+            OpenPitParamQuantity(OpenPitParamDecimal::from_decimal(quantity.to_decimal()));
+        *out_side = side.map(export_side).unwrap_or(OpenPitParamSide::NotSet);
     }
     true
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn pit_param_position_size_checked_add_quantity(
-    value: PitParamPositionSize,
-    quantity: PitParamQuantity,
-    side: PitParamSide,
-    out: *mut PitParamPositionSize,
-    out_error: PitOutParamError,
+pub unsafe extern "C" fn openpit_param_position_size_checked_add_quantity(
+    value: OpenPitParamPositionSize,
+    quantity: OpenPitParamQuantity,
+    side: OpenPitParamSide,
+    out: *mut OpenPitParamPositionSize,
+    out_error: OpenPitOutParamError,
 ) -> bool {
     let value = match value.to_param() {
         Ok(value) => value,
@@ -2054,7 +2070,7 @@ pub unsafe extern "C" fn pit_param_position_size_checked_add_quantity(
     match value.checked_add_quantity(quantity, side) {
         Ok(position) => write_out(
             out,
-            PitParamPositionSize(PitParamDecimal::from_decimal(position.to_decimal())),
+            OpenPitParamPositionSize(OpenPitParamDecimal::from_decimal(position.to_decimal())),
             out_error,
         ),
         Err(error) => {
@@ -2065,11 +2081,11 @@ pub unsafe extern "C" fn pit_param_position_size_checked_add_quantity(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn pit_param_price_calculate_notional(
-    price: PitParamPrice,
-    quantity: PitParamQuantity,
-    out: *mut PitParamNotional,
-    out_error: PitOutParamError,
+pub unsafe extern "C" fn openpit_param_price_calculate_notional(
+    price: OpenPitParamPrice,
+    quantity: OpenPitParamQuantity,
+    out: *mut OpenPitParamNotional,
+    out_error: OpenPitOutParamError,
 ) -> bool {
     let price = match price.to_param() {
         Ok(value) => value,
@@ -2088,7 +2104,7 @@ pub unsafe extern "C" fn pit_param_price_calculate_notional(
     match Notional::from_price_quantity(price, quantity) {
         Ok(notional) => write_out(
             out,
-            PitParamNotional(PitParamDecimal::from_decimal(notional.to_decimal())),
+            OpenPitParamNotional(OpenPitParamDecimal::from_decimal(notional.to_decimal())),
             out_error,
         ),
         Err(error) => {
@@ -2099,11 +2115,11 @@ pub unsafe extern "C" fn pit_param_price_calculate_notional(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn pit_param_quantity_calculate_notional(
-    quantity: PitParamQuantity,
-    price: PitParamPrice,
-    out: *mut PitParamNotional,
-    out_error: PitOutParamError,
+pub unsafe extern "C" fn openpit_param_quantity_calculate_notional(
+    quantity: OpenPitParamQuantity,
+    price: OpenPitParamPrice,
+    out: *mut OpenPitParamNotional,
+    out_error: OpenPitOutParamError,
 ) -> bool {
     let quantity = match quantity.to_param() {
         Ok(value) => value,
@@ -2122,7 +2138,7 @@ pub unsafe extern "C" fn pit_param_quantity_calculate_notional(
     match Notional::from_price_quantity(price, quantity) {
         Ok(notional) => write_out(
             out,
-            PitParamNotional(PitParamDecimal::from_decimal(notional.to_decimal())),
+            OpenPitParamNotional(OpenPitParamDecimal::from_decimal(notional.to_decimal())),
             out_error,
         ),
         Err(error) => {
@@ -2133,10 +2149,10 @@ pub unsafe extern "C" fn pit_param_quantity_calculate_notional(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn pit_param_notional_from_volume(
-    volume: PitParamVolume,
-    out: *mut PitParamNotional,
-    out_error: PitOutParamError,
+pub unsafe extern "C" fn openpit_param_notional_from_volume(
+    volume: OpenPitParamVolume,
+    out: *mut OpenPitParamNotional,
+    out_error: OpenPitOutParamError,
 ) -> bool {
     let parsed = match volume.to_param() {
         Ok(parsed) => parsed,
@@ -2147,7 +2163,7 @@ pub unsafe extern "C" fn pit_param_notional_from_volume(
     };
     write_out(
         out,
-        PitParamNotional(PitParamDecimal::from_decimal(
+        OpenPitParamNotional(OpenPitParamDecimal::from_decimal(
             Notional::from_volume(parsed).to_decimal(),
         )),
         out_error,
@@ -2155,10 +2171,10 @@ pub unsafe extern "C" fn pit_param_notional_from_volume(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn pit_param_notional_to_volume(
-    notional: PitParamNotional,
-    out: *mut PitParamVolume,
-    out_error: PitOutParamError,
+pub unsafe extern "C" fn openpit_param_notional_to_volume(
+    notional: OpenPitParamNotional,
+    out: *mut OpenPitParamVolume,
+    out_error: OpenPitOutParamError,
 ) -> bool {
     let parsed = match notional.to_param() {
         Ok(parsed) => parsed,
@@ -2169,7 +2185,7 @@ pub unsafe extern "C" fn pit_param_notional_to_volume(
     };
     write_out(
         out,
-        PitParamVolume(PitParamDecimal::from_decimal(
+        OpenPitParamVolume(OpenPitParamDecimal::from_decimal(
             parsed.to_volume().to_decimal(),
         )),
         out_error,
@@ -2177,11 +2193,11 @@ pub unsafe extern "C" fn pit_param_notional_to_volume(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn pit_param_notional_calculate_margin_required(
-    notional: PitParamNotional,
-    leverage: PitParamLeverage,
-    out: *mut PitParamNotional,
-    out_error: PitOutParamError,
+pub unsafe extern "C" fn openpit_param_notional_calculate_margin_required(
+    notional: OpenPitParamNotional,
+    leverage: OpenPitParamLeverage,
+    out: *mut OpenPitParamNotional,
+    out_error: OpenPitOutParamError,
 ) -> bool {
     let notional = match notional.to_param() {
         Ok(parsed) => parsed,
@@ -2200,7 +2216,7 @@ pub unsafe extern "C" fn pit_param_notional_calculate_margin_required(
     match notional.calculate_margin_required(leverage) {
         Ok(margin) => write_out(
             out,
-            PitParamNotional(PitParamDecimal::from_decimal(margin.to_decimal())),
+            OpenPitParamNotional(OpenPitParamDecimal::from_decimal(margin.to_decimal())),
             out_error,
         ),
         Err(error) => {
@@ -2211,10 +2227,10 @@ pub unsafe extern "C" fn pit_param_notional_calculate_margin_required(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn pit_param_volume_from_notional(
-    notional: PitParamNotional,
-    out: *mut PitParamVolume,
-    out_error: PitOutParamError,
+pub unsafe extern "C" fn openpit_param_volume_from_notional(
+    notional: OpenPitParamNotional,
+    out: *mut OpenPitParamVolume,
+    out_error: OpenPitOutParamError,
 ) -> bool {
     let parsed = match notional.to_param() {
         Ok(parsed) => parsed,
@@ -2225,7 +2241,7 @@ pub unsafe extern "C" fn pit_param_volume_from_notional(
     };
     write_out(
         out,
-        PitParamVolume(PitParamDecimal::from_decimal(
+        OpenPitParamVolume(OpenPitParamDecimal::from_decimal(
             Volume::from_notional(parsed).to_decimal(),
         )),
         out_error,
@@ -2241,12 +2257,12 @@ pub unsafe extern "C" fn pit_param_volume_from_notional(
 ///
 /// WARNING:
 /// Do not mix IDs produced by this function with IDs produced by
-/// `pit_create_param_account_id_from_str` in the same runtime state.
+/// `openpit_create_param_account_id_from_str` in the same runtime state.
 ///
 /// Contract:
 /// - returns a stable account identifier value;
 /// - this function always succeeds.
-pub extern "C" fn pit_create_param_account_id_from_u64(value: u64) -> PitParamAccountId {
+pub extern "C" fn openpit_create_param_account_id_from_u64(value: u64) -> OpenPitParamAccountId {
     AccountId::from_u64(value).as_u64()
 }
 
@@ -2261,27 +2277,27 @@ pub extern "C" fn pit_create_param_account_id_from_u64(value: u64) -> PitParamAc
 /// - for `n` distinct account strings the probability of at least one collision
 ///   is approximately `n^2 / 2^65`.
 /// - if collision risk is unacceptable, keep your own collision-free
-///   string-to-integer mapping and use `pit_create_param_account_id_from_u64`.
+///   string-to-integer mapping and use `openpit_create_param_account_id_from_u64`.
 ///
 /// The previous sentence is why this helper is suitable for stable adapter-side
 /// mapping, but not for workflows that require guaranteed uniqueness.
 ///
 /// WARNING:
 /// Do not mix IDs produced by this function with IDs produced by
-/// `pit_create_param_account_id_from_u64` in the same runtime state.
+/// `openpit_create_param_account_id_from_u64` in the same runtime state.
 ///
 /// Contract:
 /// - returns `true` and writes a stable account identifier to `out` on success;
-/// - returns `false` on invalid input and optionally writes `PitParamError`.
+/// - returns `false` on invalid input and optionally writes `OpenPitParamError`.
 ///
 /// # Safety
 ///
 /// `value.ptr` must be non-null and point to at least `value.len` readable
 /// UTF-8 bytes.
-pub unsafe extern "C" fn pit_create_param_account_id_from_str(
-    value: PitStringView,
-    out: *mut PitParamAccountId,
-    out_error: PitOutParamError,
+pub unsafe extern "C" fn openpit_create_param_account_id_from_str(
+    value: OpenPitStringView,
+    out: *mut OpenPitParamAccountId,
+    out_error: OpenPitOutParamError,
 ) -> bool {
     let bytes: &[u8] = if value.ptr.is_null() || value.len == 0 {
         &[]
@@ -2302,11 +2318,11 @@ pub unsafe extern "C" fn pit_create_param_account_id_from_str(
 #[no_mangle]
 /// Validates and copies an asset identifier into a caller-owned shared-string handle.
 ///
-/// The returned handle must be destroyed with `pit_destroy_param_asset`.
-pub unsafe extern "C" fn pit_create_param_asset_from_str(
-    value: PitStringView,
-    out_error: PitOutParamError,
-) -> *mut PitSharedString {
+/// The returned handle must be destroyed with `openpit_destroy_param_asset`.
+pub unsafe extern "C" fn openpit_create_param_asset_from_str(
+    value: OpenPitStringView,
+    out_error: OpenPitOutParamError,
+) -> *mut OpenPitSharedString {
     let text = match unsafe { parse_string_view(value) } {
         Ok(text) => text,
         Err(error) => {
@@ -2315,7 +2331,7 @@ pub unsafe extern "C" fn pit_create_param_asset_from_str(
         }
     };
     match Asset::new(text.as_str()) {
-        Ok(asset) => PitSharedString::new_handle(asset.as_ref()),
+        Ok(asset) => OpenPitSharedString::new_handle(asset.as_ref()),
         Err(error) => {
             consume_param_error_with_code(out_error, error.into());
             std::ptr::null_mut()
@@ -2324,22 +2340,22 @@ pub unsafe extern "C" fn pit_create_param_asset_from_str(
 }
 
 #[no_mangle]
-/// Destroys a caller-owned asset handle created by `pit_create_param_asset_from_str`.
-pub extern "C" fn pit_destroy_param_asset(handle: *mut PitSharedString) {
-    crate::string::pit_destroy_shared_string(handle);
+/// Destroys a caller-owned asset handle created by `openpit_create_param_asset_from_str`.
+pub extern "C" fn openpit_destroy_param_asset(handle: *mut OpenPitSharedString) {
+    crate::string::openpit_destroy_shared_string(handle);
 }
 
 //--------------------------------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
-    use crate::string::{pit_destroy_shared_string, pit_shared_string_view};
-    use crate::PitStringView;
+    use crate::string::{openpit_destroy_shared_string, openpit_shared_string_view};
+    use crate::OpenPitStringView;
 
     use super::*;
     use openpit::param::{PositionEffect, PositionMode, PositionSide, RoundingStrategy, Side};
 
-    fn view_to_string(view: PitStringView) -> String {
+    fn view_to_string(view: OpenPitStringView) -> String {
         if view.ptr.is_null() {
             return String::new();
         }
@@ -2350,56 +2366,56 @@ mod tests {
     }
 
     #[test]
-    fn leverage_constants_match_openpit_sdk() {
-        assert_eq!(PIT_PARAM_LEVERAGE_SCALE, Leverage::SCALE);
-        assert_eq!(PIT_PARAM_LEVERAGE_MIN, Leverage::MIN);
-        assert_eq!(PIT_PARAM_LEVERAGE_MAX, Leverage::MAX);
-        assert_eq!(PIT_PARAM_LEVERAGE_STEP, Leverage::STEP);
+    fn leverage_constants_match_openpit() {
+        assert_eq!(OPENPIT_PARAM_LEVERAGE_SCALE, Leverage::SCALE);
+        assert_eq!(OPENPIT_PARAM_LEVERAGE_MIN, Leverage::MIN);
+        assert_eq!(OPENPIT_PARAM_LEVERAGE_MAX, Leverage::MAX);
+        assert_eq!(OPENPIT_PARAM_LEVERAGE_STEP, Leverage::STEP);
     }
 
     #[test]
-    fn rounding_strategy_aliases_match_openpit_sdk() {
+    fn rounding_strategy_aliases_match_openpit() {
         assert_eq!(
-            PIT_PARAM_ROUNDING_STRATEGY_DEFAULT as u8,
+            OPENPIT_PARAM_ROUNDING_STRATEGY_DEFAULT as u8,
             RoundingStrategy::DEFAULT as u8
         );
         assert_eq!(
-            PIT_PARAM_ROUNDING_STRATEGY_BANKER as u8,
+            OPENPIT_PARAM_ROUNDING_STRATEGY_BANKER as u8,
             RoundingStrategy::BANKER as u8
         );
         assert_eq!(
-            PIT_PARAM_ROUNDING_STRATEGY_CONSERVATIVE_PROFIT as u8,
+            OPENPIT_PARAM_ROUNDING_STRATEGY_CONSERVATIVE_PROFIT as u8,
             RoundingStrategy::CONSERVATIVE_PROFIT as u8
         );
         assert_eq!(
-            PIT_PARAM_ROUNDING_STRATEGY_CONSERVATIVE_LOSS as u8,
+            OPENPIT_PARAM_ROUNDING_STRATEGY_CONSERVATIVE_LOSS as u8,
             RoundingStrategy::CONSERVATIVE_LOSS as u8
         );
 
         assert_eq!(
-            import_rounding_strategy(PIT_PARAM_ROUNDING_STRATEGY_DEFAULT),
+            import_rounding_strategy(OPENPIT_PARAM_ROUNDING_STRATEGY_DEFAULT),
             RoundingStrategy::DEFAULT
         );
         assert_eq!(
-            import_rounding_strategy(PIT_PARAM_ROUNDING_STRATEGY_BANKER),
+            import_rounding_strategy(OPENPIT_PARAM_ROUNDING_STRATEGY_BANKER),
             RoundingStrategy::BANKER
         );
         assert_eq!(
-            import_rounding_strategy(PIT_PARAM_ROUNDING_STRATEGY_CONSERVATIVE_PROFIT),
+            import_rounding_strategy(OPENPIT_PARAM_ROUNDING_STRATEGY_CONSERVATIVE_PROFIT),
             RoundingStrategy::CONSERVATIVE_PROFIT
         );
         assert_eq!(
-            import_rounding_strategy(PIT_PARAM_ROUNDING_STRATEGY_CONSERVATIVE_LOSS),
+            import_rounding_strategy(OPENPIT_PARAM_ROUNDING_STRATEGY_CONSERVATIVE_LOSS),
             RoundingStrategy::CONSERVATIVE_LOSS
         );
     }
 
     #[test]
     fn typed_param_create_get_roundtrip_by_value() {
-        let mut pnl = PitParamPnl::default();
+        let mut pnl = OpenPitParamPnl::default();
         let ok = unsafe {
-            pit_create_param_pnl(
-                PitParamDecimal {
+            openpit_create_param_pnl(
+                OpenPitParamDecimal {
                     mantissa_lo: 100,
                     mantissa_hi: 0,
                     scale: 0,
@@ -2410,18 +2426,18 @@ mod tests {
         };
         assert!(ok);
         assert_eq!(
-            pit_param_pnl_get_decimal(pnl),
-            PitParamDecimal {
+            openpit_param_pnl_get_decimal(pnl),
+            OpenPitParamDecimal {
                 mantissa_lo: 100,
                 mantissa_hi: 0,
                 scale: 0
             }
         );
 
-        let mut fee = super::PitParamFee::default();
+        let mut fee = super::OpenPitParamFee::default();
         let ok = unsafe {
-            pit_create_param_fee(
-                PitParamDecimal {
+            openpit_create_param_fee(
+                OpenPitParamDecimal {
                     mantissa_lo: -5,
                     mantissa_hi: -1,
                     scale: 0,
@@ -2432,8 +2448,8 @@ mod tests {
         };
         assert!(ok);
         assert_eq!(
-            pit_param_fee_get_decimal(fee),
-            PitParamDecimal {
+            openpit_param_fee_get_decimal(fee),
+            OpenPitParamDecimal {
                 mantissa_lo: -5,
                 mantissa_hi: -1,
                 scale: 0
@@ -2443,14 +2459,14 @@ mod tests {
 
     #[test]
     fn typed_param_create_invalid_returns_default() {
-        let mut value = PitParamPnl(PitParamDecimal {
+        let mut value = OpenPitParamPnl(OpenPitParamDecimal {
             mantissa_lo: 7,
             mantissa_hi: 0,
             scale: 0,
         });
         let ok = unsafe {
-            pit_create_param_pnl(
-                PitParamDecimal {
+            openpit_create_param_pnl(
+                OpenPitParamDecimal {
                     mantissa_lo: 1,
                     mantissa_hi: 0,
                     scale: -1,
@@ -2462,7 +2478,7 @@ mod tests {
         assert!(!ok);
         assert_eq!(
             value,
-            PitParamPnl(PitParamDecimal {
+            OpenPitParamPnl(OpenPitParamDecimal {
                 mantissa_lo: 7,
                 mantissa_hi: 0,
                 scale: 0
@@ -2470,8 +2486,8 @@ mod tests {
         );
         let mut out_error = std::ptr::null_mut();
         let ok = unsafe {
-            pit_create_param_pnl(
-                PitParamDecimal {
+            openpit_create_param_pnl(
+                OpenPitParamDecimal {
                     mantissa_lo: 1,
                     mantissa_hi: 0,
                     scale: -1,
@@ -2482,7 +2498,7 @@ mod tests {
         };
         assert!(!ok);
         assert!(!out_error.is_null());
-        unsafe { crate::last_error::pit_destroy_param_error(out_error) };
+        unsafe { crate::last_error::openpit_destroy_param_error(out_error) };
     }
 
     #[test]
@@ -2490,8 +2506,8 @@ mod tests {
         let bytes = [0xF0_u8, 0x28, 0x8C, 0x28];
         let mut id_invalid = 0_u64;
         let id_invalid_ok = unsafe {
-            pit_create_param_account_id_from_str(
-                PitStringView {
+            openpit_create_param_account_id_from_str(
+                OpenPitStringView {
                     ptr: bytes.as_ptr(),
                     len: bytes.len(),
                 },
@@ -2504,8 +2520,8 @@ mod tests {
         let mut out_error = std::ptr::null_mut();
         let mut id_empty = 0_u64;
         let id_empty_ok = unsafe {
-            pit_create_param_account_id_from_str(
-                PitStringView::not_set(),
+            openpit_create_param_account_id_from_str(
+                OpenPitStringView::not_set(),
                 &mut id_empty,
                 &mut out_error,
             )
@@ -2514,14 +2530,14 @@ mod tests {
         assert!(!out_error.is_null());
         assert_eq!(
             unsafe { (*out_error).code },
-            crate::last_error::PitParamErrorCode::AccountIdEmpty
+            crate::last_error::OpenPitParamErrorCode::AccountIdEmpty
         );
-        let error_message = pit_shared_string_view(unsafe { (*out_error).message });
+        let error_message = openpit_shared_string_view(unsafe { (*out_error).message });
         assert_eq!(
             view_to_string(error_message),
             "account id string must not be empty"
         );
-        unsafe { crate::last_error::pit_destroy_param_error(out_error) };
+        unsafe { crate::last_error::openpit_destroy_param_error(out_error) };
     }
 
     #[test]
@@ -2529,8 +2545,8 @@ mod tests {
         let mut out = 0_u64;
         let mut out_error = std::ptr::null_mut();
         let ok = unsafe {
-            pit_create_param_account_id_from_str(
-                PitStringView::from_utf8("   "),
+            openpit_create_param_account_id_from_str(
+                OpenPitStringView::from_utf8("   "),
                 &mut out,
                 &mut out_error,
             )
@@ -2539,209 +2555,224 @@ mod tests {
         assert!(!out_error.is_null());
         assert_eq!(
             unsafe { (*out_error).code },
-            crate::last_error::PitParamErrorCode::AccountIdEmpty
+            crate::last_error::OpenPitParamErrorCode::AccountIdEmpty
         );
-        let error_message = pit_shared_string_view(unsafe { (*out_error).message });
+        let error_message = openpit_shared_string_view(unsafe { (*out_error).message });
         assert_eq!(
             view_to_string(error_message),
             "account id string must not be empty"
         );
-        unsafe { crate::last_error::pit_destroy_param_error(out_error) };
+        unsafe { crate::last_error::openpit_destroy_param_error(out_error) };
     }
 
     #[test]
     fn account_id_from_u64_is_stable_passthrough() {
-        assert_eq!(pit_create_param_account_id_from_u64(0), 0);
-        assert_eq!(pit_create_param_account_id_from_u64(7), 7);
-        assert_eq!(pit_create_param_account_id_from_u64(u64::MAX), u64::MAX);
+        assert_eq!(openpit_create_param_account_id_from_u64(0), 0);
+        assert_eq!(openpit_create_param_account_id_from_u64(7), 7);
+        assert_eq!(openpit_create_param_account_id_from_u64(u64::MAX), u64::MAX);
     }
 
     #[test]
     fn asset_from_str_returns_owned_handle_when_valid() {
         let handle = unsafe {
-            pit_create_param_asset_from_str(PitStringView::from_utf8("USD"), std::ptr::null_mut())
+            openpit_create_param_asset_from_str(
+                OpenPitStringView::from_utf8("USD"),
+                std::ptr::null_mut(),
+            )
         };
         assert!(!handle.is_null());
-        let value = view_to_string(pit_shared_string_view(handle));
+        let value = view_to_string(openpit_shared_string_view(handle));
         assert_eq!(value, "USD");
-        pit_destroy_param_asset(handle);
+        openpit_destroy_param_asset(handle);
     }
 
     #[test]
     fn asset_from_str_rejects_empty_and_whitespace() {
         let mut out_error = std::ptr::null_mut();
-        let empty =
-            unsafe { pit_create_param_asset_from_str(PitStringView::not_set(), &mut out_error) };
+        let empty = unsafe {
+            openpit_create_param_asset_from_str(OpenPitStringView::not_set(), &mut out_error)
+        };
         assert!(empty.is_null());
         assert!(!out_error.is_null());
         assert_eq!(
             unsafe { (*out_error).code },
-            crate::last_error::PitParamErrorCode::AssetEmpty
+            crate::last_error::OpenPitParamErrorCode::AssetEmpty
         );
-        let message = view_to_string(pit_shared_string_view(unsafe { (*out_error).message }));
+        let message = view_to_string(openpit_shared_string_view(unsafe { (*out_error).message }));
         assert_eq!(message, "asset must not be empty");
-        unsafe { crate::last_error::pit_destroy_param_error(out_error) };
+        unsafe { crate::last_error::openpit_destroy_param_error(out_error) };
 
         let mut out_error = std::ptr::null_mut();
         let whitespace = unsafe {
-            pit_create_param_asset_from_str(PitStringView::from_utf8("   "), &mut out_error)
+            openpit_create_param_asset_from_str(OpenPitStringView::from_utf8("   "), &mut out_error)
         };
         assert!(whitespace.is_null());
         assert!(!out_error.is_null());
         assert_eq!(
             unsafe { (*out_error).code },
-            crate::last_error::PitParamErrorCode::AssetEmpty
+            crate::last_error::OpenPitParamErrorCode::AssetEmpty
         );
-        let message = view_to_string(pit_shared_string_view(unsafe { (*out_error).message }));
+        let message = view_to_string(openpit_shared_string_view(unsafe { (*out_error).message }));
         assert_eq!(message, "asset must not be empty");
-        unsafe { crate::last_error::pit_destroy_param_error(out_error) };
+        unsafe { crate::last_error::openpit_destroy_param_error(out_error) };
     }
 
     #[test]
     fn enum_import_export_cover_all_public_branches() {
-        assert_eq!(import_side(PitParamSide::Buy), Some(Side::Buy));
-        assert_eq!(import_side(PitParamSide::Sell), Some(Side::Sell));
-        assert_eq!(import_side(PitParamSide::NotSet), None);
-        assert_eq!(export_side(Side::Buy), PitParamSide::Buy);
-        assert_eq!(export_side(Side::Sell), PitParamSide::Sell);
+        assert_eq!(import_side(OpenPitParamSide::Buy), Some(Side::Buy));
+        assert_eq!(import_side(OpenPitParamSide::Sell), Some(Side::Sell));
+        assert_eq!(import_side(OpenPitParamSide::NotSet), None);
+        assert_eq!(export_side(Side::Buy), OpenPitParamSide::Buy);
+        assert_eq!(export_side(Side::Sell), OpenPitParamSide::Sell);
 
         assert_eq!(
-            import_position_side(PitParamPositionSide::Long),
+            import_position_side(OpenPitParamPositionSide::Long),
             Some(PositionSide::Long)
         );
         assert_eq!(
-            import_position_side(PitParamPositionSide::Short),
+            import_position_side(OpenPitParamPositionSide::Short),
             Some(PositionSide::Short)
         );
-        assert_eq!(import_position_side(PitParamPositionSide::NotSet), None);
+        assert_eq!(import_position_side(OpenPitParamPositionSide::NotSet), None);
         assert_eq!(
             export_position_side(PositionSide::Long),
-            PitParamPositionSide::Long
+            OpenPitParamPositionSide::Long
         );
         assert_eq!(
             export_position_side(PositionSide::Short),
-            PitParamPositionSide::Short
+            OpenPitParamPositionSide::Short
         );
 
         assert_eq!(
-            import_position_effect(PitParamPositionEffect::Open),
+            import_position_effect(OpenPitParamPositionEffect::Open),
             Some(PositionEffect::Open)
         );
         assert_eq!(
-            import_position_effect(PitParamPositionEffect::Close),
+            import_position_effect(OpenPitParamPositionEffect::Close),
             Some(PositionEffect::Close)
         );
-        assert_eq!(import_position_effect(PitParamPositionEffect::NotSet), None);
+        assert_eq!(
+            import_position_effect(OpenPitParamPositionEffect::NotSet),
+            None
+        );
         assert_eq!(
             export_position_effect(PositionEffect::Open),
-            PitParamPositionEffect::Open
+            OpenPitParamPositionEffect::Open
         );
         assert_eq!(
             export_position_effect(PositionEffect::Close),
-            PitParamPositionEffect::Close
+            OpenPitParamPositionEffect::Close
         );
 
         assert_eq!(
-            import_position_mode(PitParamPositionMode::Netting),
+            import_position_mode(OpenPitParamPositionMode::Netting),
             Some(PositionMode::Netting)
         );
         assert_eq!(
-            import_position_mode(PitParamPositionMode::Hedged),
+            import_position_mode(OpenPitParamPositionMode::Hedged),
             Some(PositionMode::Hedged)
         );
-        assert_eq!(import_position_mode(PitParamPositionMode::NotSet), None);
+        assert_eq!(import_position_mode(OpenPitParamPositionMode::NotSet), None);
         assert_eq!(
             export_position_mode(PositionMode::Netting),
-            PitParamPositionMode::Netting
+            OpenPitParamPositionMode::Netting
         );
         assert_eq!(
             export_position_mode(PositionMode::Hedged),
-            PitParamPositionMode::Hedged
+            OpenPitParamPositionMode::Hedged
         );
 
-        assert_eq!(import_bool(PitTriBool::NotSet), None);
-        assert_eq!(import_bool(PitTriBool::False), Some(false));
-        assert_eq!(import_bool(PitTriBool::True), Some(true));
-        assert_eq!(export_bool(false), PitTriBool::False);
-        assert_eq!(export_bool(true), PitTriBool::True);
+        assert_eq!(import_bool(OpenPitTriBool::NotSet), None);
+        assert_eq!(import_bool(OpenPitTriBool::False), Some(false));
+        assert_eq!(import_bool(OpenPitTriBool::True), Some(true));
+        assert_eq!(export_bool(false), OpenPitTriBool::False);
+        assert_eq!(export_bool(true), OpenPitTriBool::True);
     }
 
     #[test]
     fn decimal_wrapper_create_get_roundtrip_for_all_public_ffi_types() {
-        let raw = PitParamDecimal {
+        let raw = OpenPitParamDecimal {
             mantissa_lo: 123,
             mantissa_hi: 0,
             scale: 0,
         };
 
-        let mut price = PitParamPrice::default();
-        assert!(unsafe { pit_create_param_price(raw, &mut price, std::ptr::null_mut()) });
-        assert_eq!(pit_param_price_get_decimal(price), raw);
+        let mut price = OpenPitParamPrice::default();
+        assert!(unsafe { openpit_create_param_price(raw, &mut price, std::ptr::null_mut()) });
+        assert_eq!(openpit_param_price_get_decimal(price), raw);
 
-        let mut qty = PitParamQuantity::default();
-        assert!(unsafe { pit_create_param_quantity(raw, &mut qty, std::ptr::null_mut()) });
-        assert_eq!(pit_param_quantity_get_decimal(qty), raw);
+        let mut qty = OpenPitParamQuantity::default();
+        assert!(unsafe { openpit_create_param_quantity(raw, &mut qty, std::ptr::null_mut()) });
+        assert_eq!(openpit_param_quantity_get_decimal(qty), raw);
 
-        let mut volume = PitParamVolume::default();
-        assert!(unsafe { pit_create_param_volume(raw, &mut volume, std::ptr::null_mut()) });
-        assert_eq!(pit_param_volume_get_decimal(volume), raw);
+        let mut volume = OpenPitParamVolume::default();
+        assert!(unsafe { openpit_create_param_volume(raw, &mut volume, std::ptr::null_mut()) });
+        assert_eq!(openpit_param_volume_get_decimal(volume), raw);
 
-        let mut cash_flow = PitParamCashFlow::default();
-        assert!(unsafe { pit_create_param_cash_flow(raw, &mut cash_flow, std::ptr::null_mut()) });
-        assert_eq!(pit_param_cash_flow_get_decimal(cash_flow), raw);
-
-        let mut pos_size = PitParamPositionSize::default();
+        let mut cash_flow = OpenPitParamCashFlow::default();
         assert!(unsafe {
-            pit_create_param_position_size(raw, &mut pos_size, std::ptr::null_mut())
+            openpit_create_param_cash_flow(raw, &mut cash_flow, std::ptr::null_mut())
         });
-        assert_eq!(pit_param_position_size_get_decimal(pos_size), raw);
+        assert_eq!(openpit_param_cash_flow_get_decimal(cash_flow), raw);
 
-        let mut fee = PitParamFee::default();
-        assert!(unsafe { pit_create_param_fee(raw, &mut fee, std::ptr::null_mut()) });
-        assert_eq!(pit_param_fee_get_decimal(fee), raw);
+        let mut pos_size = OpenPitParamPositionSize::default();
+        assert!(unsafe {
+            openpit_create_param_position_size(raw, &mut pos_size, std::ptr::null_mut())
+        });
+        assert_eq!(openpit_param_position_size_get_decimal(pos_size), raw);
+
+        let mut fee = OpenPitParamFee::default();
+        assert!(unsafe { openpit_create_param_fee(raw, &mut fee, std::ptr::null_mut()) });
+        assert_eq!(openpit_param_fee_get_decimal(fee), raw);
     }
 
     #[test]
     fn decimal_wrapper_get_decimal_handles_invalid_wrappers_without_panic() {
-        let invalid = PitParamDecimal {
+        let invalid = OpenPitParamDecimal {
             mantissa_lo: 1,
             mantissa_hi: 0,
             scale: -1,
         };
-        assert_eq!(pit_param_price_get_decimal(PitParamPrice(invalid)), invalid);
         assert_eq!(
-            pit_param_quantity_get_decimal(PitParamQuantity(invalid)),
+            openpit_param_price_get_decimal(OpenPitParamPrice(invalid)),
             invalid
         );
         assert_eq!(
-            pit_param_volume_get_decimal(PitParamVolume(invalid)),
+            openpit_param_quantity_get_decimal(OpenPitParamQuantity(invalid)),
             invalid
         );
         assert_eq!(
-            pit_param_cash_flow_get_decimal(PitParamCashFlow(invalid)),
+            openpit_param_volume_get_decimal(OpenPitParamVolume(invalid)),
             invalid
         );
         assert_eq!(
-            pit_param_position_size_get_decimal(PitParamPositionSize(invalid)),
+            openpit_param_cash_flow_get_decimal(OpenPitParamCashFlow(invalid)),
             invalid
         );
-        assert_eq!(pit_param_fee_get_decimal(PitParamFee(invalid)), invalid);
+        assert_eq!(
+            openpit_param_position_size_get_decimal(OpenPitParamPositionSize(invalid)),
+            invalid
+        );
+        assert_eq!(
+            openpit_param_fee_get_decimal(OpenPitParamFee(invalid)),
+            invalid
+        );
     }
 
-    fn sv(value: &str) -> PitStringView {
-        PitStringView::from_utf8(value)
+    fn sv(value: &str) -> OpenPitStringView {
+        OpenPitStringView::from_utf8(value)
     }
 
-    fn string_view_to_string(view: PitStringView) -> String {
+    fn string_view_to_string(view: OpenPitStringView) -> String {
         let bytes = unsafe { std::slice::from_raw_parts(view.ptr, view.len) };
         std::str::from_utf8(bytes)
             .expect("must be valid utf-8")
             .to_owned()
     }
 
-    fn shared_string_to_string(handle: *mut PitSharedString) -> String {
-        let text = string_view_to_string(pit_shared_string_view(handle));
-        pit_destroy_shared_string(handle);
+    fn shared_string_to_string(handle: *mut OpenPitSharedString) -> String {
+        let text = string_view_to_string(openpit_shared_string_view(handle));
+        openpit_destroy_shared_string(handle);
         text
     }
 
@@ -2783,7 +2814,7 @@ mod tests {
                 $from_str_rounded(
                     sv("1.255"),
                     2,
-                    PitParamRoundingStrategy::MidpointNearestEven,
+                    OpenPitParamRoundingStrategy::MidpointNearestEven,
                     &mut c,
                     std::ptr::null_mut(),
                 )
@@ -2792,20 +2823,20 @@ mod tests {
                 $from_f64_rounded(
                     1.255,
                     2,
-                    PitParamRoundingStrategy::MidpointNearestEven,
+                    OpenPitParamRoundingStrategy::MidpointNearestEven,
                     &mut c,
                     std::ptr::null_mut(),
                 )
             });
             assert!(unsafe {
                 $from_decimal_rounded(
-                    PitParamDecimal {
+                    OpenPitParamDecimal {
                         mantissa_lo: 1255,
                         mantissa_hi: 0,
                         scale: 3,
                     },
                     2,
-                    PitParamRoundingStrategy::MidpointNearestEven,
+                    OpenPitParamRoundingStrategy::MidpointNearestEven,
                     &mut c,
                     std::ptr::null_mut(),
                 )
@@ -2877,7 +2908,7 @@ mod tests {
                 $from_str_rounded(
                     sv("1.255"),
                     2,
-                    PitParamRoundingStrategy::MidpointNearestEven,
+                    OpenPitParamRoundingStrategy::MidpointNearestEven,
                     &mut c,
                     std::ptr::null_mut(),
                 )
@@ -2886,20 +2917,20 @@ mod tests {
                 $from_f64_rounded(
                     1.255,
                     2,
-                    PitParamRoundingStrategy::MidpointNearestEven,
+                    OpenPitParamRoundingStrategy::MidpointNearestEven,
                     &mut c,
                     std::ptr::null_mut(),
                 )
             });
             assert!(unsafe {
                 $from_decimal_rounded(
-                    PitParamDecimal {
+                    OpenPitParamDecimal {
                         mantissa_lo: 1255,
                         mantissa_hi: 0,
                         scale: 3,
                     },
                     2,
-                    PitParamRoundingStrategy::MidpointNearestEven,
+                    OpenPitParamRoundingStrategy::MidpointNearestEven,
                     &mut c,
                     std::ptr::null_mut(),
                 )
@@ -2936,218 +2967,226 @@ mod tests {
     #[test]
     fn typed_param_ffi_signed_surface_happy_path() {
         exercise_signed_surface!(
-            wrapper = PitParamPnl,
-            from_str = pit_create_param_pnl_from_str,
-            from_f64 = pit_create_param_pnl_from_f64,
-            from_i64 = pit_create_param_pnl_from_i64,
-            from_u64 = pit_create_param_pnl_from_u64,
-            from_str_rounded = pit_create_param_pnl_from_str_rounded,
-            from_f64_rounded = pit_create_param_pnl_from_f64_rounded,
-            from_decimal_rounded = pit_create_param_pnl_from_decimal_rounded,
-            to_f64 = pit_param_pnl_to_f64,
-            is_zero = pit_param_pnl_is_zero,
-            compare = pit_param_pnl_compare,
-            to_string = pit_param_pnl_to_string,
-            checked_add = pit_param_pnl_checked_add,
-            checked_sub = pit_param_pnl_checked_sub,
-            checked_neg = pit_param_pnl_checked_neg,
-            checked_mul_i64 = pit_param_pnl_checked_mul_i64,
-            checked_mul_u64 = pit_param_pnl_checked_mul_u64,
-            checked_mul_f64 = pit_param_pnl_checked_mul_f64,
-            checked_div_i64 = pit_param_pnl_checked_div_i64,
-            checked_div_u64 = pit_param_pnl_checked_div_u64,
-            checked_div_f64 = pit_param_pnl_checked_div_f64,
-            checked_rem_i64 = pit_param_pnl_checked_rem_i64,
-            checked_rem_u64 = pit_param_pnl_checked_rem_u64,
-            checked_rem_f64 = pit_param_pnl_checked_rem_f64
+            wrapper = OpenPitParamPnl,
+            from_str = openpit_create_param_pnl_from_str,
+            from_f64 = openpit_create_param_pnl_from_f64,
+            from_i64 = openpit_create_param_pnl_from_i64,
+            from_u64 = openpit_create_param_pnl_from_u64,
+            from_str_rounded = openpit_create_param_pnl_from_str_rounded,
+            from_f64_rounded = openpit_create_param_pnl_from_f64_rounded,
+            from_decimal_rounded = openpit_create_param_pnl_from_decimal_rounded,
+            to_f64 = openpit_param_pnl_to_f64,
+            is_zero = openpit_param_pnl_is_zero,
+            compare = openpit_param_pnl_compare,
+            to_string = openpit_param_pnl_to_string,
+            checked_add = openpit_param_pnl_checked_add,
+            checked_sub = openpit_param_pnl_checked_sub,
+            checked_neg = openpit_param_pnl_checked_neg,
+            checked_mul_i64 = openpit_param_pnl_checked_mul_i64,
+            checked_mul_u64 = openpit_param_pnl_checked_mul_u64,
+            checked_mul_f64 = openpit_param_pnl_checked_mul_f64,
+            checked_div_i64 = openpit_param_pnl_checked_div_i64,
+            checked_div_u64 = openpit_param_pnl_checked_div_u64,
+            checked_div_f64 = openpit_param_pnl_checked_div_f64,
+            checked_rem_i64 = openpit_param_pnl_checked_rem_i64,
+            checked_rem_u64 = openpit_param_pnl_checked_rem_u64,
+            checked_rem_f64 = openpit_param_pnl_checked_rem_f64
         );
         exercise_signed_surface!(
-            wrapper = PitParamPrice,
-            from_str = pit_create_param_price_from_str,
-            from_f64 = pit_create_param_price_from_f64,
-            from_i64 = pit_create_param_price_from_i64,
-            from_u64 = pit_create_param_price_from_u64,
-            from_str_rounded = pit_create_param_price_from_str_rounded,
-            from_f64_rounded = pit_create_param_price_from_f64_rounded,
-            from_decimal_rounded = pit_create_param_price_from_decimal_rounded,
-            to_f64 = pit_param_price_to_f64,
-            is_zero = pit_param_price_is_zero,
-            compare = pit_param_price_compare,
-            to_string = pit_param_price_to_string,
-            checked_add = pit_param_price_checked_add,
-            checked_sub = pit_param_price_checked_sub,
-            checked_neg = pit_param_price_checked_neg,
-            checked_mul_i64 = pit_param_price_checked_mul_i64,
-            checked_mul_u64 = pit_param_price_checked_mul_u64,
-            checked_mul_f64 = pit_param_price_checked_mul_f64,
-            checked_div_i64 = pit_param_price_checked_div_i64,
-            checked_div_u64 = pit_param_price_checked_div_u64,
-            checked_div_f64 = pit_param_price_checked_div_f64,
-            checked_rem_i64 = pit_param_price_checked_rem_i64,
-            checked_rem_u64 = pit_param_price_checked_rem_u64,
-            checked_rem_f64 = pit_param_price_checked_rem_f64
+            wrapper = OpenPitParamPrice,
+            from_str = openpit_create_param_price_from_str,
+            from_f64 = openpit_create_param_price_from_f64,
+            from_i64 = openpit_create_param_price_from_i64,
+            from_u64 = openpit_create_param_price_from_u64,
+            from_str_rounded = openpit_create_param_price_from_str_rounded,
+            from_f64_rounded = openpit_create_param_price_from_f64_rounded,
+            from_decimal_rounded = openpit_create_param_price_from_decimal_rounded,
+            to_f64 = openpit_param_price_to_f64,
+            is_zero = openpit_param_price_is_zero,
+            compare = openpit_param_price_compare,
+            to_string = openpit_param_price_to_string,
+            checked_add = openpit_param_price_checked_add,
+            checked_sub = openpit_param_price_checked_sub,
+            checked_neg = openpit_param_price_checked_neg,
+            checked_mul_i64 = openpit_param_price_checked_mul_i64,
+            checked_mul_u64 = openpit_param_price_checked_mul_u64,
+            checked_mul_f64 = openpit_param_price_checked_mul_f64,
+            checked_div_i64 = openpit_param_price_checked_div_i64,
+            checked_div_u64 = openpit_param_price_checked_div_u64,
+            checked_div_f64 = openpit_param_price_checked_div_f64,
+            checked_rem_i64 = openpit_param_price_checked_rem_i64,
+            checked_rem_u64 = openpit_param_price_checked_rem_u64,
+            checked_rem_f64 = openpit_param_price_checked_rem_f64
         );
         exercise_signed_surface!(
-            wrapper = PitParamCashFlow,
-            from_str = pit_create_param_cash_flow_from_str,
-            from_f64 = pit_create_param_cash_flow_from_f64,
-            from_i64 = pit_create_param_cash_flow_from_i64,
-            from_u64 = pit_create_param_cash_flow_from_u64,
-            from_str_rounded = pit_create_param_cash_flow_from_str_rounded,
-            from_f64_rounded = pit_create_param_cash_flow_from_f64_rounded,
-            from_decimal_rounded = pit_create_param_cash_flow_from_decimal_rounded,
-            to_f64 = pit_param_cash_flow_to_f64,
-            is_zero = pit_param_cash_flow_is_zero,
-            compare = pit_param_cash_flow_compare,
-            to_string = pit_param_cash_flow_to_string,
-            checked_add = pit_param_cash_flow_checked_add,
-            checked_sub = pit_param_cash_flow_checked_sub,
-            checked_neg = pit_param_cash_flow_checked_neg,
-            checked_mul_i64 = pit_param_cash_flow_checked_mul_i64,
-            checked_mul_u64 = pit_param_cash_flow_checked_mul_u64,
-            checked_mul_f64 = pit_param_cash_flow_checked_mul_f64,
-            checked_div_i64 = pit_param_cash_flow_checked_div_i64,
-            checked_div_u64 = pit_param_cash_flow_checked_div_u64,
-            checked_div_f64 = pit_param_cash_flow_checked_div_f64,
-            checked_rem_i64 = pit_param_cash_flow_checked_rem_i64,
-            checked_rem_u64 = pit_param_cash_flow_checked_rem_u64,
-            checked_rem_f64 = pit_param_cash_flow_checked_rem_f64
+            wrapper = OpenPitParamCashFlow,
+            from_str = openpit_create_param_cash_flow_from_str,
+            from_f64 = openpit_create_param_cash_flow_from_f64,
+            from_i64 = openpit_create_param_cash_flow_from_i64,
+            from_u64 = openpit_create_param_cash_flow_from_u64,
+            from_str_rounded = openpit_create_param_cash_flow_from_str_rounded,
+            from_f64_rounded = openpit_create_param_cash_flow_from_f64_rounded,
+            from_decimal_rounded = openpit_create_param_cash_flow_from_decimal_rounded,
+            to_f64 = openpit_param_cash_flow_to_f64,
+            is_zero = openpit_param_cash_flow_is_zero,
+            compare = openpit_param_cash_flow_compare,
+            to_string = openpit_param_cash_flow_to_string,
+            checked_add = openpit_param_cash_flow_checked_add,
+            checked_sub = openpit_param_cash_flow_checked_sub,
+            checked_neg = openpit_param_cash_flow_checked_neg,
+            checked_mul_i64 = openpit_param_cash_flow_checked_mul_i64,
+            checked_mul_u64 = openpit_param_cash_flow_checked_mul_u64,
+            checked_mul_f64 = openpit_param_cash_flow_checked_mul_f64,
+            checked_div_i64 = openpit_param_cash_flow_checked_div_i64,
+            checked_div_u64 = openpit_param_cash_flow_checked_div_u64,
+            checked_div_f64 = openpit_param_cash_flow_checked_div_f64,
+            checked_rem_i64 = openpit_param_cash_flow_checked_rem_i64,
+            checked_rem_u64 = openpit_param_cash_flow_checked_rem_u64,
+            checked_rem_f64 = openpit_param_cash_flow_checked_rem_f64
         );
         exercise_signed_surface!(
-            wrapper = PitParamPositionSize,
-            from_str = pit_create_param_position_size_from_str,
-            from_f64 = pit_create_param_position_size_from_f64,
-            from_i64 = pit_create_param_position_size_from_i64,
-            from_u64 = pit_create_param_position_size_from_u64,
-            from_str_rounded = pit_create_param_position_size_from_str_rounded,
-            from_f64_rounded = pit_create_param_position_size_from_f64_rounded,
-            from_decimal_rounded = pit_create_param_position_size_from_decimal_rounded,
-            to_f64 = pit_param_position_size_to_f64,
-            is_zero = pit_param_position_size_is_zero,
-            compare = pit_param_position_size_compare,
-            to_string = pit_param_position_size_to_string,
-            checked_add = pit_param_position_size_checked_add,
-            checked_sub = pit_param_position_size_checked_sub,
-            checked_neg = pit_param_position_size_checked_neg,
-            checked_mul_i64 = pit_param_position_size_checked_mul_i64,
-            checked_mul_u64 = pit_param_position_size_checked_mul_u64,
-            checked_mul_f64 = pit_param_position_size_checked_mul_f64,
-            checked_div_i64 = pit_param_position_size_checked_div_i64,
-            checked_div_u64 = pit_param_position_size_checked_div_u64,
-            checked_div_f64 = pit_param_position_size_checked_div_f64,
-            checked_rem_i64 = pit_param_position_size_checked_rem_i64,
-            checked_rem_u64 = pit_param_position_size_checked_rem_u64,
-            checked_rem_f64 = pit_param_position_size_checked_rem_f64
+            wrapper = OpenPitParamPositionSize,
+            from_str = openpit_create_param_position_size_from_str,
+            from_f64 = openpit_create_param_position_size_from_f64,
+            from_i64 = openpit_create_param_position_size_from_i64,
+            from_u64 = openpit_create_param_position_size_from_u64,
+            from_str_rounded = openpit_create_param_position_size_from_str_rounded,
+            from_f64_rounded = openpit_create_param_position_size_from_f64_rounded,
+            from_decimal_rounded = openpit_create_param_position_size_from_decimal_rounded,
+            to_f64 = openpit_param_position_size_to_f64,
+            is_zero = openpit_param_position_size_is_zero,
+            compare = openpit_param_position_size_compare,
+            to_string = openpit_param_position_size_to_string,
+            checked_add = openpit_param_position_size_checked_add,
+            checked_sub = openpit_param_position_size_checked_sub,
+            checked_neg = openpit_param_position_size_checked_neg,
+            checked_mul_i64 = openpit_param_position_size_checked_mul_i64,
+            checked_mul_u64 = openpit_param_position_size_checked_mul_u64,
+            checked_mul_f64 = openpit_param_position_size_checked_mul_f64,
+            checked_div_i64 = openpit_param_position_size_checked_div_i64,
+            checked_div_u64 = openpit_param_position_size_checked_div_u64,
+            checked_div_f64 = openpit_param_position_size_checked_div_f64,
+            checked_rem_i64 = openpit_param_position_size_checked_rem_i64,
+            checked_rem_u64 = openpit_param_position_size_checked_rem_u64,
+            checked_rem_f64 = openpit_param_position_size_checked_rem_f64
         );
         exercise_signed_surface!(
-            wrapper = PitParamFee,
-            from_str = pit_create_param_fee_from_str,
-            from_f64 = pit_create_param_fee_from_f64,
-            from_i64 = pit_create_param_fee_from_i64,
-            from_u64 = pit_create_param_fee_from_u64,
-            from_str_rounded = pit_create_param_fee_from_str_rounded,
-            from_f64_rounded = pit_create_param_fee_from_f64_rounded,
-            from_decimal_rounded = pit_create_param_fee_from_decimal_rounded,
-            to_f64 = pit_param_fee_to_f64,
-            is_zero = pit_param_fee_is_zero,
-            compare = pit_param_fee_compare,
-            to_string = pit_param_fee_to_string,
-            checked_add = pit_param_fee_checked_add,
-            checked_sub = pit_param_fee_checked_sub,
-            checked_neg = pit_param_fee_checked_neg,
-            checked_mul_i64 = pit_param_fee_checked_mul_i64,
-            checked_mul_u64 = pit_param_fee_checked_mul_u64,
-            checked_mul_f64 = pit_param_fee_checked_mul_f64,
-            checked_div_i64 = pit_param_fee_checked_div_i64,
-            checked_div_u64 = pit_param_fee_checked_div_u64,
-            checked_div_f64 = pit_param_fee_checked_div_f64,
-            checked_rem_i64 = pit_param_fee_checked_rem_i64,
-            checked_rem_u64 = pit_param_fee_checked_rem_u64,
-            checked_rem_f64 = pit_param_fee_checked_rem_f64
+            wrapper = OpenPitParamFee,
+            from_str = openpit_create_param_fee_from_str,
+            from_f64 = openpit_create_param_fee_from_f64,
+            from_i64 = openpit_create_param_fee_from_i64,
+            from_u64 = openpit_create_param_fee_from_u64,
+            from_str_rounded = openpit_create_param_fee_from_str_rounded,
+            from_f64_rounded = openpit_create_param_fee_from_f64_rounded,
+            from_decimal_rounded = openpit_create_param_fee_from_decimal_rounded,
+            to_f64 = openpit_param_fee_to_f64,
+            is_zero = openpit_param_fee_is_zero,
+            compare = openpit_param_fee_compare,
+            to_string = openpit_param_fee_to_string,
+            checked_add = openpit_param_fee_checked_add,
+            checked_sub = openpit_param_fee_checked_sub,
+            checked_neg = openpit_param_fee_checked_neg,
+            checked_mul_i64 = openpit_param_fee_checked_mul_i64,
+            checked_mul_u64 = openpit_param_fee_checked_mul_u64,
+            checked_mul_f64 = openpit_param_fee_checked_mul_f64,
+            checked_div_i64 = openpit_param_fee_checked_div_i64,
+            checked_div_u64 = openpit_param_fee_checked_div_u64,
+            checked_div_f64 = openpit_param_fee_checked_div_f64,
+            checked_rem_i64 = openpit_param_fee_checked_rem_i64,
+            checked_rem_u64 = openpit_param_fee_checked_rem_u64,
+            checked_rem_f64 = openpit_param_fee_checked_rem_f64
         );
     }
 
     #[test]
     fn typed_param_ffi_unsigned_surface_happy_path() {
         exercise_unsigned_surface!(
-            wrapper = PitParamQuantity,
-            from_str = pit_create_param_quantity_from_str,
-            from_f64 = pit_create_param_quantity_from_f64,
-            from_i64 = pit_create_param_quantity_from_i64,
-            from_u64 = pit_create_param_quantity_from_u64,
-            from_str_rounded = pit_create_param_quantity_from_str_rounded,
-            from_f64_rounded = pit_create_param_quantity_from_f64_rounded,
-            from_decimal_rounded = pit_create_param_quantity_from_decimal_rounded,
-            to_f64 = pit_param_quantity_to_f64,
-            is_zero = pit_param_quantity_is_zero,
-            compare = pit_param_quantity_compare,
-            to_string = pit_param_quantity_to_string,
-            checked_add = pit_param_quantity_checked_add,
-            checked_sub = pit_param_quantity_checked_sub,
-            checked_mul_i64 = pit_param_quantity_checked_mul_i64,
-            checked_mul_u64 = pit_param_quantity_checked_mul_u64,
-            checked_mul_f64 = pit_param_quantity_checked_mul_f64,
-            checked_div_i64 = pit_param_quantity_checked_div_i64,
-            checked_div_u64 = pit_param_quantity_checked_div_u64,
-            checked_div_f64 = pit_param_quantity_checked_div_f64,
-            checked_rem_i64 = pit_param_quantity_checked_rem_i64,
-            checked_rem_u64 = pit_param_quantity_checked_rem_u64,
-            checked_rem_f64 = pit_param_quantity_checked_rem_f64
+            wrapper = OpenPitParamQuantity,
+            from_str = openpit_create_param_quantity_from_str,
+            from_f64 = openpit_create_param_quantity_from_f64,
+            from_i64 = openpit_create_param_quantity_from_i64,
+            from_u64 = openpit_create_param_quantity_from_u64,
+            from_str_rounded = openpit_create_param_quantity_from_str_rounded,
+            from_f64_rounded = openpit_create_param_quantity_from_f64_rounded,
+            from_decimal_rounded = openpit_create_param_quantity_from_decimal_rounded,
+            to_f64 = openpit_param_quantity_to_f64,
+            is_zero = openpit_param_quantity_is_zero,
+            compare = openpit_param_quantity_compare,
+            to_string = openpit_param_quantity_to_string,
+            checked_add = openpit_param_quantity_checked_add,
+            checked_sub = openpit_param_quantity_checked_sub,
+            checked_mul_i64 = openpit_param_quantity_checked_mul_i64,
+            checked_mul_u64 = openpit_param_quantity_checked_mul_u64,
+            checked_mul_f64 = openpit_param_quantity_checked_mul_f64,
+            checked_div_i64 = openpit_param_quantity_checked_div_i64,
+            checked_div_u64 = openpit_param_quantity_checked_div_u64,
+            checked_div_f64 = openpit_param_quantity_checked_div_f64,
+            checked_rem_i64 = openpit_param_quantity_checked_rem_i64,
+            checked_rem_u64 = openpit_param_quantity_checked_rem_u64,
+            checked_rem_f64 = openpit_param_quantity_checked_rem_f64
         );
         exercise_unsigned_surface!(
-            wrapper = PitParamVolume,
-            from_str = pit_create_param_volume_from_str,
-            from_f64 = pit_create_param_volume_from_f64,
-            from_i64 = pit_create_param_volume_from_i64,
-            from_u64 = pit_create_param_volume_from_u64,
-            from_str_rounded = pit_create_param_volume_from_str_rounded,
-            from_f64_rounded = pit_create_param_volume_from_f64_rounded,
-            from_decimal_rounded = pit_create_param_volume_from_decimal_rounded,
-            to_f64 = pit_param_volume_to_f64,
-            is_zero = pit_param_volume_is_zero,
-            compare = pit_param_volume_compare,
-            to_string = pit_param_volume_to_string,
-            checked_add = pit_param_volume_checked_add,
-            checked_sub = pit_param_volume_checked_sub,
-            checked_mul_i64 = pit_param_volume_checked_mul_i64,
-            checked_mul_u64 = pit_param_volume_checked_mul_u64,
-            checked_mul_f64 = pit_param_volume_checked_mul_f64,
-            checked_div_i64 = pit_param_volume_checked_div_i64,
-            checked_div_u64 = pit_param_volume_checked_div_u64,
-            checked_div_f64 = pit_param_volume_checked_div_f64,
-            checked_rem_i64 = pit_param_volume_checked_rem_i64,
-            checked_rem_u64 = pit_param_volume_checked_rem_u64,
-            checked_rem_f64 = pit_param_volume_checked_rem_f64
+            wrapper = OpenPitParamVolume,
+            from_str = openpit_create_param_volume_from_str,
+            from_f64 = openpit_create_param_volume_from_f64,
+            from_i64 = openpit_create_param_volume_from_i64,
+            from_u64 = openpit_create_param_volume_from_u64,
+            from_str_rounded = openpit_create_param_volume_from_str_rounded,
+            from_f64_rounded = openpit_create_param_volume_from_f64_rounded,
+            from_decimal_rounded = openpit_create_param_volume_from_decimal_rounded,
+            to_f64 = openpit_param_volume_to_f64,
+            is_zero = openpit_param_volume_is_zero,
+            compare = openpit_param_volume_compare,
+            to_string = openpit_param_volume_to_string,
+            checked_add = openpit_param_volume_checked_add,
+            checked_sub = openpit_param_volume_checked_sub,
+            checked_mul_i64 = openpit_param_volume_checked_mul_i64,
+            checked_mul_u64 = openpit_param_volume_checked_mul_u64,
+            checked_mul_f64 = openpit_param_volume_checked_mul_f64,
+            checked_div_i64 = openpit_param_volume_checked_div_i64,
+            checked_div_u64 = openpit_param_volume_checked_div_u64,
+            checked_div_f64 = openpit_param_volume_checked_div_f64,
+            checked_rem_i64 = openpit_param_volume_checked_rem_i64,
+            checked_rem_u64 = openpit_param_volume_checked_rem_u64,
+            checked_rem_f64 = openpit_param_volume_checked_rem_f64
         );
     }
 
     #[test]
     fn typed_param_cross_type_surface_happy_path() {
-        let mut price = PitParamPrice::default();
-        let mut quantity = PitParamQuantity::default();
-        let mut volume = PitParamVolume::default();
-        let mut pnl = PitParamPnl::default();
-        let mut fee = PitParamFee::default();
-        let mut position = PitParamPositionSize::default();
+        let mut price = OpenPitParamPrice::default();
+        let mut quantity = OpenPitParamQuantity::default();
+        let mut volume = OpenPitParamVolume::default();
+        let mut pnl = OpenPitParamPnl::default();
+        let mut fee = OpenPitParamFee::default();
+        let mut position = OpenPitParamPositionSize::default();
 
         assert!(unsafe {
-            pit_create_param_price_from_str(sv("10"), &mut price, std::ptr::null_mut())
+            openpit_create_param_price_from_str(sv("10"), &mut price, std::ptr::null_mut())
         });
         assert!(unsafe {
-            pit_create_param_quantity_from_str(sv("2"), &mut quantity, std::ptr::null_mut())
+            openpit_create_param_quantity_from_str(sv("2"), &mut quantity, std::ptr::null_mut())
         });
         assert!(unsafe {
-            pit_create_param_volume_from_str(sv("20"), &mut volume, std::ptr::null_mut())
+            openpit_create_param_volume_from_str(sv("20"), &mut volume, std::ptr::null_mut())
         });
-        assert!(unsafe { pit_create_param_pnl_from_str(sv("5"), &mut pnl, std::ptr::null_mut()) });
-        assert!(unsafe { pit_create_param_fee_from_str(sv("1"), &mut fee, std::ptr::null_mut()) });
         assert!(unsafe {
-            pit_create_param_position_size_from_str(sv("3"), &mut position, std::ptr::null_mut())
+            openpit_create_param_pnl_from_str(sv("5"), &mut pnl, std::ptr::null_mut())
+        });
+        assert!(unsafe {
+            openpit_create_param_fee_from_str(sv("1"), &mut fee, std::ptr::null_mut())
+        });
+        assert!(unsafe {
+            openpit_create_param_position_size_from_str(
+                sv("3"),
+                &mut position,
+                std::ptr::null_mut(),
+            )
         });
 
-        let mut calculated_volume = PitParamVolume::default();
+        let mut calculated_volume = OpenPitParamVolume::default();
         assert!(unsafe {
-            pit_param_price_calculate_volume(
+            openpit_param_price_calculate_volume(
                 price,
                 quantity,
                 &mut calculated_volume,
@@ -3155,7 +3194,7 @@ mod tests {
             )
         });
         assert!(unsafe {
-            pit_param_quantity_calculate_volume(
+            openpit_param_quantity_calculate_volume(
                 quantity,
                 price,
                 &mut calculated_volume,
@@ -3163,9 +3202,9 @@ mod tests {
             )
         });
 
-        let mut calculated_quantity = PitParamQuantity::default();
+        let mut calculated_quantity = OpenPitParamQuantity::default();
         assert!(unsafe {
-            pit_param_volume_calculate_quantity(
+            openpit_param_volume_calculate_quantity(
                 volume,
                 price,
                 &mut calculated_quantity,
@@ -3173,64 +3212,76 @@ mod tests {
             )
         });
 
-        let mut out_cash_flow = PitParamCashFlow::default();
-        let mut out_position_size = PitParamPositionSize::default();
-        let mut out_pnl = PitParamPnl::default();
+        let mut out_cash_flow = OpenPitParamCashFlow::default();
+        let mut out_position_size = OpenPitParamPositionSize::default();
+        let mut out_pnl = OpenPitParamPnl::default();
         assert!(unsafe {
-            pit_param_pnl_to_cash_flow(pnl, &mut out_cash_flow, std::ptr::null_mut())
+            openpit_param_pnl_to_cash_flow(pnl, &mut out_cash_flow, std::ptr::null_mut())
         });
         assert!(unsafe {
-            pit_param_pnl_to_position_size(pnl, &mut out_position_size, std::ptr::null_mut())
+            openpit_param_pnl_to_position_size(pnl, &mut out_position_size, std::ptr::null_mut())
         });
-        assert!(unsafe { pit_param_pnl_from_fee(fee, &mut out_pnl, std::ptr::null_mut()) });
+        assert!(unsafe { openpit_param_pnl_from_fee(fee, &mut out_pnl, std::ptr::null_mut()) });
         assert!(unsafe {
-            pit_param_cash_flow_from_pnl(pnl, &mut out_cash_flow, std::ptr::null_mut())
-        });
-        assert!(unsafe {
-            pit_param_cash_flow_from_fee(fee, &mut out_cash_flow, std::ptr::null_mut())
+            openpit_param_cash_flow_from_pnl(pnl, &mut out_cash_flow, std::ptr::null_mut())
         });
         assert!(unsafe {
-            pit_param_cash_flow_from_volume_inflow(volume, &mut out_cash_flow, std::ptr::null_mut())
+            openpit_param_cash_flow_from_fee(fee, &mut out_cash_flow, std::ptr::null_mut())
         });
         assert!(unsafe {
-            pit_param_cash_flow_from_volume_outflow(
+            openpit_param_cash_flow_from_volume_inflow(
                 volume,
                 &mut out_cash_flow,
                 std::ptr::null_mut(),
             )
         });
-        assert!(unsafe { pit_param_fee_to_pnl(fee, &mut out_pnl, std::ptr::null_mut()) });
         assert!(unsafe {
-            pit_param_fee_to_position_size(fee, &mut out_position_size, std::ptr::null_mut())
+            openpit_param_cash_flow_from_volume_outflow(
+                volume,
+                &mut out_cash_flow,
+                std::ptr::null_mut(),
+            )
+        });
+        assert!(unsafe { openpit_param_fee_to_pnl(fee, &mut out_pnl, std::ptr::null_mut()) });
+        assert!(unsafe {
+            openpit_param_fee_to_position_size(fee, &mut out_position_size, std::ptr::null_mut())
         });
         assert!(unsafe {
-            pit_param_fee_to_cash_flow(fee, &mut out_cash_flow, std::ptr::null_mut())
+            openpit_param_fee_to_cash_flow(fee, &mut out_cash_flow, std::ptr::null_mut())
         });
         assert!(unsafe {
-            pit_param_volume_to_cash_flow_inflow(volume, &mut out_cash_flow, std::ptr::null_mut())
+            openpit_param_volume_to_cash_flow_inflow(
+                volume,
+                &mut out_cash_flow,
+                std::ptr::null_mut(),
+            )
         });
         assert!(unsafe {
-            pit_param_volume_to_cash_flow_outflow(volume, &mut out_cash_flow, std::ptr::null_mut())
+            openpit_param_volume_to_cash_flow_outflow(
+                volume,
+                &mut out_cash_flow,
+                std::ptr::null_mut(),
+            )
         });
         assert!(unsafe {
-            pit_param_position_size_from_pnl(pnl, &mut out_position_size, std::ptr::null_mut())
+            openpit_param_position_size_from_pnl(pnl, &mut out_position_size, std::ptr::null_mut())
         });
         assert!(unsafe {
-            pit_param_position_size_from_fee(fee, &mut out_position_size, std::ptr::null_mut())
+            openpit_param_position_size_from_fee(fee, &mut out_position_size, std::ptr::null_mut())
         });
         assert!(unsafe {
-            pit_param_position_size_from_quantity_and_side(
+            openpit_param_position_size_from_quantity_and_side(
                 quantity,
-                PitParamSide::Buy,
+                OpenPitParamSide::Buy,
                 &mut out_position_size,
                 std::ptr::null_mut(),
             )
         });
 
-        let mut out_quantity = PitParamQuantity::default();
-        let mut out_side = PitParamSide::NotSet;
+        let mut out_quantity = OpenPitParamQuantity::default();
+        let mut out_side = OpenPitParamSide::NotSet;
         assert!(unsafe {
-            pit_param_position_size_to_open_quantity(
+            openpit_param_position_size_to_open_quantity(
                 position,
                 &mut out_quantity,
                 &mut out_side,
@@ -3238,7 +3289,7 @@ mod tests {
             )
         });
         assert!(unsafe {
-            pit_param_position_size_to_close_quantity(
+            openpit_param_position_size_to_close_quantity(
                 position,
                 &mut out_quantity,
                 &mut out_side,
@@ -3246,12 +3297,12 @@ mod tests {
             )
         });
 
-        let mut out_position = PitParamPositionSize::default();
+        let mut out_position = OpenPitParamPositionSize::default();
         assert!(unsafe {
-            pit_param_position_size_checked_add_quantity(
+            openpit_param_position_size_checked_add_quantity(
                 position,
                 quantity,
-                PitParamSide::Buy,
+                OpenPitParamSide::Buy,
                 &mut out_position,
                 std::ptr::null_mut(),
             )

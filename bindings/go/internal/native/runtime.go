@@ -18,10 +18,10 @@
 package native
 
 /*
-#include "pit.h"
+#include "openpit.h"
 */
 import "C"
 
 func GetRuntimeVersion() StringView {
-	return newStringView(C.pit_get_runtime_version())
+	return newStringView(C.openpit_get_runtime_version())
 }

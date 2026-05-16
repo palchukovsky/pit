@@ -28,10 +28,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SRC_DIR = ROOT / "crates" / "pit-ffi" / "src"
-HEADER_PATH = ROOT / "bindings" / "c" / "pit.h"
+SRC_DIR = ROOT / "crates" / "openpit-ffi" / "src"
+HEADER_PATH = ROOT / "bindings" / "c" / "openpit.h"
 HEADER_COPIES = [
-    ROOT / "bindings" / "go" / "internal" / "native" / "pit.h",
+    ROOT / "bindings" / "go" / "internal" / "native" / "openpit.h",
 ]
 DOCS_DIR = ROOT / "docs" / "c-api"
 OPENPIT_LEVERAGE_RS = ROOT / "crates" / "openpit" / "src" / "param" / "leverage.rs"
@@ -67,10 +67,10 @@ SECTION_INFO = {
     "lib.rs": ("runtime", "Runtime and Errors"),
 }
 PARAMS_RUNTIME_DUPLICATES = {
-    "PitParamErrorCode",
-    "PitParamError",
-    "PitOutParamError",
-    "pit_destroy_param_error",
+    "OpenPitParamErrorCode",
+    "OpenPitParamError",
+    "OpenPitOutParamError",
+    "openpit_destroy_param_error",
 }
 
 
@@ -117,16 +117,16 @@ class MacroFnSpec:
 
 DECIMAL_PARAM_WRAPPER_CREATE_SIGNATURE = (
     [
-        ("value", "PitParamDecimal"),
+        ("value", "OpenPitParamDecimal"),
         ("out", "*mut $wrapper"),
-        ("out_error", "PitOutParamError"),
+        ("out_error", "OpenPitOutParamError"),
     ],
     "bool",
 )
 
 DECIMAL_PARAM_WRAPPER_GET_DECIMAL_SIGNATURE = (
     [("value", "$wrapper")],
-    "PitParamDecimal",
+    "OpenPitParamDecimal",
 )
 
 DECIMAL_PARAM_FFI_COMMON_SIGNATURES: dict[
@@ -134,31 +134,43 @@ DECIMAL_PARAM_FFI_COMMON_SIGNATURES: dict[
 ] = {
     "from_str_fn": (
         [
-            ("value", "PitStringView"),
+            ("value", "OpenPitStringView"),
             ("out", "*mut $wrapper"),
-            ("out_error", "PitOutParamError"),
+            ("out_error", "OpenPitOutParamError"),
         ],
         "bool",
     ),
     "from_f64_fn": (
-        [("value", "f64"), ("out", "*mut $wrapper"), ("out_error", "PitOutParamError")],
+        [
+            ("value", "f64"),
+            ("out", "*mut $wrapper"),
+            ("out_error", "OpenPitOutParamError"),
+        ],
         "bool",
     ),
     "from_i64_fn": (
-        [("value", "i64"), ("out", "*mut $wrapper"), ("out_error", "PitOutParamError")],
+        [
+            ("value", "i64"),
+            ("out", "*mut $wrapper"),
+            ("out_error", "OpenPitOutParamError"),
+        ],
         "bool",
     ),
     "from_u64_fn": (
-        [("value", "u64"), ("out", "*mut $wrapper"), ("out_error", "PitOutParamError")],
+        [
+            ("value", "u64"),
+            ("out", "*mut $wrapper"),
+            ("out_error", "OpenPitOutParamError"),
+        ],
         "bool",
     ),
     "from_str_rounded_fn": (
         [
-            ("value", "PitStringView"),
+            ("value", "OpenPitStringView"),
             ("scale", "u32"),
-            ("rounding", "PitParamRoundingStrategy"),
+            ("rounding", "OpenPitParamRoundingStrategy"),
             ("out", "*mut $wrapper"),
-            ("out_error", "PitOutParamError"),
+            ("out_error", "OpenPitOutParamError"),
         ],
         "bool",
     ),
@@ -166,31 +178,35 @@ DECIMAL_PARAM_FFI_COMMON_SIGNATURES: dict[
         [
             ("value", "f64"),
             ("scale", "u32"),
-            ("rounding", "PitParamRoundingStrategy"),
+            ("rounding", "OpenPitParamRoundingStrategy"),
             ("out", "*mut $wrapper"),
-            ("out_error", "PitOutParamError"),
+            ("out_error", "OpenPitOutParamError"),
         ],
         "bool",
     ),
     "from_decimal_rounded_fn": (
         [
-            ("value", "PitParamDecimal"),
+            ("value", "OpenPitParamDecimal"),
             ("scale", "u32"),
-            ("rounding", "PitParamRoundingStrategy"),
+            ("rounding", "OpenPitParamRoundingStrategy"),
             ("out", "*mut $wrapper"),
-            ("out_error", "PitOutParamError"),
+            ("out_error", "OpenPitOutParamError"),
         ],
         "bool",
     ),
     "to_f64_fn": (
-        [("value", "$wrapper"), ("out", "*mut f64"), ("out_error", "PitOutParamError")],
+        [
+            ("value", "$wrapper"),
+            ("out", "*mut f64"),
+            ("out_error", "OpenPitOutParamError"),
+        ],
         "bool",
     ),
     "is_zero_fn": (
         [
             ("value", "$wrapper"),
             ("out", "*mut bool"),
-            ("out_error", "PitOutParamError"),
+            ("out_error", "OpenPitOutParamError"),
         ],
         "bool",
     ),
@@ -199,20 +215,20 @@ DECIMAL_PARAM_FFI_COMMON_SIGNATURES: dict[
             ("lhs", "$wrapper"),
             ("rhs", "$wrapper"),
             ("out", "*mut i8"),
-            ("out_error", "PitOutParamError"),
+            ("out_error", "OpenPitOutParamError"),
         ],
         "bool",
     ),
     "to_string_fn": (
-        [("value", "$wrapper"), ("out_error", "PitOutParamError")],
-        "*mut PitSharedString",
+        [("value", "$wrapper"), ("out_error", "OpenPitOutParamError")],
+        "*mut OpenPitSharedString",
     ),
     "checked_add_fn": (
         [
             ("lhs", "$wrapper"),
             ("rhs", "$wrapper"),
             ("out", "*mut $wrapper"),
-            ("out_error", "PitOutParamError"),
+            ("out_error", "OpenPitOutParamError"),
         ],
         "bool",
     ),
@@ -221,7 +237,7 @@ DECIMAL_PARAM_FFI_COMMON_SIGNATURES: dict[
             ("lhs", "$wrapper"),
             ("rhs", "$wrapper"),
             ("out", "*mut $wrapper"),
-            ("out_error", "PitOutParamError"),
+            ("out_error", "OpenPitOutParamError"),
         ],
         "bool",
     ),
@@ -230,7 +246,7 @@ DECIMAL_PARAM_FFI_COMMON_SIGNATURES: dict[
             ("value", "$wrapper"),
             ("multiplier", "i64"),
             ("out", "*mut $wrapper"),
-            ("out_error", "PitOutParamError"),
+            ("out_error", "OpenPitOutParamError"),
         ],
         "bool",
     ),
@@ -239,7 +255,7 @@ DECIMAL_PARAM_FFI_COMMON_SIGNATURES: dict[
             ("value", "$wrapper"),
             ("multiplier", "u64"),
             ("out", "*mut $wrapper"),
-            ("out_error", "PitOutParamError"),
+            ("out_error", "OpenPitOutParamError"),
         ],
         "bool",
     ),
@@ -248,7 +264,7 @@ DECIMAL_PARAM_FFI_COMMON_SIGNATURES: dict[
             ("value", "$wrapper"),
             ("multiplier", "f64"),
             ("out", "*mut $wrapper"),
-            ("out_error", "PitOutParamError"),
+            ("out_error", "OpenPitOutParamError"),
         ],
         "bool",
     ),
@@ -257,7 +273,7 @@ DECIMAL_PARAM_FFI_COMMON_SIGNATURES: dict[
             ("value", "$wrapper"),
             ("divisor", "i64"),
             ("out", "*mut $wrapper"),
-            ("out_error", "PitOutParamError"),
+            ("out_error", "OpenPitOutParamError"),
         ],
         "bool",
     ),
@@ -266,7 +282,7 @@ DECIMAL_PARAM_FFI_COMMON_SIGNATURES: dict[
             ("value", "$wrapper"),
             ("divisor", "u64"),
             ("out", "*mut $wrapper"),
-            ("out_error", "PitOutParamError"),
+            ("out_error", "OpenPitOutParamError"),
         ],
         "bool",
     ),
@@ -275,7 +291,7 @@ DECIMAL_PARAM_FFI_COMMON_SIGNATURES: dict[
             ("value", "$wrapper"),
             ("divisor", "f64"),
             ("out", "*mut $wrapper"),
-            ("out_error", "PitOutParamError"),
+            ("out_error", "OpenPitOutParamError"),
         ],
         "bool",
     ),
@@ -284,7 +300,7 @@ DECIMAL_PARAM_FFI_COMMON_SIGNATURES: dict[
             ("value", "$wrapper"),
             ("divisor", "i64"),
             ("out", "*mut $wrapper"),
-            ("out_error", "PitOutParamError"),
+            ("out_error", "OpenPitOutParamError"),
         ],
         "bool",
     ),
@@ -293,7 +309,7 @@ DECIMAL_PARAM_FFI_COMMON_SIGNATURES: dict[
             ("value", "$wrapper"),
             ("divisor", "u64"),
             ("out", "*mut $wrapper"),
-            ("out_error", "PitOutParamError"),
+            ("out_error", "OpenPitOutParamError"),
         ],
         "bool",
     ),
@@ -302,7 +318,7 @@ DECIMAL_PARAM_FFI_COMMON_SIGNATURES: dict[
             ("value", "$wrapper"),
             ("divisor", "f64"),
             ("out", "*mut $wrapper"),
-            ("out_error", "PitOutParamError"),
+            ("out_error", "OpenPitOutParamError"),
         ],
         "bool",
     ),
@@ -315,7 +331,7 @@ DECIMAL_PARAM_FFI_SIGNED_SIGNATURES: dict[
         [
             ("value", "$wrapper"),
             ("out", "*mut $wrapper"),
-            ("out_error", "PitOutParamError"),
+            ("out_error", "OpenPitOutParamError"),
         ],
         "bool",
     )
@@ -410,10 +426,10 @@ def map_const_value(value: str) -> str:
 
 def should_export(item: Item) -> bool:
     if item.kind == "const":
-        return item.name.startswith("PIT_")
+        return item.name.startswith("OPENPIT_")
     if item.kind == "function":
-        return item.name.startswith("pit_")
-    return item.name.startswith("Pit")
+        return item.name.startswith("openpit_")
+    return item.name.startswith("OpenPit")
 
 
 def list_source_files() -> list[str]:
@@ -560,7 +576,9 @@ def parse_file(path: Path) -> list[Item]:
             continue
         if stripped.startswith("pub struct "):
             struct_name_match = re.match(r"pub struct (\w+)", stripped)
-            if struct_name_match and not struct_name_match.group(1).startswith("Pit"):
+            if struct_name_match and not struct_name_match.group(1).startswith(
+                "OpenPit"
+            ):
                 _block, i = collect_item(lines, i)
                 docs = []
                 attrs = []
@@ -839,10 +857,10 @@ def parse_enum(block: str, docs: list[str], attrs: list[str]) -> Item | None:
 
 
 def parse_enum_discriminant(value: str) -> int:
-    normalized = re.sub(r"\s+", "", value).replace("_", "")
+    compact = re.sub(r"\s+", "", value)
     path_cast_match = re.match(
         r"((?:[A-Za-z_]\w*::)+)([A-Za-z_]\w*)as(?:u32|u64|usize)$",
-        normalized,
+        compact,
     )
     if path_cast_match:
         path_prefix = path_cast_match.group(1).split("::")
@@ -852,6 +870,7 @@ def parse_enum_discriminant(value: str) -> int:
         resolved = resolve_enum_path_discriminant(path_prefix, variant)
         if resolved is not None:
             return resolved
+    normalized = compact.replace("_", "")
     if normalized == "u32::MAX":
         return 2**32 - 1
     return int(normalized, 0)
@@ -869,7 +888,8 @@ def resolve_enum_path_discriminant(path_parts: list[str], variant: str) -> int |
 
     if crate_name != "openpit":
         return None
-    src_root = ROOT / "crates" / crate_name / "src"
+    crate_dir_name = crate_name
+    src_root = ROOT / "crates" / crate_dir_name / "src"
     module_rs = src_root.joinpath(*module_parts).with_suffix(".rs")
     module_mod_rs = src_root.joinpath(*module_parts) / "mod.rs"
     module_path = module_rs if module_rs.exists() else module_mod_rs
@@ -910,7 +930,7 @@ def parse_use_reexport_as(block: str, docs: list[str], attrs: list[str]) -> Item
     if not match:
         return None
     crate_name, type_path, alias_name = match.group(1), match.group(2), match.group(3)
-    if not alias_name.startswith("Pit"):
+    if not alias_name.startswith("OpenPit"):
         return None
     return resolve_reexported_enum(crate_name, type_path, alias_name, docs, attrs)
 
@@ -1034,7 +1054,7 @@ def parse_decimal_wrapper(
             docs=wrapper_docs,
             section="param.rs",
             attrs=["#[repr(transparent)]"],
-            fields=[Field("_0", "PitParamDecimal")],
+            fields=[Field("_0", "OpenPitParamDecimal")],
             repr_name="transparent",
         ),
         Item(
@@ -1237,7 +1257,7 @@ def parse_macro_function(block: str, docs: list[str], kind: str) -> Item | None:
             docs=list(docs),
             section="policy.rs",
             args=[("policy", f"*const {policy_ty}")],
-            ret="PitStringView",
+            ret="OpenPitStringView",
         )
     return Item(
         kind="function",
@@ -1245,7 +1265,7 @@ def parse_macro_function(block: str, docs: list[str], kind: str) -> Item | None:
         docs=list(docs),
         section="policy.rs",
         args=[("policy", f"*const {policy_ty}")],
-        ret="PitStringView",
+        ret="OpenPitStringView",
     )
 
 
@@ -1391,13 +1411,13 @@ def map_type(rust_type: str) -> str:
         return compact_pointer_spacing(f"const {inner_type} *")
     if rust_type.startswith("*mut "):
         return compact_pointer_spacing(f"{map_type(rust_type[5:])} *")
-    m = re.fullmatch(r"Option<(Pit\w+Fn)>", rust_type)
+    m = re.fullmatch(r"Option<(OpenPit\w+Fn)>", rust_type)
     if m:
         return m.group(1)
     if rust_type in RUST_TO_C:
         return RUST_TO_C[rust_type]
     c_name = rust_type_name(rust_type)
-    if not c_name.startswith("Pit"):
+    if not c_name.startswith("OpenPit"):
         raise UnmappedRustTypeError(
             f"unmapped Rust type `{rust_type}` (resolved to `{c_name}`) "
             f"has no C equivalent in RUST_TO_C"
@@ -1442,7 +1462,7 @@ def value_type_dependencies(rust_type: str) -> set[str]:
             dependencies.update(value_type_dependencies(chunk))
         return dependencies
     base_name = rust_type_name(rust_type)
-    return {base_name} if base_name.startswith("Pit") else set()
+    return {base_name} if base_name.startswith("OpenPit") else set()
 
 
 def order_struct_items(struct_items: list[Item]) -> list[Item]:
@@ -1692,8 +1712,8 @@ def render_header(items: list[Item]) -> str:
         " * Please see https://github.com/openpitkit and the OWNERS file for details.",
         " */",
         "",
-        "#ifndef OPENPIT_PIT_H",
-        "#define OPENPIT_PIT_H",
+        "#ifndef OPENPIT_H",
+        "#define OPENPIT_H",
         "",
         "#include <stdbool.h>",
         "#include <stddef.h>",
@@ -1792,7 +1812,7 @@ def render_docs(items: list[Item], source_files: list[str]) -> str:
 
     outputs: dict[str, str] = {}
     index_lines = [
-        "# Pit C API",
+        "# OpenPit C API",
         "",
         f"- Header: `{HEADER_PATH.name}`",
         "- Sections:",

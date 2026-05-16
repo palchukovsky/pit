@@ -18,226 +18,226 @@
 package native
 
 /*
-#include "pit.h"
+#include "openpit.h"
 */
 import "C"
 
-type AccountAdjustment = C.PitAccountAdjustment
-type AccountAdjustmentAmount = C.PitAccountAdjustmentAmount
-type AccountAdjustmentAmountOptional = C.PitAccountAdjustmentAmountOptional
-type AccountAdjustmentApplyStatus = C.PitAccountAdjustmentApplyStatus
-type AccountAdjustmentBalanceOperation = C.PitAccountAdjustmentBalanceOperation
-type AccountAdjustmentBalanceOperationOptional = C.PitAccountAdjustmentBalanceOperationOptional
-type AccountAdjustmentBatchError = *C.PitAccountAdjustmentBatchError
-type AccountAdjustmentBounds = C.PitAccountAdjustmentBounds
-type AccountAdjustmentBoundsOptional = C.PitAccountAdjustmentBoundsOptional
-type AccountAdjustmentContext = *C.PitAccountAdjustmentContext
-type AccountAdjustmentPolicy = *C.PitAccountAdjustmentPolicy
-type AccountAdjustmentPositionOperation = C.PitAccountAdjustmentPositionOperation
-type AccountAdjustmentPositionOperationOptional = C.PitAccountAdjustmentPositionOperationOptional
-type Engine = *C.PitEngine
-type EngineBuilder = *C.PitEngineBuilder
-type ExecutionReport = C.PitExecutionReport
-type ExecutionReportFill = C.PitExecutionReportFill
-type ExecutionReportFillOptional = C.PitExecutionReportFillOptional
-type ExecutionReportIsFinalOptional = C.PitExecutionReportIsFinalOptional
-type ExecutionReportOperation = C.PitExecutionReportOperation
-type ExecutionReportOperationOptional = C.PitExecutionReportOperationOptional
-type ExecutionReportPositionImpact = C.PitExecutionReportPositionImpact
-type ExecutionReportPositionImpactOptional = C.PitExecutionReportPositionImpactOptional
-type ExecutionReportTrade = C.PitExecutionReportTrade
-type ExecutionReportTradeOptional = C.PitExecutionReportTradeOptional
-type FinancialImpact = C.PitFinancialImpact
-type FinancialImpactOptional = C.PitFinancialImpactOptional
-type Instrument = C.PitInstrument
-type Mutations = *C.PitMutations
-type Order = C.PitOrder
-type OrderMargin = C.PitOrderMargin
-type OrderMarginOptional = C.PitOrderMarginOptional
-type OrderOperation = C.PitOrderOperation
-type OrderOperationOptional = C.PitOrderOperationOptional
-type OrderPosition = C.PitOrderPosition
-type OrderPositionOptional = C.PitOrderPositionOptional
-type ParamAccountID = C.PitParamAccountId
-type ParamAccountIDOptional = C.PitParamAccountIdOptional
-type ParamAdjustmentAmount = C.PitParamAdjustmentAmount
-type ParamAdjustmentAmountKind = C.PitParamAdjustmentAmountKind
-type TriBool = C.PitTriBool
-type ParamCashFlow = C.PitParamCashFlow
-type ParamCashFlowOptional = C.PitParamCashFlowOptional
-type ParamDecimal = C.PitParamDecimal
-type ParamFee = C.PitParamFee
-type ParamFeeOptional = C.PitParamFeeOptional
-type ParamLeverage = C.PitParamLeverage
-type ParamNotional = C.PitParamNotional
-type ParamNotionalOptional = C.PitParamNotionalOptional
-type ParamPnl = C.PitParamPnl
-type ParamPnlOptional = C.PitParamPnlOptional
-type ParamPositionEffect = C.PitParamPositionEffect
-type ParamPositionMode = C.PitParamPositionMode
-type ParamPositionSide = C.PitParamPositionSide
-type ParamPositionSize = C.PitParamPositionSize
-type ParamPositionSizeOptional = C.PitParamPositionSizeOptional
-type ParamPrice = C.PitParamPrice
-type ParamPriceOptional = C.PitParamPriceOptional
-type ParamQuantity = C.PitParamQuantity
-type ParamQuantityOptional = C.PitParamQuantityOptional
-type ParamError = *C.PitParamError
-type ParamErrorHandle = *C.PitParamError
-type ParamErrorCode = C.PitParamErrorCode
+type AccountAdjustment = C.OpenPitAccountAdjustment
+type AccountAdjustmentAmount = C.OpenPitAccountAdjustmentAmount
+type AccountAdjustmentAmountOptional = C.OpenPitAccountAdjustmentAmountOptional
+type AccountAdjustmentApplyStatus = C.OpenPitAccountAdjustmentApplyStatus
+type AccountAdjustmentBalanceOperation = C.OpenPitAccountAdjustmentBalanceOperation
+type AccountAdjustmentBalanceOperationOptional = C.OpenPitAccountAdjustmentBalanceOperationOptional
+type AccountAdjustmentBatchError = *C.OpenPitAccountAdjustmentBatchError
+type AccountAdjustmentBounds = C.OpenPitAccountAdjustmentBounds
+type AccountAdjustmentBoundsOptional = C.OpenPitAccountAdjustmentBoundsOptional
+type AccountAdjustmentContext = *C.OpenPitAccountAdjustmentContext
+type AccountAdjustmentPolicy = *C.OpenPitAccountAdjustmentPolicy
+type AccountAdjustmentPositionOperation = C.OpenPitAccountAdjustmentPositionOperation
+type AccountAdjustmentPositionOperationOptional = C.OpenPitAccountAdjustmentPositionOperationOptional
+type Engine = *C.OpenPitEngine
+type EngineBuilder = *C.OpenPitEngineBuilder
+type ExecutionReport = C.OpenPitExecutionReport
+type ExecutionReportFill = C.OpenPitExecutionReportFill
+type ExecutionReportFillOptional = C.OpenPitExecutionReportFillOptional
+type ExecutionReportIsFinalOptional = C.OpenPitExecutionReportIsFinalOptional
+type ExecutionReportOperation = C.OpenPitExecutionReportOperation
+type ExecutionReportOperationOptional = C.OpenPitExecutionReportOperationOptional
+type ExecutionReportPositionImpact = C.OpenPitExecutionReportPositionImpact
+type ExecutionReportPositionImpactOptional = C.OpenPitExecutionReportPositionImpactOptional
+type ExecutionReportTrade = C.OpenPitExecutionReportTrade
+type ExecutionReportTradeOptional = C.OpenPitExecutionReportTradeOptional
+type FinancialImpact = C.OpenPitFinancialImpact
+type FinancialImpactOptional = C.OpenPitFinancialImpactOptional
+type Instrument = C.OpenPitInstrument
+type Mutations = *C.OpenPitMutations
+type Order = C.OpenPitOrder
+type OrderMargin = C.OpenPitOrderMargin
+type OrderMarginOptional = C.OpenPitOrderMarginOptional
+type OrderOperation = C.OpenPitOrderOperation
+type OrderOperationOptional = C.OpenPitOrderOperationOptional
+type OrderPosition = C.OpenPitOrderPosition
+type OrderPositionOptional = C.OpenPitOrderPositionOptional
+type ParamAccountID = C.OpenPitParamAccountId
+type ParamAccountIDOptional = C.OpenPitParamAccountIdOptional
+type ParamAdjustmentAmount = C.OpenPitParamAdjustmentAmount
+type ParamAdjustmentAmountKind = C.OpenPitParamAdjustmentAmountKind
+type TriBool = C.OpenPitTriBool
+type ParamCashFlow = C.OpenPitParamCashFlow
+type ParamCashFlowOptional = C.OpenPitParamCashFlowOptional
+type ParamDecimal = C.OpenPitParamDecimal
+type ParamFee = C.OpenPitParamFee
+type ParamFeeOptional = C.OpenPitParamFeeOptional
+type ParamLeverage = C.OpenPitParamLeverage
+type ParamNotional = C.OpenPitParamNotional
+type ParamNotionalOptional = C.OpenPitParamNotionalOptional
+type ParamPnl = C.OpenPitParamPnl
+type ParamPnlOptional = C.OpenPitParamPnlOptional
+type ParamPositionEffect = C.OpenPitParamPositionEffect
+type ParamPositionMode = C.OpenPitParamPositionMode
+type ParamPositionSide = C.OpenPitParamPositionSide
+type ParamPositionSize = C.OpenPitParamPositionSize
+type ParamPositionSizeOptional = C.OpenPitParamPositionSizeOptional
+type ParamPrice = C.OpenPitParamPrice
+type ParamPriceOptional = C.OpenPitParamPriceOptional
+type ParamQuantity = C.OpenPitParamQuantity
+type ParamQuantityOptional = C.OpenPitParamQuantityOptional
+type ParamError = *C.OpenPitParamError
+type ParamErrorHandle = *C.OpenPitParamError
+type ParamErrorCode = C.OpenPitParamErrorCode
 type ParamRoundingStrategy = C.uint8_t
-type ParamSide = C.PitParamSide
-type ParamTradeAmount = C.PitParamTradeAmount
-type ParamTradeAmountKind = C.PitParamTradeAmountKind
-type ParamVolume = C.PitParamVolume
-type ParamVolumeOptional = C.PitParamVolumeOptional
-type PretradeCheckPreTradeStartPolicy = *C.PitPretradeCheckPreTradeStartPolicy
-type PretradeContext = *C.PitPretradeContext
-type PretradePoliciesOrderSizeAccountAssetBarrier = C.PitPretradePoliciesOrderSizeAccountAssetBarrier
-type PretradePoliciesOrderSizeAssetBarrier = C.PitPretradePoliciesOrderSizeAssetBarrier
-type PretradePoliciesOrderSizeBrokerBarrier = C.PitPretradePoliciesOrderSizeBrokerBarrier
-type PretradePoliciesOrderSizeLimit = C.PitPretradePoliciesOrderSizeLimit
-type PretradePoliciesPnlBoundsAccountBarrier = C.PitPretradePoliciesPnlBoundsAccountBarrier
-type PretradePoliciesPnlBoundsBarrier = C.PitPretradePoliciesPnlBoundsBarrier
-type PretradePoliciesRateLimitAccountAssetBarrier = C.PitPretradePoliciesRateLimitAccountAssetBarrier
-type PretradePoliciesRateLimitAccountBarrier = C.PitPretradePoliciesRateLimitAccountBarrier
-type PretradePoliciesRateLimitAssetBarrier = C.PitPretradePoliciesRateLimitAssetBarrier
-type PretradePoliciesRateLimitBrokerBarrier = C.PitPretradePoliciesRateLimitBrokerBarrier
-type PretradePreTradeLock = C.PitPretradePreTradeLock
-type PretradePreTradePolicy = *C.PitPretradePreTradePolicy
-type PretradePreTradeRequest = *C.PitPretradePreTradeRequest
-type PretradePreTradeReservation = *C.PitPretradePreTradeReservation
-type Reject = C.PitReject
-type RejectCode = C.PitRejectCode
-type RejectList = *C.PitRejectList
-type RejectScope = C.PitRejectScope
-type SharedString = *C.PitSharedString
+type ParamSide = C.OpenPitParamSide
+type ParamTradeAmount = C.OpenPitParamTradeAmount
+type ParamTradeAmountKind = C.OpenPitParamTradeAmountKind
+type ParamVolume = C.OpenPitParamVolume
+type ParamVolumeOptional = C.OpenPitParamVolumeOptional
+type PretradeCheckPreTradeStartPolicy = *C.OpenPitPretradeCheckPreTradeStartPolicy
+type PretradeContext = *C.OpenPitPretradeContext
+type PretradePoliciesOrderSizeAccountAssetBarrier = C.OpenPitPretradePoliciesOrderSizeAccountAssetBarrier
+type PretradePoliciesOrderSizeAssetBarrier = C.OpenPitPretradePoliciesOrderSizeAssetBarrier
+type PretradePoliciesOrderSizeBrokerBarrier = C.OpenPitPretradePoliciesOrderSizeBrokerBarrier
+type PretradePoliciesOrderSizeLimit = C.OpenPitPretradePoliciesOrderSizeLimit
+type PretradePoliciesPnlBoundsAccountBarrier = C.OpenPitPretradePoliciesPnlBoundsAccountBarrier
+type PretradePoliciesPnlBoundsBarrier = C.OpenPitPretradePoliciesPnlBoundsBarrier
+type PretradePoliciesRateLimitAccountAssetBarrier = C.OpenPitPretradePoliciesRateLimitAccountAssetBarrier
+type PretradePoliciesRateLimitAccountBarrier = C.OpenPitPretradePoliciesRateLimitAccountBarrier
+type PretradePoliciesRateLimitAssetBarrier = C.OpenPitPretradePoliciesRateLimitAssetBarrier
+type PretradePoliciesRateLimitBrokerBarrier = C.OpenPitPretradePoliciesRateLimitBrokerBarrier
+type PretradePreTradeLock = C.OpenPitPretradePreTradeLock
+type PretradePreTradePolicy = *C.OpenPitPretradePreTradePolicy
+type PretradePreTradeRequest = *C.OpenPitPretradePreTradeRequest
+type PretradePreTradeReservation = *C.OpenPitPretradePreTradeReservation
+type Reject = C.OpenPitReject
+type RejectCode = C.OpenPitRejectCode
+type RejectList = *C.OpenPitRejectList
+type RejectScope = C.OpenPitRejectScope
+type SharedString = *C.OpenPitSharedString
 
-const ParamLeverageNotSet = C.PIT_PARAM_LEVERAGE_NOT_SET
+const ParamLeverageNotSet = C.OPENPIT_PARAM_LEVERAGE_NOT_SET
 
 const (
-	ParamLeverageScale = C.PIT_PARAM_LEVERAGE_SCALE
-	ParamLeverageMin   = C.PIT_PARAM_LEVERAGE_MIN
-	ParamLeverageMax   = C.PIT_PARAM_LEVERAGE_MAX
-	ParamLeverageStep  = C.PIT_PARAM_LEVERAGE_STEP
+	ParamLeverageScale = C.OPENPIT_PARAM_LEVERAGE_SCALE
+	ParamLeverageMin   = C.OPENPIT_PARAM_LEVERAGE_MIN
+	ParamLeverageMax   = C.OPENPIT_PARAM_LEVERAGE_MAX
+	ParamLeverageStep  = C.OPENPIT_PARAM_LEVERAGE_STEP
 )
 
 const (
-	ParamSideNotSet = C.PitParamSide_NotSet
-	ParamSideBuy    = C.PitParamSide_Buy
-	ParamSideSell   = C.PitParamSide_Sell
+	ParamSideNotSet = C.OpenPitParamSide_NotSet
+	ParamSideBuy    = C.OpenPitParamSide_Buy
+	ParamSideSell   = C.OpenPitParamSide_Sell
 )
 
 const (
-	ParamPositionSideNotSet = C.PitParamPositionSide_NotSet
-	ParamPositionSideLong   = C.PitParamPositionSide_Long
-	ParamPositionSideShort  = C.PitParamPositionSide_Short
+	ParamPositionSideNotSet = C.OpenPitParamPositionSide_NotSet
+	ParamPositionSideLong   = C.OpenPitParamPositionSide_Long
+	ParamPositionSideShort  = C.OpenPitParamPositionSide_Short
 )
 
 const (
-	ParamPositionModeNotSet  = C.PitParamPositionMode_NotSet
-	ParamPositionModeNetting = C.PitParamPositionMode_Netting
-	ParamPositionModeHedged  = C.PitParamPositionMode_Hedged
+	ParamPositionModeNotSet  = C.OpenPitParamPositionMode_NotSet
+	ParamPositionModeNetting = C.OpenPitParamPositionMode_Netting
+	ParamPositionModeHedged  = C.OpenPitParamPositionMode_Hedged
 )
 
 const (
-	ParamPositionEffectNotSet = C.PitParamPositionEffect_NotSet
-	ParamPositionEffectOpen   = C.PitParamPositionEffect_Open
-	ParamPositionEffectClose  = C.PitParamPositionEffect_Close
+	ParamPositionEffectNotSet = C.OpenPitParamPositionEffect_NotSet
+	ParamPositionEffectOpen   = C.OpenPitParamPositionEffect_Open
+	ParamPositionEffectClose  = C.OpenPitParamPositionEffect_Close
 )
 
 const (
-	ParamTradeAmountKindNotSet   = C.PitParamTradeAmountKind_NotSet
-	ParamTradeAmountKindQuantity = C.PitParamTradeAmountKind_Quantity
-	ParamTradeAmountKindVolume   = C.PitParamTradeAmountKind_Volume
+	ParamTradeAmountKindNotSet   = C.OpenPitParamTradeAmountKind_NotSet
+	ParamTradeAmountKindQuantity = C.OpenPitParamTradeAmountKind_Quantity
+	ParamTradeAmountKindVolume   = C.OpenPitParamTradeAmountKind_Volume
 )
 
 const (
-	ParamRoundingStrategyMidpointNearestEven  = C.PitParamRoundingStrategy_MidpointNearestEven
-	ParamRoundingStrategyMidpointAwayFromZero = C.PitParamRoundingStrategy_MidpointAwayFromZero
-	ParamRoundingStrategyUp                   = C.PitParamRoundingStrategy_Up
-	ParamRoundingStrategyDown                 = C.PitParamRoundingStrategy_Down
+	ParamRoundingStrategyMidpointNearestEven  = C.OpenPitParamRoundingStrategy_MidpointNearestEven
+	ParamRoundingStrategyMidpointAwayFromZero = C.OpenPitParamRoundingStrategy_MidpointAwayFromZero
+	ParamRoundingStrategyUp                   = C.OpenPitParamRoundingStrategy_Up
+	ParamRoundingStrategyDown                 = C.OpenPitParamRoundingStrategy_Down
 )
 
 const (
-	ParamRoundingStrategyDefault            = C.PIT_PARAM_ROUNDING_STRATEGY_DEFAULT
-	ParamRoundingStrategyBanker             = C.PIT_PARAM_ROUNDING_STRATEGY_BANKER
-	ParamRoundingStrategyConservativeProfit = C.PIT_PARAM_ROUNDING_STRATEGY_CONSERVATIVE_PROFIT
-	ParamRoundingStrategyConservativeLoss   = C.PIT_PARAM_ROUNDING_STRATEGY_CONSERVATIVE_LOSS
+	ParamRoundingStrategyDefault            = C.OPENPIT_PARAM_ROUNDING_STRATEGY_DEFAULT
+	ParamRoundingStrategyBanker             = C.OPENPIT_PARAM_ROUNDING_STRATEGY_BANKER
+	ParamRoundingStrategyConservativeProfit = C.OPENPIT_PARAM_ROUNDING_STRATEGY_CONSERVATIVE_PROFIT
+	ParamRoundingStrategyConservativeLoss   = C.OPENPIT_PARAM_ROUNDING_STRATEGY_CONSERVATIVE_LOSS
 )
 
 const (
-	ParamErrorCodeUnspecified     = C.PitParamErrorCode_Unspecified
-	ParamErrorCodeNegative        = C.PitParamErrorCode_Negative
-	ParamErrorCodeDivisionByZero  = C.PitParamErrorCode_DivisionByZero
-	ParamErrorCodeOverflow        = C.PitParamErrorCode_Overflow
-	ParamErrorCodeUnderflow       = C.PitParamErrorCode_Underflow
-	ParamErrorCodeInvalidFloat    = C.PitParamErrorCode_InvalidFloat
-	ParamErrorCodeInvalidFormat   = C.PitParamErrorCode_InvalidFormat
-	ParamErrorCodeInvalidPrice    = C.PitParamErrorCode_InvalidPrice
-	ParamErrorCodeInvalidLeverage = C.PitParamErrorCode_InvalidLeverage
-	ParamErrorCodeAssetEmpty      = C.PitParamErrorCode_AssetEmpty
-	ParamErrorCodeAccountIdEmpty  = C.PitParamErrorCode_AccountIdEmpty
-	ParamErrorCodeOther           = C.PitParamErrorCode_Other
+	ParamErrorCodeUnspecified     = C.OpenPitParamErrorCode_Unspecified
+	ParamErrorCodeNegative        = C.OpenPitParamErrorCode_Negative
+	ParamErrorCodeDivisionByZero  = C.OpenPitParamErrorCode_DivisionByZero
+	ParamErrorCodeOverflow        = C.OpenPitParamErrorCode_Overflow
+	ParamErrorCodeUnderflow       = C.OpenPitParamErrorCode_Underflow
+	ParamErrorCodeInvalidFloat    = C.OpenPitParamErrorCode_InvalidFloat
+	ParamErrorCodeInvalidFormat   = C.OpenPitParamErrorCode_InvalidFormat
+	ParamErrorCodeInvalidPrice    = C.OpenPitParamErrorCode_InvalidPrice
+	ParamErrorCodeInvalidLeverage = C.OpenPitParamErrorCode_InvalidLeverage
+	ParamErrorCodeAssetEmpty      = C.OpenPitParamErrorCode_AssetEmpty
+	ParamErrorCodeAccountIdEmpty  = C.OpenPitParamErrorCode_AccountIdEmpty
+	ParamErrorCodeOther           = C.OpenPitParamErrorCode_Other
 )
 
 const (
-	TriBoolNotSet = C.PitTriBool_NotSet
-	TriBoolFalse  = C.PitTriBool_False
-	TriBoolTrue   = C.PitTriBool_True
+	TriBoolNotSet = C.OpenPitTriBool_NotSet
+	TriBoolFalse  = C.OpenPitTriBool_False
+	TriBoolTrue   = C.OpenPitTriBool_True
 )
 
 const (
-	ParamAdjustmentAmountKindNotSet   = C.PitParamAdjustmentAmountKind_NotSet
-	ParamAdjustmentAmountKindDelta    = C.PitParamAdjustmentAmountKind_Delta
-	ParamAdjustmentAmountKindAbsolute = C.PitParamAdjustmentAmountKind_Absolute
+	ParamAdjustmentAmountKindNotSet   = C.OpenPitParamAdjustmentAmountKind_NotSet
+	ParamAdjustmentAmountKindDelta    = C.OpenPitParamAdjustmentAmountKind_Delta
+	ParamAdjustmentAmountKindAbsolute = C.OpenPitParamAdjustmentAmountKind_Absolute
 )
 
 const (
-	RejectScopeOrder   = C.PitRejectScope_Order
-	RejectScopeAccount = C.PitRejectScope_Account
+	RejectScopeOrder   = C.OpenPitRejectScope_Order
+	RejectScopeAccount = C.OpenPitRejectScope_Account
 )
 
 const (
-	RejectCodeMissingRequiredField        = C.PitRejectCode_MissingRequiredField
-	RejectCodeInvalidFieldFormat          = C.PitRejectCode_InvalidFieldFormat
-	RejectCodeInvalidFieldValue           = C.PitRejectCode_InvalidFieldValue
-	RejectCodeUnsupportedOrderType        = C.PitRejectCode_UnsupportedOrderType
-	RejectCodeUnsupportedTimeInForce      = C.PitRejectCode_UnsupportedTimeInForce
-	RejectCodeUnsupportedOrderAttribute   = C.PitRejectCode_UnsupportedOrderAttribute
-	RejectCodeDuplicateClientOrderID      = C.PitRejectCode_DuplicateClientOrderId
-	RejectCodeTooLateToEnter              = C.PitRejectCode_TooLateToEnter
-	RejectCodeExchangeClosed              = C.PitRejectCode_ExchangeClosed
-	RejectCodeUnknownInstrument           = C.PitRejectCode_UnknownInstrument
-	RejectCodeUnknownAccount              = C.PitRejectCode_UnknownAccount
-	RejectCodeUnknownVenue                = C.PitRejectCode_UnknownVenue
-	RejectCodeUnknownClearingAccount      = C.PitRejectCode_UnknownClearingAccount
-	RejectCodeUnknownCollateralAsset      = C.PitRejectCode_UnknownCollateralAsset
-	RejectCodeInsufficientFunds           = C.PitRejectCode_InsufficientFunds
-	RejectCodeInsufficientMargin          = C.PitRejectCode_InsufficientMargin
-	RejectCodeInsufficientPosition        = C.PitRejectCode_InsufficientPosition
-	RejectCodeCreditLimitExceeded         = C.PitRejectCode_CreditLimitExceeded
-	RejectCodeRiskLimitExceeded           = C.PitRejectCode_RiskLimitExceeded
-	RejectCodeOrderExceedsLimit           = C.PitRejectCode_OrderExceedsLimit
-	RejectCodeOrderQtyExceedsLimit        = C.PitRejectCode_OrderQtyExceedsLimit
-	RejectCodeOrderNotionalExceedsLimit   = C.PitRejectCode_OrderNotionalExceedsLimit
-	RejectCodePositionLimitExceeded       = C.PitRejectCode_PositionLimitExceeded
-	RejectCodeConcentrationLimitExceeded  = C.PitRejectCode_ConcentrationLimitExceeded
-	RejectCodeLeverageLimitExceeded       = C.PitRejectCode_LeverageLimitExceeded
-	RejectCodeRateLimitExceeded           = C.PitRejectCode_RateLimitExceeded
-	RejectCodePnlKillSwitchTriggered      = C.PitRejectCode_PnlKillSwitchTriggered
-	RejectCodeAccountBlocked              = C.PitRejectCode_AccountBlocked
-	RejectCodeAccountNotAuthorized        = C.PitRejectCode_AccountNotAuthorized
-	RejectCodeComplianceRestriction       = C.PitRejectCode_ComplianceRestriction
-	RejectCodeInstrumentRestricted        = C.PitRejectCode_InstrumentRestricted
-	RejectCodeJurisdictionRestriction     = C.PitRejectCode_JurisdictionRestriction
-	RejectCodeWashTradePrevention         = C.PitRejectCode_WashTradePrevention
-	RejectCodeSelfMatchPrevention         = C.PitRejectCode_SelfMatchPrevention
-	RejectCodeShortSaleRestriction        = C.PitRejectCode_ShortSaleRestriction
-	RejectCodeRiskConfigurationMissing    = C.PitRejectCode_RiskConfigurationMissing
-	RejectCodeReferenceDataUnavailable    = C.PitRejectCode_ReferenceDataUnavailable
-	RejectCodeOrderValueCalculationFailed = C.PitRejectCode_OrderValueCalculationFailed
-	RejectCodeSystemUnavailable           = C.PitRejectCode_SystemUnavailable
-	RejectCodeCustom                      = C.PitRejectCode_Custom
-	RejectCodeOther                       = C.PitRejectCode_Other
+	RejectCodeMissingRequiredField        = C.OpenPitRejectCode_MissingRequiredField
+	RejectCodeInvalidFieldFormat          = C.OpenPitRejectCode_InvalidFieldFormat
+	RejectCodeInvalidFieldValue           = C.OpenPitRejectCode_InvalidFieldValue
+	RejectCodeUnsupportedOrderType        = C.OpenPitRejectCode_UnsupportedOrderType
+	RejectCodeUnsupportedTimeInForce      = C.OpenPitRejectCode_UnsupportedTimeInForce
+	RejectCodeUnsupportedOrderAttribute   = C.OpenPitRejectCode_UnsupportedOrderAttribute
+	RejectCodeDuplicateClientOrderID      = C.OpenPitRejectCode_DuplicateClientOrderId
+	RejectCodeTooLateToEnter              = C.OpenPitRejectCode_TooLateToEnter
+	RejectCodeExchangeClosed              = C.OpenPitRejectCode_ExchangeClosed
+	RejectCodeUnknownInstrument           = C.OpenPitRejectCode_UnknownInstrument
+	RejectCodeUnknownAccount              = C.OpenPitRejectCode_UnknownAccount
+	RejectCodeUnknownVenue                = C.OpenPitRejectCode_UnknownVenue
+	RejectCodeUnknownClearingAccount      = C.OpenPitRejectCode_UnknownClearingAccount
+	RejectCodeUnknownCollateralAsset      = C.OpenPitRejectCode_UnknownCollateralAsset
+	RejectCodeInsufficientFunds           = C.OpenPitRejectCode_InsufficientFunds
+	RejectCodeInsufficientMargin          = C.OpenPitRejectCode_InsufficientMargin
+	RejectCodeInsufficientPosition        = C.OpenPitRejectCode_InsufficientPosition
+	RejectCodeCreditLimitExceeded         = C.OpenPitRejectCode_CreditLimitExceeded
+	RejectCodeRiskLimitExceeded           = C.OpenPitRejectCode_RiskLimitExceeded
+	RejectCodeOrderExceedsLimit           = C.OpenPitRejectCode_OrderExceedsLimit
+	RejectCodeOrderQtyExceedsLimit        = C.OpenPitRejectCode_OrderQtyExceedsLimit
+	RejectCodeOrderNotionalExceedsLimit   = C.OpenPitRejectCode_OrderNotionalExceedsLimit
+	RejectCodePositionLimitExceeded       = C.OpenPitRejectCode_PositionLimitExceeded
+	RejectCodeConcentrationLimitExceeded  = C.OpenPitRejectCode_ConcentrationLimitExceeded
+	RejectCodeLeverageLimitExceeded       = C.OpenPitRejectCode_LeverageLimitExceeded
+	RejectCodeRateLimitExceeded           = C.OpenPitRejectCode_RateLimitExceeded
+	RejectCodePnlKillSwitchTriggered      = C.OpenPitRejectCode_PnlKillSwitchTriggered
+	RejectCodeAccountBlocked              = C.OpenPitRejectCode_AccountBlocked
+	RejectCodeAccountNotAuthorized        = C.OpenPitRejectCode_AccountNotAuthorized
+	RejectCodeComplianceRestriction       = C.OpenPitRejectCode_ComplianceRestriction
+	RejectCodeInstrumentRestricted        = C.OpenPitRejectCode_InstrumentRestricted
+	RejectCodeJurisdictionRestriction     = C.OpenPitRejectCode_JurisdictionRestriction
+	RejectCodeWashTradePrevention         = C.OpenPitRejectCode_WashTradePrevention
+	RejectCodeSelfMatchPrevention         = C.OpenPitRejectCode_SelfMatchPrevention
+	RejectCodeShortSaleRestriction        = C.OpenPitRejectCode_ShortSaleRestriction
+	RejectCodeRiskConfigurationMissing    = C.OpenPitRejectCode_RiskConfigurationMissing
+	RejectCodeReferenceDataUnavailable    = C.OpenPitRejectCode_ReferenceDataUnavailable
+	RejectCodeOrderValueCalculationFailed = C.OpenPitRejectCode_OrderValueCalculationFailed
+	RejectCodeSystemUnavailable           = C.OpenPitRejectCode_SystemUnavailable
+	RejectCodeCustom                      = C.OpenPitRejectCode_Custom
+	RejectCodeOther                       = C.OpenPitRejectCode_Other
 )

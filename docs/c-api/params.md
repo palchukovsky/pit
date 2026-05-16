@@ -4,7 +4,7 @@
 
 [Back to index](index.md)
 
-## `PitParamLeverage`
+## `OpenPitParamLeverage`
 
 Leverage multiplier for FFI payloads.
 
@@ -16,232 +16,233 @@ Uses fixed-point scale `10` in integer units:
 
 Valid range: `10..=30000`.
 
-A value of `PIT_PARAM_LEVERAGE_NOT_SET` (`0`) means leverage is not specified.
+A value of `OPENPIT_PARAM_LEVERAGE_NOT_SET` (`0`) means leverage is not
+specified.
 
 ```c
-typedef uint16_t PitParamLeverage;
+typedef uint16_t OpenPitParamLeverage;
 ```
 
-## `PIT_PARAM_LEVERAGE_NOT_SET`
+## `OPENPIT_PARAM_LEVERAGE_NOT_SET`
 
 Sentinel value indicating leverage is not set.
 
 ```c
-#define PIT_PARAM_LEVERAGE_NOT_SET ((PitParamLeverage) 0)
+#define OPENPIT_PARAM_LEVERAGE_NOT_SET ((OpenPitParamLeverage) 0)
 ```
 
-## `PIT_PARAM_LEVERAGE_SCALE`
+## `OPENPIT_PARAM_LEVERAGE_SCALE`
 
 Fixed-point scale used by leverage payloads.
 
 ```c
-#define PIT_PARAM_LEVERAGE_SCALE ((PitParamLeverage) 10)
+#define OPENPIT_PARAM_LEVERAGE_SCALE ((OpenPitParamLeverage) 10)
 ```
 
-## `PIT_PARAM_LEVERAGE_MIN`
+## `OPENPIT_PARAM_LEVERAGE_MIN`
 
 Minimum leverage in whole units.
 
 ```c
-#define PIT_PARAM_LEVERAGE_MIN ((PitParamLeverage) 1)
+#define OPENPIT_PARAM_LEVERAGE_MIN ((OpenPitParamLeverage) 1)
 ```
 
-## `PIT_PARAM_LEVERAGE_MAX`
+## `OPENPIT_PARAM_LEVERAGE_MAX`
 
 Maximum leverage in whole units.
 
 ```c
-#define PIT_PARAM_LEVERAGE_MAX ((PitParamLeverage) 3000)
+#define OPENPIT_PARAM_LEVERAGE_MAX ((OpenPitParamLeverage) 3000)
 ```
 
-## `PIT_PARAM_LEVERAGE_STEP`
+## `OPENPIT_PARAM_LEVERAGE_STEP`
 
 Supported leverage increment step.
 
 ```c
-#define PIT_PARAM_LEVERAGE_STEP ((float) 0.1)
+#define OPENPIT_PARAM_LEVERAGE_STEP ((float) 0.1)
 ```
 
-## `PitParamAccountId`
+## `OpenPitParamAccountId`
 
 Stable account identifier type for FFI payloads.
 
 WARNING: Use exactly one account-id source model per runtime:
 
-- either purely numeric IDs (`pit_create_param_account_id_from_u64`),
-- or purely string-derived IDs (`pit_create_param_account_id_from_str`).
+- either purely numeric IDs (`openpit_create_param_account_id_from_u64`),
+- or purely string-derived IDs (`openpit_create_param_account_id_from_str`).
 
 Do not mix both models in the same runtime state. A hashed string value can
 coincide with a direct numeric ID, and then two distinct accounts become one
 logical key in maps and engine state.
 
 ```c
-typedef uint64_t PitParamAccountId;
+typedef uint64_t OpenPitParamAccountId;
 ```
 
-## `PitParamSide`
+## `OpenPitParamSide`
 
 Order side.
 
 ```c
-typedef uint8_t PitParamSide;
+typedef uint8_t OpenPitParamSide;
 /**
  * Value is absent.
  */
-#define PitParamSide_NotSet ((PitParamSide) 0)
+#define OpenPitParamSide_NotSet ((OpenPitParamSide) 0)
 /**
  * Buy side.
  */
-#define PitParamSide_Buy ((PitParamSide) 1)
+#define OpenPitParamSide_Buy ((OpenPitParamSide) 1)
 /**
  * Sell side.
  */
-#define PitParamSide_Sell ((PitParamSide) 2)
+#define OpenPitParamSide_Sell ((OpenPitParamSide) 2)
 ```
 
-## `PitParamPositionSide`
+## `OpenPitParamPositionSide`
 
 Position direction.
 
 ```c
-typedef uint8_t PitParamPositionSide;
+typedef uint8_t OpenPitParamPositionSide;
 /**
  * Value is absent.
  */
-#define PitParamPositionSide_NotSet ((PitParamPositionSide) 0)
+#define OpenPitParamPositionSide_NotSet ((OpenPitParamPositionSide) 0)
 /**
  * Long exposure.
  */
-#define PitParamPositionSide_Long ((PitParamPositionSide) 1)
+#define OpenPitParamPositionSide_Long ((OpenPitParamPositionSide) 1)
 /**
  * Short exposure.
  */
-#define PitParamPositionSide_Short ((PitParamPositionSide) 2)
+#define OpenPitParamPositionSide_Short ((OpenPitParamPositionSide) 2)
 ```
 
-## `PitParamPositionMode`
+## `OpenPitParamPositionMode`
 
 Position accounting mode.
 
 ```c
-typedef uint8_t PitParamPositionMode;
+typedef uint8_t OpenPitParamPositionMode;
 /**
  * Value is absent.
  */
-#define PitParamPositionMode_NotSet ((PitParamPositionMode) 0)
+#define OpenPitParamPositionMode_NotSet ((OpenPitParamPositionMode) 0)
 /**
  * Opposite trades net into one position.
  */
-#define PitParamPositionMode_Netting ((PitParamPositionMode) 1)
+#define OpenPitParamPositionMode_Netting ((OpenPitParamPositionMode) 1)
 /**
  * Long and short positions are tracked separately.
  */
-#define PitParamPositionMode_Hedged ((PitParamPositionMode) 2)
+#define OpenPitParamPositionMode_Hedged ((OpenPitParamPositionMode) 2)
 ```
 
-## `PitParamPositionEffect`
+## `OpenPitParamPositionEffect`
 
 Whether a trade opens or closes exposure.
 
 ```c
-typedef uint8_t PitParamPositionEffect;
+typedef uint8_t OpenPitParamPositionEffect;
 /**
  * Value is absent.
  */
-#define PitParamPositionEffect_NotSet ((PitParamPositionEffect) 0)
+#define OpenPitParamPositionEffect_NotSet ((OpenPitParamPositionEffect) 0)
 /**
  * The trade opens or increases exposure.
  */
-#define PitParamPositionEffect_Open ((PitParamPositionEffect) 1)
+#define OpenPitParamPositionEffect_Open ((OpenPitParamPositionEffect) 1)
 /**
  * The trade closes or reduces exposure.
  */
-#define PitParamPositionEffect_Close ((PitParamPositionEffect) 2)
+#define OpenPitParamPositionEffect_Close ((OpenPitParamPositionEffect) 2)
 ```
 
-## `PitParamTradeAmountKind`
+## `OpenPitParamTradeAmountKind`
 
 Selects how one trade-amount numeric value should be interpreted.
 
 ```c
-typedef uint8_t PitParamTradeAmountKind;
+typedef uint8_t OpenPitParamTradeAmountKind;
 /**
  * No amount field is selected.
  */
-#define PitParamTradeAmountKind_NotSet ((PitParamTradeAmountKind) 0)
+#define OpenPitParamTradeAmountKind_NotSet ((OpenPitParamTradeAmountKind) 0)
 /**
  * The value is instrument quantity.
  */
-#define PitParamTradeAmountKind_Quantity ((PitParamTradeAmountKind) 1)
+#define OpenPitParamTradeAmountKind_Quantity ((OpenPitParamTradeAmountKind) 1)
 /**
  * The value is settlement volume.
  */
-#define PitParamTradeAmountKind_Volume ((PitParamTradeAmountKind) 2)
+#define OpenPitParamTradeAmountKind_Volume ((OpenPitParamTradeAmountKind) 2)
 ```
 
-## `PitParamRoundingStrategy`
+## `OpenPitParamRoundingStrategy`
 
 Decimal rounding strategy for typed parameter constructors.
 
 ```c
-typedef uint8_t PitParamRoundingStrategy;
+typedef uint8_t OpenPitParamRoundingStrategy;
 /**
  * Round half to nearest even number.
  */
-#define PitParamRoundingStrategy_MidpointNearestEven \
-    ((PitParamRoundingStrategy) 0)
+#define OpenPitParamRoundingStrategy_MidpointNearestEven \
+    ((OpenPitParamRoundingStrategy) 0)
 /**
  * Round half away from zero.
  */
-#define PitParamRoundingStrategy_MidpointAwayFromZero \
-    ((PitParamRoundingStrategy) 1)
+#define OpenPitParamRoundingStrategy_MidpointAwayFromZero \
+    ((OpenPitParamRoundingStrategy) 1)
 /**
  * Round towards positive infinity.
  */
-#define PitParamRoundingStrategy_Up ((PitParamRoundingStrategy) 2)
+#define OpenPitParamRoundingStrategy_Up ((OpenPitParamRoundingStrategy) 2)
 /**
  * Round towards negative infinity.
  */
-#define PitParamRoundingStrategy_Down ((PitParamRoundingStrategy) 3)
+#define OpenPitParamRoundingStrategy_Down ((OpenPitParamRoundingStrategy) 3)
 ```
 
-## `PIT_PARAM_ROUNDING_STRATEGY_DEFAULT`
+## `OPENPIT_PARAM_ROUNDING_STRATEGY_DEFAULT`
 
 Default rounding strategy alias.
 
 ```c
-#define PIT_PARAM_ROUNDING_STRATEGY_DEFAULT \
-    ((PitParamRoundingStrategy) PitParamRoundingStrategy_MidpointNearestEven)
+#define OPENPIT_PARAM_ROUNDING_STRATEGY_DEFAULT \
+    ((OpenPitParamRoundingStrategy) OpenPitParamRoundingStrategy_MidpointNearestEven)
 ```
 
-## `PIT_PARAM_ROUNDING_STRATEGY_BANKER`
+## `OPENPIT_PARAM_ROUNDING_STRATEGY_BANKER`
 
 Banker's rounding alias.
 
 ```c
-#define PIT_PARAM_ROUNDING_STRATEGY_BANKER \
-    ((PitParamRoundingStrategy) PitParamRoundingStrategy_MidpointNearestEven)
+#define OPENPIT_PARAM_ROUNDING_STRATEGY_BANKER \
+    ((OpenPitParamRoundingStrategy) OpenPitParamRoundingStrategy_MidpointNearestEven)
 ```
 
-## `PIT_PARAM_ROUNDING_STRATEGY_CONSERVATIVE_PROFIT`
+## `OPENPIT_PARAM_ROUNDING_STRATEGY_CONSERVATIVE_PROFIT`
 
 Conservative profit rounding alias.
 
 ```c
-#define PIT_PARAM_ROUNDING_STRATEGY_CONSERVATIVE_PROFIT \
-    ((PitParamRoundingStrategy) PitParamRoundingStrategy_Down)
+#define OPENPIT_PARAM_ROUNDING_STRATEGY_CONSERVATIVE_PROFIT \
+    ((OpenPitParamRoundingStrategy) OpenPitParamRoundingStrategy_Down)
 ```
 
-## `PIT_PARAM_ROUNDING_STRATEGY_CONSERVATIVE_LOSS`
+## `OPENPIT_PARAM_ROUNDING_STRATEGY_CONSERVATIVE_LOSS`
 
 Conservative loss rounding alias.
 
 ```c
-#define PIT_PARAM_ROUNDING_STRATEGY_CONSERVATIVE_LOSS \
-    ((PitParamRoundingStrategy) PitParamRoundingStrategy_Down)
+#define OPENPIT_PARAM_ROUNDING_STRATEGY_CONSERVATIVE_LOSS \
+    ((OpenPitParamRoundingStrategy) OpenPitParamRoundingStrategy_Down)
 ```
 
-## `PitParamTradeAmount`
+## `OpenPitParamTradeAmount`
 
 One trade-amount value plus its interpretation mode.
 
@@ -251,75 +252,78 @@ The numeric value is interpreted according to `kind`:
 - `Volume` means settlement notional volume.
 
 ```c
-typedef struct PitParamTradeAmount {
-    PitParamDecimal value;
-    PitParamTradeAmountKind kind;
-} PitParamTradeAmount;
+typedef struct OpenPitParamTradeAmount {
+    OpenPitParamDecimal value;
+    OpenPitParamTradeAmountKind kind;
+} OpenPitParamTradeAmount;
 ```
 
-## `PitTriBool`
+## `OpenPitTriBool`
 
 Tri-state boolean value.
 
 ```c
-typedef uint8_t PitTriBool;
+typedef uint8_t OpenPitTriBool;
 /**
  * Value is absent.
  */
-#define PitTriBool_NotSet ((PitTriBool) 0)
+#define OpenPitTriBool_NotSet ((OpenPitTriBool) 0)
 /**
  * Boolean false.
  */
-#define PitTriBool_False ((PitTriBool) 1)
+#define OpenPitTriBool_False ((OpenPitTriBool) 1)
 /**
  * Boolean true.
  */
-#define PitTriBool_True ((PitTriBool) 2)
+#define OpenPitTriBool_True ((OpenPitTriBool) 2)
 ```
 
-## `PitParamAdjustmentAmountKind`
+## `OpenPitParamAdjustmentAmountKind`
 
 Selects how an account-adjustment amount should be interpreted.
 
 ```c
-typedef uint8_t PitParamAdjustmentAmountKind;
+typedef uint8_t OpenPitParamAdjustmentAmountKind;
 /**
  * No amount is specified.
  */
-#define PitParamAdjustmentAmountKind_NotSet ((PitParamAdjustmentAmountKind) 0)
+#define OpenPitParamAdjustmentAmountKind_NotSet \
+    ((OpenPitParamAdjustmentAmountKind) 0)
 /**
  * Change current state by the supplied signed amount.
  */
-#define PitParamAdjustmentAmountKind_Delta ((PitParamAdjustmentAmountKind) 1)
+#define OpenPitParamAdjustmentAmountKind_Delta \
+    ((OpenPitParamAdjustmentAmountKind) 1)
 /**
  * Set current state to the supplied signed amount.
  */
-#define PitParamAdjustmentAmountKind_Absolute ((PitParamAdjustmentAmountKind) 2)
+#define OpenPitParamAdjustmentAmountKind_Absolute \
+    ((OpenPitParamAdjustmentAmountKind) 2)
 ```
 
-## `PitParamDecimal`
+## `OpenPitParamDecimal`
 
 Decimal value represented as `mantissa * 10^-scale`.
 
 ```c
-typedef struct PitParamDecimal {
+typedef struct OpenPitParamDecimal {
     int64_t mantissa_lo;
     int64_t mantissa_hi;
     int32_t scale;
-} PitParamDecimal;
+} OpenPitParamDecimal;
 ```
 
-## `PitParamPnl`
+## `OpenPitParamPnl`
 
 Validated `Pnl` value wrapper.
 
 ```c
-typedef struct PitParamPnl {
-    PitParamDecimal _0;
-} PitParamPnl;
+typedef struct OpenPitParamPnl {
+    OpenPitParamDecimal _0;
+} OpenPitParamPnl;
 ```
 
-## `pit_create_param_pnl`
+## `openpit_create_param_pnl`
 
 Validates a decimal and returns a `Pnl` wrapper.
 
@@ -336,34 +340,34 @@ Error:
 - on error read `out_error` for the message.
 
 ```c
-bool pit_create_param_pnl(
-    PitParamDecimal value,
-    PitParamPnl * out,
-    PitOutParamError out_error
+bool openpit_create_param_pnl(
+    OpenPitParamDecimal value,
+    OpenPitParamPnl * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_pnl_get_decimal`
+## `openpit_param_pnl_get_decimal`
 
 Returns the decimal stored in `Pnl`.
 
 ```c
-PitParamDecimal pit_param_pnl_get_decimal(
-    PitParamPnl value
+OpenPitParamDecimal openpit_param_pnl_get_decimal(
+    OpenPitParamPnl value
 );
 ```
 
-## `PitParamPrice`
+## `OpenPitParamPrice`
 
 Validated `Price` value wrapper.
 
 ```c
-typedef struct PitParamPrice {
-    PitParamDecimal _0;
-} PitParamPrice;
+typedef struct OpenPitParamPrice {
+    OpenPitParamDecimal _0;
+} OpenPitParamPrice;
 ```
 
-## `pit_create_param_price`
+## `openpit_create_param_price`
 
 Validates a decimal and returns a `Price` wrapper.
 
@@ -381,34 +385,34 @@ Error:
 - on error read `out_error` for the message.
 
 ```c
-bool pit_create_param_price(
-    PitParamDecimal value,
-    PitParamPrice * out,
-    PitOutParamError out_error
+bool openpit_create_param_price(
+    OpenPitParamDecimal value,
+    OpenPitParamPrice * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_price_get_decimal`
+## `openpit_param_price_get_decimal`
 
 Returns the decimal stored in `Price`.
 
 ```c
-PitParamDecimal pit_param_price_get_decimal(
-    PitParamPrice value
+OpenPitParamDecimal openpit_param_price_get_decimal(
+    OpenPitParamPrice value
 );
 ```
 
-## `PitParamQuantity`
+## `OpenPitParamQuantity`
 
 Validated `Quantity` value wrapper.
 
 ```c
-typedef struct PitParamQuantity {
-    PitParamDecimal _0;
-} PitParamQuantity;
+typedef struct OpenPitParamQuantity {
+    OpenPitParamDecimal _0;
+} OpenPitParamQuantity;
 ```
 
-## `pit_create_param_quantity`
+## `openpit_create_param_quantity`
 
 Validates a decimal and returns a `Quantity` wrapper.
 
@@ -425,34 +429,34 @@ Error:
 - on error read `out_error` for the message.
 
 ```c
-bool pit_create_param_quantity(
-    PitParamDecimal value,
-    PitParamQuantity * out,
-    PitOutParamError out_error
+bool openpit_create_param_quantity(
+    OpenPitParamDecimal value,
+    OpenPitParamQuantity * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_quantity_get_decimal`
+## `openpit_param_quantity_get_decimal`
 
 Returns the decimal stored in `Quantity`.
 
 ```c
-PitParamDecimal pit_param_quantity_get_decimal(
-    PitParamQuantity value
+OpenPitParamDecimal openpit_param_quantity_get_decimal(
+    OpenPitParamQuantity value
 );
 ```
 
-## `PitParamVolume`
+## `OpenPitParamVolume`
 
 Validated `Volume` value wrapper.
 
 ```c
-typedef struct PitParamVolume {
-    PitParamDecimal _0;
-} PitParamVolume;
+typedef struct OpenPitParamVolume {
+    OpenPitParamDecimal _0;
+} OpenPitParamVolume;
 ```
 
-## `pit_create_param_volume`
+## `openpit_create_param_volume`
 
 Validates a decimal and returns a `Volume` wrapper.
 
@@ -469,34 +473,34 @@ Error:
 - on error read `out_error` for the message.
 
 ```c
-bool pit_create_param_volume(
-    PitParamDecimal value,
-    PitParamVolume * out,
-    PitOutParamError out_error
+bool openpit_create_param_volume(
+    OpenPitParamDecimal value,
+    OpenPitParamVolume * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_volume_get_decimal`
+## `openpit_param_volume_get_decimal`
 
 Returns the decimal stored in `Volume`.
 
 ```c
-PitParamDecimal pit_param_volume_get_decimal(
-    PitParamVolume value
+OpenPitParamDecimal openpit_param_volume_get_decimal(
+    OpenPitParamVolume value
 );
 ```
 
-## `PitParamCashFlow`
+## `OpenPitParamCashFlow`
 
 Validated `CashFlow` value wrapper.
 
 ```c
-typedef struct PitParamCashFlow {
-    PitParamDecimal _0;
-} PitParamCashFlow;
+typedef struct OpenPitParamCashFlow {
+    OpenPitParamDecimal _0;
+} OpenPitParamCashFlow;
 ```
 
-## `pit_create_param_cash_flow`
+## `openpit_create_param_cash_flow`
 
 Validates a decimal and returns a `CashFlow` wrapper.
 
@@ -513,34 +517,34 @@ Error:
 - on error read `out_error` for the message.
 
 ```c
-bool pit_create_param_cash_flow(
-    PitParamDecimal value,
-    PitParamCashFlow * out,
-    PitOutParamError out_error
+bool openpit_create_param_cash_flow(
+    OpenPitParamDecimal value,
+    OpenPitParamCashFlow * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_cash_flow_get_decimal`
+## `openpit_param_cash_flow_get_decimal`
 
 Returns the decimal stored in `CashFlow`.
 
 ```c
-PitParamDecimal pit_param_cash_flow_get_decimal(
-    PitParamCashFlow value
+OpenPitParamDecimal openpit_param_cash_flow_get_decimal(
+    OpenPitParamCashFlow value
 );
 ```
 
-## `PitParamPositionSize`
+## `OpenPitParamPositionSize`
 
 Validated `PositionSize` value wrapper.
 
 ```c
-typedef struct PitParamPositionSize {
-    PitParamDecimal _0;
-} PitParamPositionSize;
+typedef struct OpenPitParamPositionSize {
+    OpenPitParamDecimal _0;
+} OpenPitParamPositionSize;
 ```
 
-## `pit_create_param_position_size`
+## `openpit_create_param_position_size`
 
 Validates a decimal and returns a `PositionSize` wrapper.
 
@@ -557,34 +561,34 @@ Error:
 - on error read `out_error` for the message.
 
 ```c
-bool pit_create_param_position_size(
-    PitParamDecimal value,
-    PitParamPositionSize * out,
-    PitOutParamError out_error
+bool openpit_create_param_position_size(
+    OpenPitParamDecimal value,
+    OpenPitParamPositionSize * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_position_size_get_decimal`
+## `openpit_param_position_size_get_decimal`
 
 Returns the decimal stored in `PositionSize`.
 
 ```c
-PitParamDecimal pit_param_position_size_get_decimal(
-    PitParamPositionSize value
+OpenPitParamDecimal openpit_param_position_size_get_decimal(
+    OpenPitParamPositionSize value
 );
 ```
 
-## `PitParamFee`
+## `OpenPitParamFee`
 
 Validated `Fee` value wrapper.
 
 ```c
-typedef struct PitParamFee {
-    PitParamDecimal _0;
-} PitParamFee;
+typedef struct OpenPitParamFee {
+    OpenPitParamDecimal _0;
+} OpenPitParamFee;
 ```
 
-## `pit_create_param_fee`
+## `openpit_create_param_fee`
 
 Validates a decimal and returns a `Fee` wrapper.
 
@@ -601,34 +605,34 @@ Error:
 - on error read `out_error` for the message.
 
 ```c
-bool pit_create_param_fee(
-    PitParamDecimal value,
-    PitParamFee * out,
-    PitOutParamError out_error
+bool openpit_create_param_fee(
+    OpenPitParamDecimal value,
+    OpenPitParamFee * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_fee_get_decimal`
+## `openpit_param_fee_get_decimal`
 
 Returns the decimal stored in `Fee`.
 
 ```c
-PitParamDecimal pit_param_fee_get_decimal(
-    PitParamFee value
+OpenPitParamDecimal openpit_param_fee_get_decimal(
+    OpenPitParamFee value
 );
 ```
 
-## `PitParamNotional`
+## `OpenPitParamNotional`
 
 Validated `Notional` value wrapper.
 
 ```c
-typedef struct PitParamNotional {
-    PitParamDecimal _0;
-} PitParamNotional;
+typedef struct OpenPitParamNotional {
+    OpenPitParamDecimal _0;
+} OpenPitParamNotional;
 ```
 
-## `pit_create_param_notional`
+## `openpit_create_param_notional`
 
 Validates a decimal and returns a `Notional` wrapper.
 
@@ -646,2350 +650,2350 @@ Error:
 - on error read `out_error` for the message.
 
 ```c
-bool pit_create_param_notional(
-    PitParamDecimal value,
-    PitParamNotional * out,
-    PitOutParamError out_error
+bool openpit_create_param_notional(
+    OpenPitParamDecimal value,
+    OpenPitParamNotional * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_notional_get_decimal`
+## `openpit_param_notional_get_decimal`
 
 Returns the decimal stored in `Notional`.
 
 ```c
-PitParamDecimal pit_param_notional_get_decimal(
-    PitParamNotional value
+OpenPitParamDecimal openpit_param_notional_get_decimal(
+    OpenPitParamNotional value
 );
 ```
 
-## `pit_create_param_pnl_from_str`
+## `openpit_create_param_pnl_from_str`
 
 ```c
-bool pit_create_param_pnl_from_str(
-    PitStringView value,
-    PitParamPnl * out,
-    PitOutParamError out_error
+bool openpit_create_param_pnl_from_str(
+    OpenPitStringView value,
+    OpenPitParamPnl * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_pnl_from_f64`
+## `openpit_create_param_pnl_from_f64`
 
 ```c
-bool pit_create_param_pnl_from_f64(
+bool openpit_create_param_pnl_from_f64(
     double value,
-    PitParamPnl * out,
-    PitOutParamError out_error
+    OpenPitParamPnl * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_pnl_from_i64`
+## `openpit_create_param_pnl_from_i64`
 
 ```c
-bool pit_create_param_pnl_from_i64(
+bool openpit_create_param_pnl_from_i64(
     int64_t value,
-    PitParamPnl * out,
-    PitOutParamError out_error
+    OpenPitParamPnl * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_pnl_from_u64`
+## `openpit_create_param_pnl_from_u64`
 
 ```c
-bool pit_create_param_pnl_from_u64(
+bool openpit_create_param_pnl_from_u64(
     uint64_t value,
-    PitParamPnl * out,
-    PitOutParamError out_error
+    OpenPitParamPnl * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_pnl_from_str_rounded`
+## `openpit_create_param_pnl_from_str_rounded`
 
 ```c
-bool pit_create_param_pnl_from_str_rounded(
-    PitStringView value,
+bool openpit_create_param_pnl_from_str_rounded(
+    OpenPitStringView value,
     uint32_t scale,
-    PitParamRoundingStrategy rounding,
-    PitParamPnl * out,
-    PitOutParamError out_error
+    OpenPitParamRoundingStrategy rounding,
+    OpenPitParamPnl * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_pnl_from_f64_rounded`
+## `openpit_create_param_pnl_from_f64_rounded`
 
 ```c
-bool pit_create_param_pnl_from_f64_rounded(
+bool openpit_create_param_pnl_from_f64_rounded(
     double value,
     uint32_t scale,
-    PitParamRoundingStrategy rounding,
-    PitParamPnl * out,
-    PitOutParamError out_error
+    OpenPitParamRoundingStrategy rounding,
+    OpenPitParamPnl * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_pnl_from_decimal_rounded`
+## `openpit_create_param_pnl_from_decimal_rounded`
 
 ```c
-bool pit_create_param_pnl_from_decimal_rounded(
-    PitParamDecimal value,
+bool openpit_create_param_pnl_from_decimal_rounded(
+    OpenPitParamDecimal value,
     uint32_t scale,
-    PitParamRoundingStrategy rounding,
-    PitParamPnl * out,
-    PitOutParamError out_error
+    OpenPitParamRoundingStrategy rounding,
+    OpenPitParamPnl * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_pnl_to_f64`
+## `openpit_param_pnl_to_f64`
 
 ```c
-bool pit_param_pnl_to_f64(
-    PitParamPnl value,
+bool openpit_param_pnl_to_f64(
+    OpenPitParamPnl value,
     double * out,
-    PitOutParamError out_error
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_pnl_is_zero`
+## `openpit_param_pnl_is_zero`
 
 ```c
-bool pit_param_pnl_is_zero(
-    PitParamPnl value,
+bool openpit_param_pnl_is_zero(
+    OpenPitParamPnl value,
     bool * out,
-    PitOutParamError out_error
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_pnl_compare`
+## `openpit_param_pnl_compare`
 
 ```c
-bool pit_param_pnl_compare(
-    PitParamPnl lhs,
-    PitParamPnl rhs,
+bool openpit_param_pnl_compare(
+    OpenPitParamPnl lhs,
+    OpenPitParamPnl rhs,
     int8_t * out,
-    PitOutParamError out_error
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_pnl_to_string`
+## `openpit_param_pnl_to_string`
 
 ```c
-PitSharedString * pit_param_pnl_to_string(
-    PitParamPnl value,
-    PitOutParamError out_error
+OpenPitSharedString * openpit_param_pnl_to_string(
+    OpenPitParamPnl value,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_pnl_checked_add`
+## `openpit_param_pnl_checked_add`
 
 ```c
-bool pit_param_pnl_checked_add(
-    PitParamPnl lhs,
-    PitParamPnl rhs,
-    PitParamPnl * out,
-    PitOutParamError out_error
+bool openpit_param_pnl_checked_add(
+    OpenPitParamPnl lhs,
+    OpenPitParamPnl rhs,
+    OpenPitParamPnl * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_pnl_checked_sub`
+## `openpit_param_pnl_checked_sub`
 
 ```c
-bool pit_param_pnl_checked_sub(
-    PitParamPnl lhs,
-    PitParamPnl rhs,
-    PitParamPnl * out,
-    PitOutParamError out_error
+bool openpit_param_pnl_checked_sub(
+    OpenPitParamPnl lhs,
+    OpenPitParamPnl rhs,
+    OpenPitParamPnl * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_pnl_checked_mul_i64`
+## `openpit_param_pnl_checked_mul_i64`
 
 ```c
-bool pit_param_pnl_checked_mul_i64(
-    PitParamPnl value,
+bool openpit_param_pnl_checked_mul_i64(
+    OpenPitParamPnl value,
     int64_t multiplier,
-    PitParamPnl * out,
-    PitOutParamError out_error
+    OpenPitParamPnl * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_pnl_checked_mul_u64`
+## `openpit_param_pnl_checked_mul_u64`
 
 ```c
-bool pit_param_pnl_checked_mul_u64(
-    PitParamPnl value,
+bool openpit_param_pnl_checked_mul_u64(
+    OpenPitParamPnl value,
     uint64_t multiplier,
-    PitParamPnl * out,
-    PitOutParamError out_error
+    OpenPitParamPnl * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_pnl_checked_mul_f64`
+## `openpit_param_pnl_checked_mul_f64`
 
 ```c
-bool pit_param_pnl_checked_mul_f64(
-    PitParamPnl value,
+bool openpit_param_pnl_checked_mul_f64(
+    OpenPitParamPnl value,
     double multiplier,
-    PitParamPnl * out,
-    PitOutParamError out_error
+    OpenPitParamPnl * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_pnl_checked_div_i64`
+## `openpit_param_pnl_checked_div_i64`
 
 ```c
-bool pit_param_pnl_checked_div_i64(
-    PitParamPnl value,
+bool openpit_param_pnl_checked_div_i64(
+    OpenPitParamPnl value,
     int64_t divisor,
-    PitParamPnl * out,
-    PitOutParamError out_error
+    OpenPitParamPnl * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_pnl_checked_div_u64`
+## `openpit_param_pnl_checked_div_u64`
 
 ```c
-bool pit_param_pnl_checked_div_u64(
-    PitParamPnl value,
+bool openpit_param_pnl_checked_div_u64(
+    OpenPitParamPnl value,
     uint64_t divisor,
-    PitParamPnl * out,
-    PitOutParamError out_error
+    OpenPitParamPnl * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_pnl_checked_div_f64`
+## `openpit_param_pnl_checked_div_f64`
 
 ```c
-bool pit_param_pnl_checked_div_f64(
-    PitParamPnl value,
+bool openpit_param_pnl_checked_div_f64(
+    OpenPitParamPnl value,
     double divisor,
-    PitParamPnl * out,
-    PitOutParamError out_error
+    OpenPitParamPnl * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_pnl_checked_rem_i64`
+## `openpit_param_pnl_checked_rem_i64`
 
 ```c
-bool pit_param_pnl_checked_rem_i64(
-    PitParamPnl value,
+bool openpit_param_pnl_checked_rem_i64(
+    OpenPitParamPnl value,
     int64_t divisor,
-    PitParamPnl * out,
-    PitOutParamError out_error
+    OpenPitParamPnl * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_pnl_checked_rem_u64`
+## `openpit_param_pnl_checked_rem_u64`
 
 ```c
-bool pit_param_pnl_checked_rem_u64(
-    PitParamPnl value,
+bool openpit_param_pnl_checked_rem_u64(
+    OpenPitParamPnl value,
     uint64_t divisor,
-    PitParamPnl * out,
-    PitOutParamError out_error
+    OpenPitParamPnl * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_pnl_checked_rem_f64`
+## `openpit_param_pnl_checked_rem_f64`
 
 ```c
-bool pit_param_pnl_checked_rem_f64(
-    PitParamPnl value,
+bool openpit_param_pnl_checked_rem_f64(
+    OpenPitParamPnl value,
     double divisor,
-    PitParamPnl * out,
-    PitOutParamError out_error
+    OpenPitParamPnl * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_pnl_checked_neg`
+## `openpit_param_pnl_checked_neg`
 
 ```c
-bool pit_param_pnl_checked_neg(
-    PitParamPnl value,
-    PitParamPnl * out,
-    PitOutParamError out_error
+bool openpit_param_pnl_checked_neg(
+    OpenPitParamPnl value,
+    OpenPitParamPnl * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_price_from_str`
+## `openpit_create_param_price_from_str`
 
 ```c
-bool pit_create_param_price_from_str(
-    PitStringView value,
-    PitParamPrice * out,
-    PitOutParamError out_error
+bool openpit_create_param_price_from_str(
+    OpenPitStringView value,
+    OpenPitParamPrice * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_price_from_f64`
+## `openpit_create_param_price_from_f64`
 
 ```c
-bool pit_create_param_price_from_f64(
+bool openpit_create_param_price_from_f64(
     double value,
-    PitParamPrice * out,
-    PitOutParamError out_error
+    OpenPitParamPrice * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_price_from_i64`
+## `openpit_create_param_price_from_i64`
 
 ```c
-bool pit_create_param_price_from_i64(
+bool openpit_create_param_price_from_i64(
     int64_t value,
-    PitParamPrice * out,
-    PitOutParamError out_error
+    OpenPitParamPrice * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_price_from_u64`
+## `openpit_create_param_price_from_u64`
 
 ```c
-bool pit_create_param_price_from_u64(
+bool openpit_create_param_price_from_u64(
     uint64_t value,
-    PitParamPrice * out,
-    PitOutParamError out_error
+    OpenPitParamPrice * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_price_from_str_rounded`
+## `openpit_create_param_price_from_str_rounded`
 
 ```c
-bool pit_create_param_price_from_str_rounded(
-    PitStringView value,
+bool openpit_create_param_price_from_str_rounded(
+    OpenPitStringView value,
     uint32_t scale,
-    PitParamRoundingStrategy rounding,
-    PitParamPrice * out,
-    PitOutParamError out_error
+    OpenPitParamRoundingStrategy rounding,
+    OpenPitParamPrice * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_price_from_f64_rounded`
+## `openpit_create_param_price_from_f64_rounded`
 
 ```c
-bool pit_create_param_price_from_f64_rounded(
+bool openpit_create_param_price_from_f64_rounded(
     double value,
     uint32_t scale,
-    PitParamRoundingStrategy rounding,
-    PitParamPrice * out,
-    PitOutParamError out_error
+    OpenPitParamRoundingStrategy rounding,
+    OpenPitParamPrice * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_price_from_decimal_rounded`
+## `openpit_create_param_price_from_decimal_rounded`
 
 ```c
-bool pit_create_param_price_from_decimal_rounded(
-    PitParamDecimal value,
+bool openpit_create_param_price_from_decimal_rounded(
+    OpenPitParamDecimal value,
     uint32_t scale,
-    PitParamRoundingStrategy rounding,
-    PitParamPrice * out,
-    PitOutParamError out_error
+    OpenPitParamRoundingStrategy rounding,
+    OpenPitParamPrice * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_price_to_f64`
+## `openpit_param_price_to_f64`
 
 ```c
-bool pit_param_price_to_f64(
-    PitParamPrice value,
+bool openpit_param_price_to_f64(
+    OpenPitParamPrice value,
     double * out,
-    PitOutParamError out_error
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_price_is_zero`
+## `openpit_param_price_is_zero`
 
 ```c
-bool pit_param_price_is_zero(
-    PitParamPrice value,
+bool openpit_param_price_is_zero(
+    OpenPitParamPrice value,
     bool * out,
-    PitOutParamError out_error
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_price_compare`
+## `openpit_param_price_compare`
 
 ```c
-bool pit_param_price_compare(
-    PitParamPrice lhs,
-    PitParamPrice rhs,
+bool openpit_param_price_compare(
+    OpenPitParamPrice lhs,
+    OpenPitParamPrice rhs,
     int8_t * out,
-    PitOutParamError out_error
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_price_to_string`
+## `openpit_param_price_to_string`
 
 ```c
-PitSharedString * pit_param_price_to_string(
-    PitParamPrice value,
-    PitOutParamError out_error
+OpenPitSharedString * openpit_param_price_to_string(
+    OpenPitParamPrice value,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_price_checked_add`
+## `openpit_param_price_checked_add`
 
 ```c
-bool pit_param_price_checked_add(
-    PitParamPrice lhs,
-    PitParamPrice rhs,
-    PitParamPrice * out,
-    PitOutParamError out_error
+bool openpit_param_price_checked_add(
+    OpenPitParamPrice lhs,
+    OpenPitParamPrice rhs,
+    OpenPitParamPrice * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_price_checked_sub`
+## `openpit_param_price_checked_sub`
 
 ```c
-bool pit_param_price_checked_sub(
-    PitParamPrice lhs,
-    PitParamPrice rhs,
-    PitParamPrice * out,
-    PitOutParamError out_error
+bool openpit_param_price_checked_sub(
+    OpenPitParamPrice lhs,
+    OpenPitParamPrice rhs,
+    OpenPitParamPrice * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_price_checked_mul_i64`
+## `openpit_param_price_checked_mul_i64`
 
 ```c
-bool pit_param_price_checked_mul_i64(
-    PitParamPrice value,
+bool openpit_param_price_checked_mul_i64(
+    OpenPitParamPrice value,
     int64_t multiplier,
-    PitParamPrice * out,
-    PitOutParamError out_error
+    OpenPitParamPrice * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_price_checked_mul_u64`
+## `openpit_param_price_checked_mul_u64`
 
 ```c
-bool pit_param_price_checked_mul_u64(
-    PitParamPrice value,
+bool openpit_param_price_checked_mul_u64(
+    OpenPitParamPrice value,
     uint64_t multiplier,
-    PitParamPrice * out,
-    PitOutParamError out_error
+    OpenPitParamPrice * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_price_checked_mul_f64`
+## `openpit_param_price_checked_mul_f64`
 
 ```c
-bool pit_param_price_checked_mul_f64(
-    PitParamPrice value,
+bool openpit_param_price_checked_mul_f64(
+    OpenPitParamPrice value,
     double multiplier,
-    PitParamPrice * out,
-    PitOutParamError out_error
+    OpenPitParamPrice * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_price_checked_div_i64`
+## `openpit_param_price_checked_div_i64`
 
 ```c
-bool pit_param_price_checked_div_i64(
-    PitParamPrice value,
+bool openpit_param_price_checked_div_i64(
+    OpenPitParamPrice value,
     int64_t divisor,
-    PitParamPrice * out,
-    PitOutParamError out_error
+    OpenPitParamPrice * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_price_checked_div_u64`
+## `openpit_param_price_checked_div_u64`
 
 ```c
-bool pit_param_price_checked_div_u64(
-    PitParamPrice value,
+bool openpit_param_price_checked_div_u64(
+    OpenPitParamPrice value,
     uint64_t divisor,
-    PitParamPrice * out,
-    PitOutParamError out_error
+    OpenPitParamPrice * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_price_checked_div_f64`
+## `openpit_param_price_checked_div_f64`
 
 ```c
-bool pit_param_price_checked_div_f64(
-    PitParamPrice value,
+bool openpit_param_price_checked_div_f64(
+    OpenPitParamPrice value,
     double divisor,
-    PitParamPrice * out,
-    PitOutParamError out_error
+    OpenPitParamPrice * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_price_checked_rem_i64`
+## `openpit_param_price_checked_rem_i64`
 
 ```c
-bool pit_param_price_checked_rem_i64(
-    PitParamPrice value,
+bool openpit_param_price_checked_rem_i64(
+    OpenPitParamPrice value,
     int64_t divisor,
-    PitParamPrice * out,
-    PitOutParamError out_error
+    OpenPitParamPrice * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_price_checked_rem_u64`
+## `openpit_param_price_checked_rem_u64`
 
 ```c
-bool pit_param_price_checked_rem_u64(
-    PitParamPrice value,
+bool openpit_param_price_checked_rem_u64(
+    OpenPitParamPrice value,
     uint64_t divisor,
-    PitParamPrice * out,
-    PitOutParamError out_error
+    OpenPitParamPrice * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_price_checked_rem_f64`
+## `openpit_param_price_checked_rem_f64`
 
 ```c
-bool pit_param_price_checked_rem_f64(
-    PitParamPrice value,
+bool openpit_param_price_checked_rem_f64(
+    OpenPitParamPrice value,
     double divisor,
-    PitParamPrice * out,
-    PitOutParamError out_error
+    OpenPitParamPrice * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_price_checked_neg`
+## `openpit_param_price_checked_neg`
 
 ```c
-bool pit_param_price_checked_neg(
-    PitParamPrice value,
-    PitParamPrice * out,
-    PitOutParamError out_error
+bool openpit_param_price_checked_neg(
+    OpenPitParamPrice value,
+    OpenPitParamPrice * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_quantity_from_str`
+## `openpit_create_param_quantity_from_str`
 
 ```c
-bool pit_create_param_quantity_from_str(
-    PitStringView value,
-    PitParamQuantity * out,
-    PitOutParamError out_error
+bool openpit_create_param_quantity_from_str(
+    OpenPitStringView value,
+    OpenPitParamQuantity * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_quantity_from_f64`
+## `openpit_create_param_quantity_from_f64`
 
 ```c
-bool pit_create_param_quantity_from_f64(
+bool openpit_create_param_quantity_from_f64(
     double value,
-    PitParamQuantity * out,
-    PitOutParamError out_error
+    OpenPitParamQuantity * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_quantity_from_i64`
+## `openpit_create_param_quantity_from_i64`
 
 ```c
-bool pit_create_param_quantity_from_i64(
+bool openpit_create_param_quantity_from_i64(
     int64_t value,
-    PitParamQuantity * out,
-    PitOutParamError out_error
+    OpenPitParamQuantity * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_quantity_from_u64`
+## `openpit_create_param_quantity_from_u64`
 
 ```c
-bool pit_create_param_quantity_from_u64(
+bool openpit_create_param_quantity_from_u64(
     uint64_t value,
-    PitParamQuantity * out,
-    PitOutParamError out_error
+    OpenPitParamQuantity * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_quantity_from_str_rounded`
+## `openpit_create_param_quantity_from_str_rounded`
 
 ```c
-bool pit_create_param_quantity_from_str_rounded(
-    PitStringView value,
+bool openpit_create_param_quantity_from_str_rounded(
+    OpenPitStringView value,
     uint32_t scale,
-    PitParamRoundingStrategy rounding,
-    PitParamQuantity * out,
-    PitOutParamError out_error
+    OpenPitParamRoundingStrategy rounding,
+    OpenPitParamQuantity * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_quantity_from_f64_rounded`
+## `openpit_create_param_quantity_from_f64_rounded`
 
 ```c
-bool pit_create_param_quantity_from_f64_rounded(
+bool openpit_create_param_quantity_from_f64_rounded(
     double value,
     uint32_t scale,
-    PitParamRoundingStrategy rounding,
-    PitParamQuantity * out,
-    PitOutParamError out_error
+    OpenPitParamRoundingStrategy rounding,
+    OpenPitParamQuantity * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_quantity_from_decimal_rounded`
+## `openpit_create_param_quantity_from_decimal_rounded`
 
 ```c
-bool pit_create_param_quantity_from_decimal_rounded(
-    PitParamDecimal value,
+bool openpit_create_param_quantity_from_decimal_rounded(
+    OpenPitParamDecimal value,
     uint32_t scale,
-    PitParamRoundingStrategy rounding,
-    PitParamQuantity * out,
-    PitOutParamError out_error
+    OpenPitParamRoundingStrategy rounding,
+    OpenPitParamQuantity * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_quantity_to_f64`
+## `openpit_param_quantity_to_f64`
 
 ```c
-bool pit_param_quantity_to_f64(
-    PitParamQuantity value,
+bool openpit_param_quantity_to_f64(
+    OpenPitParamQuantity value,
     double * out,
-    PitOutParamError out_error
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_quantity_is_zero`
+## `openpit_param_quantity_is_zero`
 
 ```c
-bool pit_param_quantity_is_zero(
-    PitParamQuantity value,
+bool openpit_param_quantity_is_zero(
+    OpenPitParamQuantity value,
     bool * out,
-    PitOutParamError out_error
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_quantity_compare`
+## `openpit_param_quantity_compare`
 
 ```c
-bool pit_param_quantity_compare(
-    PitParamQuantity lhs,
-    PitParamQuantity rhs,
+bool openpit_param_quantity_compare(
+    OpenPitParamQuantity lhs,
+    OpenPitParamQuantity rhs,
     int8_t * out,
-    PitOutParamError out_error
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_quantity_to_string`
+## `openpit_param_quantity_to_string`
 
 ```c
-PitSharedString * pit_param_quantity_to_string(
-    PitParamQuantity value,
-    PitOutParamError out_error
+OpenPitSharedString * openpit_param_quantity_to_string(
+    OpenPitParamQuantity value,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_quantity_checked_add`
+## `openpit_param_quantity_checked_add`
 
 ```c
-bool pit_param_quantity_checked_add(
-    PitParamQuantity lhs,
-    PitParamQuantity rhs,
-    PitParamQuantity * out,
-    PitOutParamError out_error
+bool openpit_param_quantity_checked_add(
+    OpenPitParamQuantity lhs,
+    OpenPitParamQuantity rhs,
+    OpenPitParamQuantity * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_quantity_checked_sub`
+## `openpit_param_quantity_checked_sub`
 
 ```c
-bool pit_param_quantity_checked_sub(
-    PitParamQuantity lhs,
-    PitParamQuantity rhs,
-    PitParamQuantity * out,
-    PitOutParamError out_error
+bool openpit_param_quantity_checked_sub(
+    OpenPitParamQuantity lhs,
+    OpenPitParamQuantity rhs,
+    OpenPitParamQuantity * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_quantity_checked_mul_i64`
+## `openpit_param_quantity_checked_mul_i64`
 
 ```c
-bool pit_param_quantity_checked_mul_i64(
-    PitParamQuantity value,
+bool openpit_param_quantity_checked_mul_i64(
+    OpenPitParamQuantity value,
     int64_t multiplier,
-    PitParamQuantity * out,
-    PitOutParamError out_error
+    OpenPitParamQuantity * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_quantity_checked_mul_u64`
+## `openpit_param_quantity_checked_mul_u64`
 
 ```c
-bool pit_param_quantity_checked_mul_u64(
-    PitParamQuantity value,
+bool openpit_param_quantity_checked_mul_u64(
+    OpenPitParamQuantity value,
     uint64_t multiplier,
-    PitParamQuantity * out,
-    PitOutParamError out_error
+    OpenPitParamQuantity * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_quantity_checked_mul_f64`
+## `openpit_param_quantity_checked_mul_f64`
 
 ```c
-bool pit_param_quantity_checked_mul_f64(
-    PitParamQuantity value,
+bool openpit_param_quantity_checked_mul_f64(
+    OpenPitParamQuantity value,
     double multiplier,
-    PitParamQuantity * out,
-    PitOutParamError out_error
+    OpenPitParamQuantity * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_quantity_checked_div_i64`
+## `openpit_param_quantity_checked_div_i64`
 
 ```c
-bool pit_param_quantity_checked_div_i64(
-    PitParamQuantity value,
+bool openpit_param_quantity_checked_div_i64(
+    OpenPitParamQuantity value,
     int64_t divisor,
-    PitParamQuantity * out,
-    PitOutParamError out_error
+    OpenPitParamQuantity * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_quantity_checked_div_u64`
+## `openpit_param_quantity_checked_div_u64`
 
 ```c
-bool pit_param_quantity_checked_div_u64(
-    PitParamQuantity value,
+bool openpit_param_quantity_checked_div_u64(
+    OpenPitParamQuantity value,
     uint64_t divisor,
-    PitParamQuantity * out,
-    PitOutParamError out_error
+    OpenPitParamQuantity * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_quantity_checked_div_f64`
+## `openpit_param_quantity_checked_div_f64`
 
 ```c
-bool pit_param_quantity_checked_div_f64(
-    PitParamQuantity value,
+bool openpit_param_quantity_checked_div_f64(
+    OpenPitParamQuantity value,
     double divisor,
-    PitParamQuantity * out,
-    PitOutParamError out_error
+    OpenPitParamQuantity * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_quantity_checked_rem_i64`
+## `openpit_param_quantity_checked_rem_i64`
 
 ```c
-bool pit_param_quantity_checked_rem_i64(
-    PitParamQuantity value,
+bool openpit_param_quantity_checked_rem_i64(
+    OpenPitParamQuantity value,
     int64_t divisor,
-    PitParamQuantity * out,
-    PitOutParamError out_error
+    OpenPitParamQuantity * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_quantity_checked_rem_u64`
+## `openpit_param_quantity_checked_rem_u64`
 
 ```c
-bool pit_param_quantity_checked_rem_u64(
-    PitParamQuantity value,
+bool openpit_param_quantity_checked_rem_u64(
+    OpenPitParamQuantity value,
     uint64_t divisor,
-    PitParamQuantity * out,
-    PitOutParamError out_error
+    OpenPitParamQuantity * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_quantity_checked_rem_f64`
+## `openpit_param_quantity_checked_rem_f64`
 
 ```c
-bool pit_param_quantity_checked_rem_f64(
-    PitParamQuantity value,
+bool openpit_param_quantity_checked_rem_f64(
+    OpenPitParamQuantity value,
     double divisor,
-    PitParamQuantity * out,
-    PitOutParamError out_error
+    OpenPitParamQuantity * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_volume_from_str`
+## `openpit_create_param_volume_from_str`
 
 ```c
-bool pit_create_param_volume_from_str(
-    PitStringView value,
-    PitParamVolume * out,
-    PitOutParamError out_error
+bool openpit_create_param_volume_from_str(
+    OpenPitStringView value,
+    OpenPitParamVolume * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_volume_from_f64`
+## `openpit_create_param_volume_from_f64`
 
 ```c
-bool pit_create_param_volume_from_f64(
+bool openpit_create_param_volume_from_f64(
     double value,
-    PitParamVolume * out,
-    PitOutParamError out_error
+    OpenPitParamVolume * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_volume_from_i64`
+## `openpit_create_param_volume_from_i64`
 
 ```c
-bool pit_create_param_volume_from_i64(
+bool openpit_create_param_volume_from_i64(
     int64_t value,
-    PitParamVolume * out,
-    PitOutParamError out_error
+    OpenPitParamVolume * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_volume_from_u64`
+## `openpit_create_param_volume_from_u64`
 
 ```c
-bool pit_create_param_volume_from_u64(
+bool openpit_create_param_volume_from_u64(
     uint64_t value,
-    PitParamVolume * out,
-    PitOutParamError out_error
+    OpenPitParamVolume * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_volume_from_str_rounded`
+## `openpit_create_param_volume_from_str_rounded`
 
 ```c
-bool pit_create_param_volume_from_str_rounded(
-    PitStringView value,
+bool openpit_create_param_volume_from_str_rounded(
+    OpenPitStringView value,
     uint32_t scale,
-    PitParamRoundingStrategy rounding,
-    PitParamVolume * out,
-    PitOutParamError out_error
+    OpenPitParamRoundingStrategy rounding,
+    OpenPitParamVolume * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_volume_from_f64_rounded`
+## `openpit_create_param_volume_from_f64_rounded`
 
 ```c
-bool pit_create_param_volume_from_f64_rounded(
+bool openpit_create_param_volume_from_f64_rounded(
     double value,
     uint32_t scale,
-    PitParamRoundingStrategy rounding,
-    PitParamVolume * out,
-    PitOutParamError out_error
+    OpenPitParamRoundingStrategy rounding,
+    OpenPitParamVolume * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_volume_from_decimal_rounded`
+## `openpit_create_param_volume_from_decimal_rounded`
 
 ```c
-bool pit_create_param_volume_from_decimal_rounded(
-    PitParamDecimal value,
+bool openpit_create_param_volume_from_decimal_rounded(
+    OpenPitParamDecimal value,
     uint32_t scale,
-    PitParamRoundingStrategy rounding,
-    PitParamVolume * out,
-    PitOutParamError out_error
+    OpenPitParamRoundingStrategy rounding,
+    OpenPitParamVolume * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_volume_to_f64`
+## `openpit_param_volume_to_f64`
 
 ```c
-bool pit_param_volume_to_f64(
-    PitParamVolume value,
+bool openpit_param_volume_to_f64(
+    OpenPitParamVolume value,
     double * out,
-    PitOutParamError out_error
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_volume_is_zero`
+## `openpit_param_volume_is_zero`
 
 ```c
-bool pit_param_volume_is_zero(
-    PitParamVolume value,
+bool openpit_param_volume_is_zero(
+    OpenPitParamVolume value,
     bool * out,
-    PitOutParamError out_error
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_volume_compare`
+## `openpit_param_volume_compare`
 
 ```c
-bool pit_param_volume_compare(
-    PitParamVolume lhs,
-    PitParamVolume rhs,
+bool openpit_param_volume_compare(
+    OpenPitParamVolume lhs,
+    OpenPitParamVolume rhs,
     int8_t * out,
-    PitOutParamError out_error
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_volume_to_string`
+## `openpit_param_volume_to_string`
 
 ```c
-PitSharedString * pit_param_volume_to_string(
-    PitParamVolume value,
-    PitOutParamError out_error
+OpenPitSharedString * openpit_param_volume_to_string(
+    OpenPitParamVolume value,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_volume_checked_add`
+## `openpit_param_volume_checked_add`
 
 ```c
-bool pit_param_volume_checked_add(
-    PitParamVolume lhs,
-    PitParamVolume rhs,
-    PitParamVolume * out,
-    PitOutParamError out_error
+bool openpit_param_volume_checked_add(
+    OpenPitParamVolume lhs,
+    OpenPitParamVolume rhs,
+    OpenPitParamVolume * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_volume_checked_sub`
+## `openpit_param_volume_checked_sub`
 
 ```c
-bool pit_param_volume_checked_sub(
-    PitParamVolume lhs,
-    PitParamVolume rhs,
-    PitParamVolume * out,
-    PitOutParamError out_error
+bool openpit_param_volume_checked_sub(
+    OpenPitParamVolume lhs,
+    OpenPitParamVolume rhs,
+    OpenPitParamVolume * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_volume_checked_mul_i64`
+## `openpit_param_volume_checked_mul_i64`
 
 ```c
-bool pit_param_volume_checked_mul_i64(
-    PitParamVolume value,
+bool openpit_param_volume_checked_mul_i64(
+    OpenPitParamVolume value,
     int64_t multiplier,
-    PitParamVolume * out,
-    PitOutParamError out_error
+    OpenPitParamVolume * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_volume_checked_mul_u64`
+## `openpit_param_volume_checked_mul_u64`
 
 ```c
-bool pit_param_volume_checked_mul_u64(
-    PitParamVolume value,
+bool openpit_param_volume_checked_mul_u64(
+    OpenPitParamVolume value,
     uint64_t multiplier,
-    PitParamVolume * out,
-    PitOutParamError out_error
+    OpenPitParamVolume * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_volume_checked_mul_f64`
+## `openpit_param_volume_checked_mul_f64`
 
 ```c
-bool pit_param_volume_checked_mul_f64(
-    PitParamVolume value,
+bool openpit_param_volume_checked_mul_f64(
+    OpenPitParamVolume value,
     double multiplier,
-    PitParamVolume * out,
-    PitOutParamError out_error
+    OpenPitParamVolume * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_volume_checked_div_i64`
+## `openpit_param_volume_checked_div_i64`
 
 ```c
-bool pit_param_volume_checked_div_i64(
-    PitParamVolume value,
+bool openpit_param_volume_checked_div_i64(
+    OpenPitParamVolume value,
     int64_t divisor,
-    PitParamVolume * out,
-    PitOutParamError out_error
+    OpenPitParamVolume * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_volume_checked_div_u64`
+## `openpit_param_volume_checked_div_u64`
 
 ```c
-bool pit_param_volume_checked_div_u64(
-    PitParamVolume value,
+bool openpit_param_volume_checked_div_u64(
+    OpenPitParamVolume value,
     uint64_t divisor,
-    PitParamVolume * out,
-    PitOutParamError out_error
+    OpenPitParamVolume * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_volume_checked_div_f64`
+## `openpit_param_volume_checked_div_f64`
 
 ```c
-bool pit_param_volume_checked_div_f64(
-    PitParamVolume value,
+bool openpit_param_volume_checked_div_f64(
+    OpenPitParamVolume value,
     double divisor,
-    PitParamVolume * out,
-    PitOutParamError out_error
+    OpenPitParamVolume * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_volume_checked_rem_i64`
+## `openpit_param_volume_checked_rem_i64`
 
 ```c
-bool pit_param_volume_checked_rem_i64(
-    PitParamVolume value,
+bool openpit_param_volume_checked_rem_i64(
+    OpenPitParamVolume value,
     int64_t divisor,
-    PitParamVolume * out,
-    PitOutParamError out_error
+    OpenPitParamVolume * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_volume_checked_rem_u64`
+## `openpit_param_volume_checked_rem_u64`
 
 ```c
-bool pit_param_volume_checked_rem_u64(
-    PitParamVolume value,
+bool openpit_param_volume_checked_rem_u64(
+    OpenPitParamVolume value,
     uint64_t divisor,
-    PitParamVolume * out,
-    PitOutParamError out_error
+    OpenPitParamVolume * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_volume_checked_rem_f64`
+## `openpit_param_volume_checked_rem_f64`
 
 ```c
-bool pit_param_volume_checked_rem_f64(
-    PitParamVolume value,
+bool openpit_param_volume_checked_rem_f64(
+    OpenPitParamVolume value,
     double divisor,
-    PitParamVolume * out,
-    PitOutParamError out_error
+    OpenPitParamVolume * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_cash_flow_from_str`
+## `openpit_create_param_cash_flow_from_str`
 
 ```c
-bool pit_create_param_cash_flow_from_str(
-    PitStringView value,
-    PitParamCashFlow * out,
-    PitOutParamError out_error
+bool openpit_create_param_cash_flow_from_str(
+    OpenPitStringView value,
+    OpenPitParamCashFlow * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_cash_flow_from_f64`
+## `openpit_create_param_cash_flow_from_f64`
 
 ```c
-bool pit_create_param_cash_flow_from_f64(
+bool openpit_create_param_cash_flow_from_f64(
     double value,
-    PitParamCashFlow * out,
-    PitOutParamError out_error
+    OpenPitParamCashFlow * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_cash_flow_from_i64`
+## `openpit_create_param_cash_flow_from_i64`
 
 ```c
-bool pit_create_param_cash_flow_from_i64(
+bool openpit_create_param_cash_flow_from_i64(
     int64_t value,
-    PitParamCashFlow * out,
-    PitOutParamError out_error
+    OpenPitParamCashFlow * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_cash_flow_from_u64`
+## `openpit_create_param_cash_flow_from_u64`
 
 ```c
-bool pit_create_param_cash_flow_from_u64(
+bool openpit_create_param_cash_flow_from_u64(
     uint64_t value,
-    PitParamCashFlow * out,
-    PitOutParamError out_error
+    OpenPitParamCashFlow * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_cash_flow_from_str_rounded`
+## `openpit_create_param_cash_flow_from_str_rounded`
 
 ```c
-bool pit_create_param_cash_flow_from_str_rounded(
-    PitStringView value,
+bool openpit_create_param_cash_flow_from_str_rounded(
+    OpenPitStringView value,
     uint32_t scale,
-    PitParamRoundingStrategy rounding,
-    PitParamCashFlow * out,
-    PitOutParamError out_error
+    OpenPitParamRoundingStrategy rounding,
+    OpenPitParamCashFlow * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_cash_flow_from_f64_rounded`
+## `openpit_create_param_cash_flow_from_f64_rounded`
 
 ```c
-bool pit_create_param_cash_flow_from_f64_rounded(
+bool openpit_create_param_cash_flow_from_f64_rounded(
     double value,
     uint32_t scale,
-    PitParamRoundingStrategy rounding,
-    PitParamCashFlow * out,
-    PitOutParamError out_error
+    OpenPitParamRoundingStrategy rounding,
+    OpenPitParamCashFlow * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_cash_flow_from_decimal_rounded`
+## `openpit_create_param_cash_flow_from_decimal_rounded`
 
 ```c
-bool pit_create_param_cash_flow_from_decimal_rounded(
-    PitParamDecimal value,
+bool openpit_create_param_cash_flow_from_decimal_rounded(
+    OpenPitParamDecimal value,
     uint32_t scale,
-    PitParamRoundingStrategy rounding,
-    PitParamCashFlow * out,
-    PitOutParamError out_error
+    OpenPitParamRoundingStrategy rounding,
+    OpenPitParamCashFlow * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_cash_flow_to_f64`
+## `openpit_param_cash_flow_to_f64`
 
 ```c
-bool pit_param_cash_flow_to_f64(
-    PitParamCashFlow value,
+bool openpit_param_cash_flow_to_f64(
+    OpenPitParamCashFlow value,
     double * out,
-    PitOutParamError out_error
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_cash_flow_is_zero`
+## `openpit_param_cash_flow_is_zero`
 
 ```c
-bool pit_param_cash_flow_is_zero(
-    PitParamCashFlow value,
+bool openpit_param_cash_flow_is_zero(
+    OpenPitParamCashFlow value,
     bool * out,
-    PitOutParamError out_error
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_cash_flow_compare`
+## `openpit_param_cash_flow_compare`
 
 ```c
-bool pit_param_cash_flow_compare(
-    PitParamCashFlow lhs,
-    PitParamCashFlow rhs,
+bool openpit_param_cash_flow_compare(
+    OpenPitParamCashFlow lhs,
+    OpenPitParamCashFlow rhs,
     int8_t * out,
-    PitOutParamError out_error
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_cash_flow_to_string`
+## `openpit_param_cash_flow_to_string`
 
 ```c
-PitSharedString * pit_param_cash_flow_to_string(
-    PitParamCashFlow value,
-    PitOutParamError out_error
+OpenPitSharedString * openpit_param_cash_flow_to_string(
+    OpenPitParamCashFlow value,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_cash_flow_checked_add`
+## `openpit_param_cash_flow_checked_add`
 
 ```c
-bool pit_param_cash_flow_checked_add(
-    PitParamCashFlow lhs,
-    PitParamCashFlow rhs,
-    PitParamCashFlow * out,
-    PitOutParamError out_error
+bool openpit_param_cash_flow_checked_add(
+    OpenPitParamCashFlow lhs,
+    OpenPitParamCashFlow rhs,
+    OpenPitParamCashFlow * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_cash_flow_checked_sub`
+## `openpit_param_cash_flow_checked_sub`
 
 ```c
-bool pit_param_cash_flow_checked_sub(
-    PitParamCashFlow lhs,
-    PitParamCashFlow rhs,
-    PitParamCashFlow * out,
-    PitOutParamError out_error
+bool openpit_param_cash_flow_checked_sub(
+    OpenPitParamCashFlow lhs,
+    OpenPitParamCashFlow rhs,
+    OpenPitParamCashFlow * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_cash_flow_checked_mul_i64`
+## `openpit_param_cash_flow_checked_mul_i64`
 
 ```c
-bool pit_param_cash_flow_checked_mul_i64(
-    PitParamCashFlow value,
+bool openpit_param_cash_flow_checked_mul_i64(
+    OpenPitParamCashFlow value,
     int64_t multiplier,
-    PitParamCashFlow * out,
-    PitOutParamError out_error
+    OpenPitParamCashFlow * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_cash_flow_checked_mul_u64`
+## `openpit_param_cash_flow_checked_mul_u64`
 
 ```c
-bool pit_param_cash_flow_checked_mul_u64(
-    PitParamCashFlow value,
+bool openpit_param_cash_flow_checked_mul_u64(
+    OpenPitParamCashFlow value,
     uint64_t multiplier,
-    PitParamCashFlow * out,
-    PitOutParamError out_error
+    OpenPitParamCashFlow * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_cash_flow_checked_mul_f64`
+## `openpit_param_cash_flow_checked_mul_f64`
 
 ```c
-bool pit_param_cash_flow_checked_mul_f64(
-    PitParamCashFlow value,
+bool openpit_param_cash_flow_checked_mul_f64(
+    OpenPitParamCashFlow value,
     double multiplier,
-    PitParamCashFlow * out,
-    PitOutParamError out_error
+    OpenPitParamCashFlow * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_cash_flow_checked_div_i64`
+## `openpit_param_cash_flow_checked_div_i64`
 
 ```c
-bool pit_param_cash_flow_checked_div_i64(
-    PitParamCashFlow value,
+bool openpit_param_cash_flow_checked_div_i64(
+    OpenPitParamCashFlow value,
     int64_t divisor,
-    PitParamCashFlow * out,
-    PitOutParamError out_error
+    OpenPitParamCashFlow * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_cash_flow_checked_div_u64`
+## `openpit_param_cash_flow_checked_div_u64`
 
 ```c
-bool pit_param_cash_flow_checked_div_u64(
-    PitParamCashFlow value,
+bool openpit_param_cash_flow_checked_div_u64(
+    OpenPitParamCashFlow value,
     uint64_t divisor,
-    PitParamCashFlow * out,
-    PitOutParamError out_error
+    OpenPitParamCashFlow * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_cash_flow_checked_div_f64`
+## `openpit_param_cash_flow_checked_div_f64`
 
 ```c
-bool pit_param_cash_flow_checked_div_f64(
-    PitParamCashFlow value,
+bool openpit_param_cash_flow_checked_div_f64(
+    OpenPitParamCashFlow value,
     double divisor,
-    PitParamCashFlow * out,
-    PitOutParamError out_error
+    OpenPitParamCashFlow * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_cash_flow_checked_rem_i64`
+## `openpit_param_cash_flow_checked_rem_i64`
 
 ```c
-bool pit_param_cash_flow_checked_rem_i64(
-    PitParamCashFlow value,
+bool openpit_param_cash_flow_checked_rem_i64(
+    OpenPitParamCashFlow value,
     int64_t divisor,
-    PitParamCashFlow * out,
-    PitOutParamError out_error
+    OpenPitParamCashFlow * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_cash_flow_checked_rem_u64`
+## `openpit_param_cash_flow_checked_rem_u64`
 
 ```c
-bool pit_param_cash_flow_checked_rem_u64(
-    PitParamCashFlow value,
+bool openpit_param_cash_flow_checked_rem_u64(
+    OpenPitParamCashFlow value,
     uint64_t divisor,
-    PitParamCashFlow * out,
-    PitOutParamError out_error
+    OpenPitParamCashFlow * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_cash_flow_checked_rem_f64`
+## `openpit_param_cash_flow_checked_rem_f64`
 
 ```c
-bool pit_param_cash_flow_checked_rem_f64(
-    PitParamCashFlow value,
+bool openpit_param_cash_flow_checked_rem_f64(
+    OpenPitParamCashFlow value,
     double divisor,
-    PitParamCashFlow * out,
-    PitOutParamError out_error
+    OpenPitParamCashFlow * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_cash_flow_checked_neg`
+## `openpit_param_cash_flow_checked_neg`
 
 ```c
-bool pit_param_cash_flow_checked_neg(
-    PitParamCashFlow value,
-    PitParamCashFlow * out,
-    PitOutParamError out_error
+bool openpit_param_cash_flow_checked_neg(
+    OpenPitParamCashFlow value,
+    OpenPitParamCashFlow * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_position_size_from_str`
+## `openpit_create_param_position_size_from_str`
 
 ```c
-bool pit_create_param_position_size_from_str(
-    PitStringView value,
-    PitParamPositionSize * out,
-    PitOutParamError out_error
+bool openpit_create_param_position_size_from_str(
+    OpenPitStringView value,
+    OpenPitParamPositionSize * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_position_size_from_f64`
+## `openpit_create_param_position_size_from_f64`
 
 ```c
-bool pit_create_param_position_size_from_f64(
+bool openpit_create_param_position_size_from_f64(
     double value,
-    PitParamPositionSize * out,
-    PitOutParamError out_error
+    OpenPitParamPositionSize * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_position_size_from_i64`
+## `openpit_create_param_position_size_from_i64`
 
 ```c
-bool pit_create_param_position_size_from_i64(
+bool openpit_create_param_position_size_from_i64(
     int64_t value,
-    PitParamPositionSize * out,
-    PitOutParamError out_error
+    OpenPitParamPositionSize * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_position_size_from_u64`
+## `openpit_create_param_position_size_from_u64`
 
 ```c
-bool pit_create_param_position_size_from_u64(
+bool openpit_create_param_position_size_from_u64(
     uint64_t value,
-    PitParamPositionSize * out,
-    PitOutParamError out_error
+    OpenPitParamPositionSize * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_position_size_from_str_rounded`
+## `openpit_create_param_position_size_from_str_rounded`
 
 ```c
-bool pit_create_param_position_size_from_str_rounded(
-    PitStringView value,
+bool openpit_create_param_position_size_from_str_rounded(
+    OpenPitStringView value,
     uint32_t scale,
-    PitParamRoundingStrategy rounding,
-    PitParamPositionSize * out,
-    PitOutParamError out_error
+    OpenPitParamRoundingStrategy rounding,
+    OpenPitParamPositionSize * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_position_size_from_f64_rounded`
+## `openpit_create_param_position_size_from_f64_rounded`
 
 ```c
-bool pit_create_param_position_size_from_f64_rounded(
+bool openpit_create_param_position_size_from_f64_rounded(
     double value,
     uint32_t scale,
-    PitParamRoundingStrategy rounding,
-    PitParamPositionSize * out,
-    PitOutParamError out_error
+    OpenPitParamRoundingStrategy rounding,
+    OpenPitParamPositionSize * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_position_size_from_decimal_rounded`
+## `openpit_create_param_position_size_from_decimal_rounded`
 
 ```c
-bool pit_create_param_position_size_from_decimal_rounded(
-    PitParamDecimal value,
+bool openpit_create_param_position_size_from_decimal_rounded(
+    OpenPitParamDecimal value,
     uint32_t scale,
-    PitParamRoundingStrategy rounding,
-    PitParamPositionSize * out,
-    PitOutParamError out_error
+    OpenPitParamRoundingStrategy rounding,
+    OpenPitParamPositionSize * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_position_size_to_f64`
+## `openpit_param_position_size_to_f64`
 
 ```c
-bool pit_param_position_size_to_f64(
-    PitParamPositionSize value,
+bool openpit_param_position_size_to_f64(
+    OpenPitParamPositionSize value,
     double * out,
-    PitOutParamError out_error
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_position_size_is_zero`
+## `openpit_param_position_size_is_zero`
 
 ```c
-bool pit_param_position_size_is_zero(
-    PitParamPositionSize value,
+bool openpit_param_position_size_is_zero(
+    OpenPitParamPositionSize value,
     bool * out,
-    PitOutParamError out_error
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_position_size_compare`
+## `openpit_param_position_size_compare`
 
 ```c
-bool pit_param_position_size_compare(
-    PitParamPositionSize lhs,
-    PitParamPositionSize rhs,
+bool openpit_param_position_size_compare(
+    OpenPitParamPositionSize lhs,
+    OpenPitParamPositionSize rhs,
     int8_t * out,
-    PitOutParamError out_error
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_position_size_to_string`
+## `openpit_param_position_size_to_string`
 
 ```c
-PitSharedString * pit_param_position_size_to_string(
-    PitParamPositionSize value,
-    PitOutParamError out_error
+OpenPitSharedString * openpit_param_position_size_to_string(
+    OpenPitParamPositionSize value,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_position_size_checked_add`
+## `openpit_param_position_size_checked_add`
 
 ```c
-bool pit_param_position_size_checked_add(
-    PitParamPositionSize lhs,
-    PitParamPositionSize rhs,
-    PitParamPositionSize * out,
-    PitOutParamError out_error
+bool openpit_param_position_size_checked_add(
+    OpenPitParamPositionSize lhs,
+    OpenPitParamPositionSize rhs,
+    OpenPitParamPositionSize * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_position_size_checked_sub`
+## `openpit_param_position_size_checked_sub`
 
 ```c
-bool pit_param_position_size_checked_sub(
-    PitParamPositionSize lhs,
-    PitParamPositionSize rhs,
-    PitParamPositionSize * out,
-    PitOutParamError out_error
+bool openpit_param_position_size_checked_sub(
+    OpenPitParamPositionSize lhs,
+    OpenPitParamPositionSize rhs,
+    OpenPitParamPositionSize * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_position_size_checked_mul_i64`
+## `openpit_param_position_size_checked_mul_i64`
 
 ```c
-bool pit_param_position_size_checked_mul_i64(
-    PitParamPositionSize value,
+bool openpit_param_position_size_checked_mul_i64(
+    OpenPitParamPositionSize value,
     int64_t multiplier,
-    PitParamPositionSize * out,
-    PitOutParamError out_error
+    OpenPitParamPositionSize * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_position_size_checked_mul_u64`
+## `openpit_param_position_size_checked_mul_u64`
 
 ```c
-bool pit_param_position_size_checked_mul_u64(
-    PitParamPositionSize value,
+bool openpit_param_position_size_checked_mul_u64(
+    OpenPitParamPositionSize value,
     uint64_t multiplier,
-    PitParamPositionSize * out,
-    PitOutParamError out_error
+    OpenPitParamPositionSize * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_position_size_checked_mul_f64`
+## `openpit_param_position_size_checked_mul_f64`
 
 ```c
-bool pit_param_position_size_checked_mul_f64(
-    PitParamPositionSize value,
+bool openpit_param_position_size_checked_mul_f64(
+    OpenPitParamPositionSize value,
     double multiplier,
-    PitParamPositionSize * out,
-    PitOutParamError out_error
+    OpenPitParamPositionSize * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_position_size_checked_div_i64`
+## `openpit_param_position_size_checked_div_i64`
 
 ```c
-bool pit_param_position_size_checked_div_i64(
-    PitParamPositionSize value,
+bool openpit_param_position_size_checked_div_i64(
+    OpenPitParamPositionSize value,
     int64_t divisor,
-    PitParamPositionSize * out,
-    PitOutParamError out_error
+    OpenPitParamPositionSize * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_position_size_checked_div_u64`
+## `openpit_param_position_size_checked_div_u64`
 
 ```c
-bool pit_param_position_size_checked_div_u64(
-    PitParamPositionSize value,
+bool openpit_param_position_size_checked_div_u64(
+    OpenPitParamPositionSize value,
     uint64_t divisor,
-    PitParamPositionSize * out,
-    PitOutParamError out_error
+    OpenPitParamPositionSize * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_position_size_checked_div_f64`
+## `openpit_param_position_size_checked_div_f64`
 
 ```c
-bool pit_param_position_size_checked_div_f64(
-    PitParamPositionSize value,
+bool openpit_param_position_size_checked_div_f64(
+    OpenPitParamPositionSize value,
     double divisor,
-    PitParamPositionSize * out,
-    PitOutParamError out_error
+    OpenPitParamPositionSize * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_position_size_checked_rem_i64`
+## `openpit_param_position_size_checked_rem_i64`
 
 ```c
-bool pit_param_position_size_checked_rem_i64(
-    PitParamPositionSize value,
+bool openpit_param_position_size_checked_rem_i64(
+    OpenPitParamPositionSize value,
     int64_t divisor,
-    PitParamPositionSize * out,
-    PitOutParamError out_error
+    OpenPitParamPositionSize * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_position_size_checked_rem_u64`
+## `openpit_param_position_size_checked_rem_u64`
 
 ```c
-bool pit_param_position_size_checked_rem_u64(
-    PitParamPositionSize value,
+bool openpit_param_position_size_checked_rem_u64(
+    OpenPitParamPositionSize value,
     uint64_t divisor,
-    PitParamPositionSize * out,
-    PitOutParamError out_error
+    OpenPitParamPositionSize * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_position_size_checked_rem_f64`
+## `openpit_param_position_size_checked_rem_f64`
 
 ```c
-bool pit_param_position_size_checked_rem_f64(
-    PitParamPositionSize value,
+bool openpit_param_position_size_checked_rem_f64(
+    OpenPitParamPositionSize value,
     double divisor,
-    PitParamPositionSize * out,
-    PitOutParamError out_error
+    OpenPitParamPositionSize * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_position_size_checked_neg`
+## `openpit_param_position_size_checked_neg`
 
 ```c
-bool pit_param_position_size_checked_neg(
-    PitParamPositionSize value,
-    PitParamPositionSize * out,
-    PitOutParamError out_error
+bool openpit_param_position_size_checked_neg(
+    OpenPitParamPositionSize value,
+    OpenPitParamPositionSize * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_fee_from_str`
+## `openpit_create_param_fee_from_str`
 
 ```c
-bool pit_create_param_fee_from_str(
-    PitStringView value,
-    PitParamFee * out,
-    PitOutParamError out_error
+bool openpit_create_param_fee_from_str(
+    OpenPitStringView value,
+    OpenPitParamFee * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_fee_from_f64`
+## `openpit_create_param_fee_from_f64`
 
 ```c
-bool pit_create_param_fee_from_f64(
+bool openpit_create_param_fee_from_f64(
     double value,
-    PitParamFee * out,
-    PitOutParamError out_error
+    OpenPitParamFee * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_fee_from_i64`
+## `openpit_create_param_fee_from_i64`
 
 ```c
-bool pit_create_param_fee_from_i64(
+bool openpit_create_param_fee_from_i64(
     int64_t value,
-    PitParamFee * out,
-    PitOutParamError out_error
+    OpenPitParamFee * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_fee_from_u64`
+## `openpit_create_param_fee_from_u64`
 
 ```c
-bool pit_create_param_fee_from_u64(
+bool openpit_create_param_fee_from_u64(
     uint64_t value,
-    PitParamFee * out,
-    PitOutParamError out_error
+    OpenPitParamFee * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_fee_from_str_rounded`
+## `openpit_create_param_fee_from_str_rounded`
 
 ```c
-bool pit_create_param_fee_from_str_rounded(
-    PitStringView value,
+bool openpit_create_param_fee_from_str_rounded(
+    OpenPitStringView value,
     uint32_t scale,
-    PitParamRoundingStrategy rounding,
-    PitParamFee * out,
-    PitOutParamError out_error
+    OpenPitParamRoundingStrategy rounding,
+    OpenPitParamFee * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_fee_from_f64_rounded`
+## `openpit_create_param_fee_from_f64_rounded`
 
 ```c
-bool pit_create_param_fee_from_f64_rounded(
+bool openpit_create_param_fee_from_f64_rounded(
     double value,
     uint32_t scale,
-    PitParamRoundingStrategy rounding,
-    PitParamFee * out,
-    PitOutParamError out_error
+    OpenPitParamRoundingStrategy rounding,
+    OpenPitParamFee * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_fee_from_decimal_rounded`
+## `openpit_create_param_fee_from_decimal_rounded`
 
 ```c
-bool pit_create_param_fee_from_decimal_rounded(
-    PitParamDecimal value,
+bool openpit_create_param_fee_from_decimal_rounded(
+    OpenPitParamDecimal value,
     uint32_t scale,
-    PitParamRoundingStrategy rounding,
-    PitParamFee * out,
-    PitOutParamError out_error
+    OpenPitParamRoundingStrategy rounding,
+    OpenPitParamFee * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_fee_to_f64`
+## `openpit_param_fee_to_f64`
 
 ```c
-bool pit_param_fee_to_f64(
-    PitParamFee value,
+bool openpit_param_fee_to_f64(
+    OpenPitParamFee value,
     double * out,
-    PitOutParamError out_error
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_fee_is_zero`
+## `openpit_param_fee_is_zero`
 
 ```c
-bool pit_param_fee_is_zero(
-    PitParamFee value,
+bool openpit_param_fee_is_zero(
+    OpenPitParamFee value,
     bool * out,
-    PitOutParamError out_error
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_fee_compare`
+## `openpit_param_fee_compare`
 
 ```c
-bool pit_param_fee_compare(
-    PitParamFee lhs,
-    PitParamFee rhs,
+bool openpit_param_fee_compare(
+    OpenPitParamFee lhs,
+    OpenPitParamFee rhs,
     int8_t * out,
-    PitOutParamError out_error
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_fee_to_string`
+## `openpit_param_fee_to_string`
 
 ```c
-PitSharedString * pit_param_fee_to_string(
-    PitParamFee value,
-    PitOutParamError out_error
+OpenPitSharedString * openpit_param_fee_to_string(
+    OpenPitParamFee value,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_fee_checked_add`
+## `openpit_param_fee_checked_add`
 
 ```c
-bool pit_param_fee_checked_add(
-    PitParamFee lhs,
-    PitParamFee rhs,
-    PitParamFee * out,
-    PitOutParamError out_error
+bool openpit_param_fee_checked_add(
+    OpenPitParamFee lhs,
+    OpenPitParamFee rhs,
+    OpenPitParamFee * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_fee_checked_sub`
+## `openpit_param_fee_checked_sub`
 
 ```c
-bool pit_param_fee_checked_sub(
-    PitParamFee lhs,
-    PitParamFee rhs,
-    PitParamFee * out,
-    PitOutParamError out_error
+bool openpit_param_fee_checked_sub(
+    OpenPitParamFee lhs,
+    OpenPitParamFee rhs,
+    OpenPitParamFee * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_fee_checked_mul_i64`
+## `openpit_param_fee_checked_mul_i64`
 
 ```c
-bool pit_param_fee_checked_mul_i64(
-    PitParamFee value,
+bool openpit_param_fee_checked_mul_i64(
+    OpenPitParamFee value,
     int64_t multiplier,
-    PitParamFee * out,
-    PitOutParamError out_error
+    OpenPitParamFee * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_fee_checked_mul_u64`
+## `openpit_param_fee_checked_mul_u64`
 
 ```c
-bool pit_param_fee_checked_mul_u64(
-    PitParamFee value,
+bool openpit_param_fee_checked_mul_u64(
+    OpenPitParamFee value,
     uint64_t multiplier,
-    PitParamFee * out,
-    PitOutParamError out_error
+    OpenPitParamFee * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_fee_checked_mul_f64`
+## `openpit_param_fee_checked_mul_f64`
 
 ```c
-bool pit_param_fee_checked_mul_f64(
-    PitParamFee value,
+bool openpit_param_fee_checked_mul_f64(
+    OpenPitParamFee value,
     double multiplier,
-    PitParamFee * out,
-    PitOutParamError out_error
+    OpenPitParamFee * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_fee_checked_div_i64`
+## `openpit_param_fee_checked_div_i64`
 
 ```c
-bool pit_param_fee_checked_div_i64(
-    PitParamFee value,
+bool openpit_param_fee_checked_div_i64(
+    OpenPitParamFee value,
     int64_t divisor,
-    PitParamFee * out,
-    PitOutParamError out_error
+    OpenPitParamFee * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_fee_checked_div_u64`
+## `openpit_param_fee_checked_div_u64`
 
 ```c
-bool pit_param_fee_checked_div_u64(
-    PitParamFee value,
+bool openpit_param_fee_checked_div_u64(
+    OpenPitParamFee value,
     uint64_t divisor,
-    PitParamFee * out,
-    PitOutParamError out_error
+    OpenPitParamFee * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_fee_checked_div_f64`
+## `openpit_param_fee_checked_div_f64`
 
 ```c
-bool pit_param_fee_checked_div_f64(
-    PitParamFee value,
+bool openpit_param_fee_checked_div_f64(
+    OpenPitParamFee value,
     double divisor,
-    PitParamFee * out,
-    PitOutParamError out_error
+    OpenPitParamFee * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_fee_checked_rem_i64`
+## `openpit_param_fee_checked_rem_i64`
 
 ```c
-bool pit_param_fee_checked_rem_i64(
-    PitParamFee value,
+bool openpit_param_fee_checked_rem_i64(
+    OpenPitParamFee value,
     int64_t divisor,
-    PitParamFee * out,
-    PitOutParamError out_error
+    OpenPitParamFee * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_fee_checked_rem_u64`
+## `openpit_param_fee_checked_rem_u64`
 
 ```c
-bool pit_param_fee_checked_rem_u64(
-    PitParamFee value,
+bool openpit_param_fee_checked_rem_u64(
+    OpenPitParamFee value,
     uint64_t divisor,
-    PitParamFee * out,
-    PitOutParamError out_error
+    OpenPitParamFee * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_fee_checked_rem_f64`
+## `openpit_param_fee_checked_rem_f64`
 
 ```c
-bool pit_param_fee_checked_rem_f64(
-    PitParamFee value,
+bool openpit_param_fee_checked_rem_f64(
+    OpenPitParamFee value,
     double divisor,
-    PitParamFee * out,
-    PitOutParamError out_error
+    OpenPitParamFee * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_fee_checked_neg`
+## `openpit_param_fee_checked_neg`
 
 ```c
-bool pit_param_fee_checked_neg(
-    PitParamFee value,
-    PitParamFee * out,
-    PitOutParamError out_error
+bool openpit_param_fee_checked_neg(
+    OpenPitParamFee value,
+    OpenPitParamFee * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_notional_from_str`
+## `openpit_create_param_notional_from_str`
 
 ```c
-bool pit_create_param_notional_from_str(
-    PitStringView value,
-    PitParamNotional * out,
-    PitOutParamError out_error
+bool openpit_create_param_notional_from_str(
+    OpenPitStringView value,
+    OpenPitParamNotional * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_notional_from_f64`
+## `openpit_create_param_notional_from_f64`
 
 ```c
-bool pit_create_param_notional_from_f64(
+bool openpit_create_param_notional_from_f64(
     double value,
-    PitParamNotional * out,
-    PitOutParamError out_error
+    OpenPitParamNotional * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_notional_from_i64`
+## `openpit_create_param_notional_from_i64`
 
 ```c
-bool pit_create_param_notional_from_i64(
+bool openpit_create_param_notional_from_i64(
     int64_t value,
-    PitParamNotional * out,
-    PitOutParamError out_error
+    OpenPitParamNotional * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_notional_from_u64`
+## `openpit_create_param_notional_from_u64`
 
 ```c
-bool pit_create_param_notional_from_u64(
+bool openpit_create_param_notional_from_u64(
     uint64_t value,
-    PitParamNotional * out,
-    PitOutParamError out_error
+    OpenPitParamNotional * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_notional_from_str_rounded`
+## `openpit_create_param_notional_from_str_rounded`
 
 ```c
-bool pit_create_param_notional_from_str_rounded(
-    PitStringView value,
+bool openpit_create_param_notional_from_str_rounded(
+    OpenPitStringView value,
     uint32_t scale,
-    PitParamRoundingStrategy rounding,
-    PitParamNotional * out,
-    PitOutParamError out_error
+    OpenPitParamRoundingStrategy rounding,
+    OpenPitParamNotional * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_notional_from_f64_rounded`
+## `openpit_create_param_notional_from_f64_rounded`
 
 ```c
-bool pit_create_param_notional_from_f64_rounded(
+bool openpit_create_param_notional_from_f64_rounded(
     double value,
     uint32_t scale,
-    PitParamRoundingStrategy rounding,
-    PitParamNotional * out,
-    PitOutParamError out_error
+    OpenPitParamRoundingStrategy rounding,
+    OpenPitParamNotional * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_notional_from_decimal_rounded`
+## `openpit_create_param_notional_from_decimal_rounded`
 
 ```c
-bool pit_create_param_notional_from_decimal_rounded(
-    PitParamDecimal value,
+bool openpit_create_param_notional_from_decimal_rounded(
+    OpenPitParamDecimal value,
     uint32_t scale,
-    PitParamRoundingStrategy rounding,
-    PitParamNotional * out,
-    PitOutParamError out_error
+    OpenPitParamRoundingStrategy rounding,
+    OpenPitParamNotional * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_notional_to_f64`
+## `openpit_param_notional_to_f64`
 
 ```c
-bool pit_param_notional_to_f64(
-    PitParamNotional value,
+bool openpit_param_notional_to_f64(
+    OpenPitParamNotional value,
     double * out,
-    PitOutParamError out_error
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_notional_is_zero`
+## `openpit_param_notional_is_zero`
 
 ```c
-bool pit_param_notional_is_zero(
-    PitParamNotional value,
+bool openpit_param_notional_is_zero(
+    OpenPitParamNotional value,
     bool * out,
-    PitOutParamError out_error
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_notional_compare`
+## `openpit_param_notional_compare`
 
 ```c
-bool pit_param_notional_compare(
-    PitParamNotional lhs,
-    PitParamNotional rhs,
+bool openpit_param_notional_compare(
+    OpenPitParamNotional lhs,
+    OpenPitParamNotional rhs,
     int8_t * out,
-    PitOutParamError out_error
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_notional_to_string`
+## `openpit_param_notional_to_string`
 
 ```c
-PitSharedString * pit_param_notional_to_string(
-    PitParamNotional value,
-    PitOutParamError out_error
+OpenPitSharedString * openpit_param_notional_to_string(
+    OpenPitParamNotional value,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_notional_checked_add`
+## `openpit_param_notional_checked_add`
 
 ```c
-bool pit_param_notional_checked_add(
-    PitParamNotional lhs,
-    PitParamNotional rhs,
-    PitParamNotional * out,
-    PitOutParamError out_error
+bool openpit_param_notional_checked_add(
+    OpenPitParamNotional lhs,
+    OpenPitParamNotional rhs,
+    OpenPitParamNotional * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_notional_checked_sub`
+## `openpit_param_notional_checked_sub`
 
 ```c
-bool pit_param_notional_checked_sub(
-    PitParamNotional lhs,
-    PitParamNotional rhs,
-    PitParamNotional * out,
-    PitOutParamError out_error
+bool openpit_param_notional_checked_sub(
+    OpenPitParamNotional lhs,
+    OpenPitParamNotional rhs,
+    OpenPitParamNotional * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_notional_checked_mul_i64`
+## `openpit_param_notional_checked_mul_i64`
 
 ```c
-bool pit_param_notional_checked_mul_i64(
-    PitParamNotional value,
+bool openpit_param_notional_checked_mul_i64(
+    OpenPitParamNotional value,
     int64_t multiplier,
-    PitParamNotional * out,
-    PitOutParamError out_error
+    OpenPitParamNotional * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_notional_checked_mul_u64`
+## `openpit_param_notional_checked_mul_u64`
 
 ```c
-bool pit_param_notional_checked_mul_u64(
-    PitParamNotional value,
+bool openpit_param_notional_checked_mul_u64(
+    OpenPitParamNotional value,
     uint64_t multiplier,
-    PitParamNotional * out,
-    PitOutParamError out_error
+    OpenPitParamNotional * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_notional_checked_mul_f64`
+## `openpit_param_notional_checked_mul_f64`
 
 ```c
-bool pit_param_notional_checked_mul_f64(
-    PitParamNotional value,
+bool openpit_param_notional_checked_mul_f64(
+    OpenPitParamNotional value,
     double multiplier,
-    PitParamNotional * out,
-    PitOutParamError out_error
+    OpenPitParamNotional * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_notional_checked_div_i64`
+## `openpit_param_notional_checked_div_i64`
 
 ```c
-bool pit_param_notional_checked_div_i64(
-    PitParamNotional value,
+bool openpit_param_notional_checked_div_i64(
+    OpenPitParamNotional value,
     int64_t divisor,
-    PitParamNotional * out,
-    PitOutParamError out_error
+    OpenPitParamNotional * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_notional_checked_div_u64`
+## `openpit_param_notional_checked_div_u64`
 
 ```c
-bool pit_param_notional_checked_div_u64(
-    PitParamNotional value,
+bool openpit_param_notional_checked_div_u64(
+    OpenPitParamNotional value,
     uint64_t divisor,
-    PitParamNotional * out,
-    PitOutParamError out_error
+    OpenPitParamNotional * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_notional_checked_div_f64`
+## `openpit_param_notional_checked_div_f64`
 
 ```c
-bool pit_param_notional_checked_div_f64(
-    PitParamNotional value,
+bool openpit_param_notional_checked_div_f64(
+    OpenPitParamNotional value,
     double divisor,
-    PitParamNotional * out,
-    PitOutParamError out_error
+    OpenPitParamNotional * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_notional_checked_rem_i64`
+## `openpit_param_notional_checked_rem_i64`
 
 ```c
-bool pit_param_notional_checked_rem_i64(
-    PitParamNotional value,
+bool openpit_param_notional_checked_rem_i64(
+    OpenPitParamNotional value,
     int64_t divisor,
-    PitParamNotional * out,
-    PitOutParamError out_error
+    OpenPitParamNotional * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_notional_checked_rem_u64`
+## `openpit_param_notional_checked_rem_u64`
 
 ```c
-bool pit_param_notional_checked_rem_u64(
-    PitParamNotional value,
+bool openpit_param_notional_checked_rem_u64(
+    OpenPitParamNotional value,
     uint64_t divisor,
-    PitParamNotional * out,
-    PitOutParamError out_error
+    OpenPitParamNotional * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_notional_checked_rem_f64`
+## `openpit_param_notional_checked_rem_f64`
 
 ```c
-bool pit_param_notional_checked_rem_f64(
-    PitParamNotional value,
+bool openpit_param_notional_checked_rem_f64(
+    OpenPitParamNotional value,
     double divisor,
-    PitParamNotional * out,
-    PitOutParamError out_error
+    OpenPitParamNotional * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `PitParamNotionalOptional`
+## `OpenPitParamNotionalOptional`
 
 ```c
-typedef struct PitParamNotionalOptional {
-    PitParamNotional value;
+typedef struct OpenPitParamNotionalOptional {
+    OpenPitParamNotional value;
     bool is_set;
-} PitParamNotionalOptional;
+} OpenPitParamNotionalOptional;
 ```
 
-## `PitParamPnlOptional`
+## `OpenPitParamPnlOptional`
 
 ```c
-typedef struct PitParamPnlOptional {
-    PitParamPnl value;
+typedef struct OpenPitParamPnlOptional {
+    OpenPitParamPnl value;
     bool is_set;
-} PitParamPnlOptional;
+} OpenPitParamPnlOptional;
 ```
 
-## `PitParamPriceOptional`
+## `OpenPitParamPriceOptional`
 
 ```c
-typedef struct PitParamPriceOptional {
-    PitParamPrice value;
+typedef struct OpenPitParamPriceOptional {
+    OpenPitParamPrice value;
     bool is_set;
-} PitParamPriceOptional;
+} OpenPitParamPriceOptional;
 ```
 
-## `PitParamQuantityOptional`
+## `OpenPitParamQuantityOptional`
 
 ```c
-typedef struct PitParamQuantityOptional {
-    PitParamQuantity value;
+typedef struct OpenPitParamQuantityOptional {
+    OpenPitParamQuantity value;
     bool is_set;
-} PitParamQuantityOptional;
+} OpenPitParamQuantityOptional;
 ```
 
-## `PitParamVolumeOptional`
+## `OpenPitParamVolumeOptional`
 
 ```c
-typedef struct PitParamVolumeOptional {
-    PitParamVolume value;
+typedef struct OpenPitParamVolumeOptional {
+    OpenPitParamVolume value;
     bool is_set;
-} PitParamVolumeOptional;
+} OpenPitParamVolumeOptional;
 ```
 
-## `PitParamCashFlowOptional`
+## `OpenPitParamCashFlowOptional`
 
 ```c
-typedef struct PitParamCashFlowOptional {
-    PitParamCashFlow value;
+typedef struct OpenPitParamCashFlowOptional {
+    OpenPitParamCashFlow value;
     bool is_set;
-} PitParamCashFlowOptional;
+} OpenPitParamCashFlowOptional;
 ```
 
-## `PitParamPositionSizeOptional`
+## `OpenPitParamPositionSizeOptional`
 
 ```c
-typedef struct PitParamPositionSizeOptional {
-    PitParamPositionSize value;
+typedef struct OpenPitParamPositionSizeOptional {
+    OpenPitParamPositionSize value;
     bool is_set;
-} PitParamPositionSizeOptional;
+} OpenPitParamPositionSizeOptional;
 ```
 
-## `PitParamFeeOptional`
+## `OpenPitParamFeeOptional`
 
 ```c
-typedef struct PitParamFeeOptional {
-    PitParamFee value;
+typedef struct OpenPitParamFeeOptional {
+    OpenPitParamFee value;
     bool is_set;
-} PitParamFeeOptional;
+} OpenPitParamFeeOptional;
 ```
 
-## `PitParamAccountIdOptional`
+## `OpenPitParamAccountIdOptional`
 
 ```c
-typedef struct PitParamAccountIdOptional {
-    PitParamAccountId value;
+typedef struct OpenPitParamAccountIdOptional {
+    OpenPitParamAccountId value;
     bool is_set;
-} PitParamAccountIdOptional;
+} OpenPitParamAccountIdOptional;
 ```
 
-## `pit_param_leverage_calculate_margin_required`
+## `openpit_param_leverage_calculate_margin_required`
 
 ```c
-bool pit_param_leverage_calculate_margin_required(
-    PitParamLeverage leverage,
-    PitParamNotional notional,
-    PitParamNotional * out,
-    PitOutParamError out_error
+bool openpit_param_leverage_calculate_margin_required(
+    OpenPitParamLeverage leverage,
+    OpenPitParamNotional notional,
+    OpenPitParamNotional * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_price_calculate_volume`
+## `openpit_param_price_calculate_volume`
 
 ```c
-bool pit_param_price_calculate_volume(
-    PitParamPrice price,
-    PitParamQuantity quantity,
-    PitParamVolume * out,
-    PitOutParamError out_error
+bool openpit_param_price_calculate_volume(
+    OpenPitParamPrice price,
+    OpenPitParamQuantity quantity,
+    OpenPitParamVolume * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_quantity_calculate_volume`
+## `openpit_param_quantity_calculate_volume`
 
 ```c
-bool pit_param_quantity_calculate_volume(
-    PitParamQuantity quantity,
-    PitParamPrice price,
-    PitParamVolume * out,
-    PitOutParamError out_error
+bool openpit_param_quantity_calculate_volume(
+    OpenPitParamQuantity quantity,
+    OpenPitParamPrice price,
+    OpenPitParamVolume * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_volume_calculate_quantity`
+## `openpit_param_volume_calculate_quantity`
 
 ```c
-bool pit_param_volume_calculate_quantity(
-    PitParamVolume volume,
-    PitParamPrice price,
-    PitParamQuantity * out,
-    PitOutParamError out_error
+bool openpit_param_volume_calculate_quantity(
+    OpenPitParamVolume volume,
+    OpenPitParamPrice price,
+    OpenPitParamQuantity * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_pnl_to_cash_flow`
+## `openpit_param_pnl_to_cash_flow`
 
 ```c
-bool pit_param_pnl_to_cash_flow(
-    PitParamPnl value,
-    PitParamCashFlow * out,
-    PitOutParamError out_error
+bool openpit_param_pnl_to_cash_flow(
+    OpenPitParamPnl value,
+    OpenPitParamCashFlow * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_pnl_to_position_size`
+## `openpit_param_pnl_to_position_size`
 
 ```c
-bool pit_param_pnl_to_position_size(
-    PitParamPnl value,
-    PitParamPositionSize * out,
-    PitOutParamError out_error
+bool openpit_param_pnl_to_position_size(
+    OpenPitParamPnl value,
+    OpenPitParamPositionSize * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_pnl_from_fee`
+## `openpit_param_pnl_from_fee`
 
 ```c
-bool pit_param_pnl_from_fee(
-    PitParamFee fee,
-    PitParamPnl * out,
-    PitOutParamError out_error
+bool openpit_param_pnl_from_fee(
+    OpenPitParamFee fee,
+    OpenPitParamPnl * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_cash_flow_from_pnl`
+## `openpit_param_cash_flow_from_pnl`
 
 ```c
-bool pit_param_cash_flow_from_pnl(
-    PitParamPnl pnl,
-    PitParamCashFlow * out,
-    PitOutParamError out_error
+bool openpit_param_cash_flow_from_pnl(
+    OpenPitParamPnl pnl,
+    OpenPitParamCashFlow * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_cash_flow_from_fee`
+## `openpit_param_cash_flow_from_fee`
 
 ```c
-bool pit_param_cash_flow_from_fee(
-    PitParamFee fee,
-    PitParamCashFlow * out,
-    PitOutParamError out_error
+bool openpit_param_cash_flow_from_fee(
+    OpenPitParamFee fee,
+    OpenPitParamCashFlow * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_cash_flow_from_volume_inflow`
+## `openpit_param_cash_flow_from_volume_inflow`
 
 ```c
-bool pit_param_cash_flow_from_volume_inflow(
-    PitParamVolume volume,
-    PitParamCashFlow * out,
-    PitOutParamError out_error
+bool openpit_param_cash_flow_from_volume_inflow(
+    OpenPitParamVolume volume,
+    OpenPitParamCashFlow * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_cash_flow_from_volume_outflow`
+## `openpit_param_cash_flow_from_volume_outflow`
 
 ```c
-bool pit_param_cash_flow_from_volume_outflow(
-    PitParamVolume volume,
-    PitParamCashFlow * out,
-    PitOutParamError out_error
+bool openpit_param_cash_flow_from_volume_outflow(
+    OpenPitParamVolume volume,
+    OpenPitParamCashFlow * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_fee_to_pnl`
+## `openpit_param_fee_to_pnl`
 
 ```c
-bool pit_param_fee_to_pnl(
-    PitParamFee fee,
-    PitParamPnl * out,
-    PitOutParamError out_error
+bool openpit_param_fee_to_pnl(
+    OpenPitParamFee fee,
+    OpenPitParamPnl * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_fee_to_position_size`
+## `openpit_param_fee_to_position_size`
 
 ```c
-bool pit_param_fee_to_position_size(
-    PitParamFee fee,
-    PitParamPositionSize * out,
-    PitOutParamError out_error
+bool openpit_param_fee_to_position_size(
+    OpenPitParamFee fee,
+    OpenPitParamPositionSize * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_fee_to_cash_flow`
+## `openpit_param_fee_to_cash_flow`
 
 ```c
-bool pit_param_fee_to_cash_flow(
-    PitParamFee fee,
-    PitParamCashFlow * out,
-    PitOutParamError out_error
+bool openpit_param_fee_to_cash_flow(
+    OpenPitParamFee fee,
+    OpenPitParamCashFlow * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_volume_to_cash_flow_inflow`
+## `openpit_param_volume_to_cash_flow_inflow`
 
 ```c
-bool pit_param_volume_to_cash_flow_inflow(
-    PitParamVolume volume,
-    PitParamCashFlow * out,
-    PitOutParamError out_error
+bool openpit_param_volume_to_cash_flow_inflow(
+    OpenPitParamVolume volume,
+    OpenPitParamCashFlow * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_volume_to_cash_flow_outflow`
+## `openpit_param_volume_to_cash_flow_outflow`
 
 ```c
-bool pit_param_volume_to_cash_flow_outflow(
-    PitParamVolume volume,
-    PitParamCashFlow * out,
-    PitOutParamError out_error
+bool openpit_param_volume_to_cash_flow_outflow(
+    OpenPitParamVolume volume,
+    OpenPitParamCashFlow * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_position_size_from_pnl`
+## `openpit_param_position_size_from_pnl`
 
 ```c
-bool pit_param_position_size_from_pnl(
-    PitParamPnl pnl,
-    PitParamPositionSize * out,
-    PitOutParamError out_error
+bool openpit_param_position_size_from_pnl(
+    OpenPitParamPnl pnl,
+    OpenPitParamPositionSize * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_position_size_from_fee`
+## `openpit_param_position_size_from_fee`
 
 ```c
-bool pit_param_position_size_from_fee(
-    PitParamFee fee,
-    PitParamPositionSize * out,
-    PitOutParamError out_error
+bool openpit_param_position_size_from_fee(
+    OpenPitParamFee fee,
+    OpenPitParamPositionSize * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_position_size_from_quantity_and_side`
+## `openpit_param_position_size_from_quantity_and_side`
 
 ```c
-bool pit_param_position_size_from_quantity_and_side(
-    PitParamQuantity quantity,
-    PitParamSide side,
-    PitParamPositionSize * out,
-    PitOutParamError out_error
+bool openpit_param_position_size_from_quantity_and_side(
+    OpenPitParamQuantity quantity,
+    OpenPitParamSide side,
+    OpenPitParamPositionSize * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_position_size_to_open_quantity`
+## `openpit_param_position_size_to_open_quantity`
 
 ```c
-bool pit_param_position_size_to_open_quantity(
-    PitParamPositionSize value,
-    PitParamQuantity * out_quantity,
-    PitParamSide * out_side,
-    PitOutParamError out_error
+bool openpit_param_position_size_to_open_quantity(
+    OpenPitParamPositionSize value,
+    OpenPitParamQuantity * out_quantity,
+    OpenPitParamSide * out_side,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_position_size_to_close_quantity`
+## `openpit_param_position_size_to_close_quantity`
 
 ```c
-bool pit_param_position_size_to_close_quantity(
-    PitParamPositionSize value,
-    PitParamQuantity * out_quantity,
-    PitParamSide * out_side,
-    PitOutParamError out_error
+bool openpit_param_position_size_to_close_quantity(
+    OpenPitParamPositionSize value,
+    OpenPitParamQuantity * out_quantity,
+    OpenPitParamSide * out_side,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_position_size_checked_add_quantity`
+## `openpit_param_position_size_checked_add_quantity`
 
 ```c
-bool pit_param_position_size_checked_add_quantity(
-    PitParamPositionSize value,
-    PitParamQuantity quantity,
-    PitParamSide side,
-    PitParamPositionSize * out,
-    PitOutParamError out_error
+bool openpit_param_position_size_checked_add_quantity(
+    OpenPitParamPositionSize value,
+    OpenPitParamQuantity quantity,
+    OpenPitParamSide side,
+    OpenPitParamPositionSize * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_price_calculate_notional`
+## `openpit_param_price_calculate_notional`
 
 ```c
-bool pit_param_price_calculate_notional(
-    PitParamPrice price,
-    PitParamQuantity quantity,
-    PitParamNotional * out,
-    PitOutParamError out_error
+bool openpit_param_price_calculate_notional(
+    OpenPitParamPrice price,
+    OpenPitParamQuantity quantity,
+    OpenPitParamNotional * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_quantity_calculate_notional`
+## `openpit_param_quantity_calculate_notional`
 
 ```c
-bool pit_param_quantity_calculate_notional(
-    PitParamQuantity quantity,
-    PitParamPrice price,
-    PitParamNotional * out,
-    PitOutParamError out_error
+bool openpit_param_quantity_calculate_notional(
+    OpenPitParamQuantity quantity,
+    OpenPitParamPrice price,
+    OpenPitParamNotional * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_notional_from_volume`
+## `openpit_param_notional_from_volume`
 
 ```c
-bool pit_param_notional_from_volume(
-    PitParamVolume volume,
-    PitParamNotional * out,
-    PitOutParamError out_error
+bool openpit_param_notional_from_volume(
+    OpenPitParamVolume volume,
+    OpenPitParamNotional * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_notional_to_volume`
+## `openpit_param_notional_to_volume`
 
 ```c
-bool pit_param_notional_to_volume(
-    PitParamNotional notional,
-    PitParamVolume * out,
-    PitOutParamError out_error
+bool openpit_param_notional_to_volume(
+    OpenPitParamNotional notional,
+    OpenPitParamVolume * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_notional_calculate_margin_required`
+## `openpit_param_notional_calculate_margin_required`
 
 ```c
-bool pit_param_notional_calculate_margin_required(
-    PitParamNotional notional,
-    PitParamLeverage leverage,
-    PitParamNotional * out,
-    PitOutParamError out_error
+bool openpit_param_notional_calculate_margin_required(
+    OpenPitParamNotional notional,
+    OpenPitParamLeverage leverage,
+    OpenPitParamNotional * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_param_volume_from_notional`
+## `openpit_param_volume_from_notional`
 
 ```c
-bool pit_param_volume_from_notional(
-    PitParamNotional notional,
-    PitParamVolume * out,
-    PitOutParamError out_error
+bool openpit_param_volume_from_notional(
+    OpenPitParamNotional notional,
+    OpenPitParamVolume * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_account_id_from_u64`
+## `openpit_create_param_account_id_from_u64`
 
 Constructs an account identifier from a 64-bit integer.
 
 This is a direct numeric mapping with no collision risk.
 
 WARNING: Do not mix IDs produced by this function with IDs produced by
-`pit_create_param_account_id_from_str` in the same runtime state.
+`openpit_create_param_account_id_from_str` in the same runtime state.
 
 Contract:
 
@@ -2997,12 +3001,12 @@ Contract:
 - this function always succeeds.
 
 ```c
-PitParamAccountId pit_create_param_account_id_from_u64(
+OpenPitParamAccountId openpit_create_param_account_id_from_u64(
     uint64_t value
 );
 ```
 
-## `pit_create_param_account_id_from_str`
+## `openpit_create_param_account_id_from_str`
 
 Constructs an account identifier from a UTF-8 byte sequence.
 
@@ -3015,18 +3019,19 @@ Collision note:
 - for `n` distinct account strings the probability of at least one collision
   is approximately `n^2 / 2^65`.
 - if collision risk is unacceptable, keep your own collision-free
-  string-to-integer mapping and use `pit_create_param_account_id_from_u64`.
+  string-to-integer mapping and use
+  `openpit_create_param_account_id_from_u64`.
 
 The previous sentence is why this helper is suitable for stable adapter-side
 mapping, but not for workflows that require guaranteed uniqueness.
 
 WARNING: Do not mix IDs produced by this function with IDs produced by
-`pit_create_param_account_id_from_u64` in the same runtime state.
+`openpit_create_param_account_id_from_u64` in the same runtime state.
 
 Contract:
 
 - returns `true` and writes a stable account identifier to `out` on success;
-- returns `false` on invalid input and optionally writes `PitParamError`.
+- returns `false` on invalid input and optionally writes `OpenPitParamError`.
 
 ### Safety
 
@@ -3034,124 +3039,124 @@ Contract:
 bytes.
 
 ```c
-bool pit_create_param_account_id_from_str(
-    PitStringView value,
-    PitParamAccountId * out,
-    PitOutParamError out_error
+bool openpit_create_param_account_id_from_str(
+    OpenPitStringView value,
+    OpenPitParamAccountId * out,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_create_param_asset_from_str`
+## `openpit_create_param_asset_from_str`
 
 Validates and copies an asset identifier into a caller-owned shared-string
 handle.
 
-The returned handle must be destroyed with `pit_destroy_param_asset`.
+The returned handle must be destroyed with `openpit_destroy_param_asset`.
 
 ```c
-PitSharedString * pit_create_param_asset_from_str(
-    PitStringView value,
-    PitOutParamError out_error
+OpenPitSharedString * openpit_create_param_asset_from_str(
+    OpenPitStringView value,
+    OpenPitOutParamError out_error
 );
 ```
 
-## `pit_destroy_param_asset`
+## `openpit_destroy_param_asset`
 
 Destroys a caller-owned asset handle created by
-`pit_create_param_asset_from_str`.
+`openpit_create_param_asset_from_str`.
 
 ```c
-void pit_destroy_param_asset(
-    PitSharedString * handle
+void openpit_destroy_param_asset(
+    OpenPitSharedString * handle
 );
 ```
 
-## `PitParamErrorCode`
+## `OpenPitParamErrorCode`
 
 Parameter error code transported through FFI.
 
 ```c
-typedef uint32_t PitParamErrorCode;
+typedef uint32_t OpenPitParamErrorCode;
 /**
  * Error code is not specified.
  */
-#define PitParamErrorCode_Unspecified ((PitParamErrorCode) 0)
+#define OpenPitParamErrorCode_Unspecified ((OpenPitParamErrorCode) 0)
 /**
  * Value must be non-negative.
  */
-#define PitParamErrorCode_Negative ((PitParamErrorCode) 1)
+#define OpenPitParamErrorCode_Negative ((OpenPitParamErrorCode) 1)
 /**
  * Division by zero.
  */
-#define PitParamErrorCode_DivisionByZero ((PitParamErrorCode) 2)
+#define OpenPitParamErrorCode_DivisionByZero ((OpenPitParamErrorCode) 2)
 /**
  * Arithmetic overflow.
  */
-#define PitParamErrorCode_Overflow ((PitParamErrorCode) 3)
+#define OpenPitParamErrorCode_Overflow ((OpenPitParamErrorCode) 3)
 /**
  * Arithmetic underflow.
  */
-#define PitParamErrorCode_Underflow ((PitParamErrorCode) 4)
+#define OpenPitParamErrorCode_Underflow ((OpenPitParamErrorCode) 4)
 /**
  * Invalid float value.
  */
-#define PitParamErrorCode_InvalidFloat ((PitParamErrorCode) 5)
+#define OpenPitParamErrorCode_InvalidFloat ((OpenPitParamErrorCode) 5)
 /**
  * Invalid textual format.
  */
-#define PitParamErrorCode_InvalidFormat ((PitParamErrorCode) 6)
+#define OpenPitParamErrorCode_InvalidFormat ((OpenPitParamErrorCode) 6)
 /**
  * Invalid price value.
  */
-#define PitParamErrorCode_InvalidPrice ((PitParamErrorCode) 7)
+#define OpenPitParamErrorCode_InvalidPrice ((OpenPitParamErrorCode) 7)
 /**
  * Invalid leverage value.
  */
-#define PitParamErrorCode_InvalidLeverage ((PitParamErrorCode) 8)
+#define OpenPitParamErrorCode_InvalidLeverage ((OpenPitParamErrorCode) 8)
 /**
  * Asset identifier is empty.
  */
-#define PitParamErrorCode_AssetEmpty ((PitParamErrorCode) 9)
+#define OpenPitParamErrorCode_AssetEmpty ((OpenPitParamErrorCode) 9)
 /**
  * Account identifier string is empty.
  */
-#define PitParamErrorCode_AccountIdEmpty ((PitParamErrorCode) 10)
+#define OpenPitParamErrorCode_AccountIdEmpty ((OpenPitParamErrorCode) 10)
 /**
  * Catch-all code for unknown cases.
  */
-#define PitParamErrorCode_Other ((PitParamErrorCode) 4294967295)
+#define OpenPitParamErrorCode_Other ((OpenPitParamErrorCode) 4294967295)
 ```
 
-## `PitParamError`
+## `OpenPitParamError`
 
 Caller-owned parameter error container.
 
 ```c
-typedef struct PitParamError {
-    PitParamErrorCode code;
-    PitSharedString * message;
-} PitParamError;
+typedef struct OpenPitParamError {
+    OpenPitParamErrorCode code;
+    OpenPitSharedString * message;
+} OpenPitParamError;
 ```
 
-## `PitOutParamError`
+## `OpenPitOutParamError`
 
 Parameter error out-pointer used by fallible param FFI calls.
 
 ```c
-typedef PitParamError ** PitOutParamError;
+typedef OpenPitParamError ** OpenPitOutParamError;
 ```
 
-## `pit_destroy_param_error`
+## `openpit_destroy_param_error`
 
 Releases a caller-owned parameter error container.
 
 ### Safety
 
 `handle` must be either null or a pointer returned by this library through
-`PitOutParamError`. The handle must be destroyed at most once.
+`OpenPitOutParamError`. The handle must be destroyed at most once.
 
 ```c
-void pit_destroy_param_error(
-    PitParamError * handle
+void openpit_destroy_param_error(
+    OpenPitParamError * handle
 );
 ```

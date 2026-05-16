@@ -19,7 +19,7 @@ package custompolicy
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../native
-#include "pit.h"
+#include "openpit.h"
 */
 import "C"
 
@@ -30,6 +30,6 @@ import (
 	"go.openpit.dev/openpit/reject"
 )
 
-func newNativeRejectListOrNil(source []reject.Reject) *C.PitRejectList {
-	return (*C.PitRejectList)(unsafe.Pointer(convert.NewNativeRejectListOrNil(source)))
+func newNativeRejectListOrNil(source []reject.Reject) *C.OpenPitRejectList {
+	return (*C.OpenPitRejectList)(unsafe.Pointer(convert.NewNativeRejectListOrNil(source)))
 }

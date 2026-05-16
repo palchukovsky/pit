@@ -32,7 +32,7 @@ type ExecutionReport struct {
 	value native.ExecutionReport
 
 	// retainOperationInstrument keeps the Instrument (and its two constituent
-	// Assets) alive while the C struct's PitStringView fields point to their
+	// Assets) alive while the C struct's OpenPitStringView fields point to their
 	// C-heap buffers.  See param/asset.go and internal/native/asset_buf.go
 	// for the full explanation of the retain pattern.
 	retainOperationInstrument param.Instrument
@@ -223,7 +223,7 @@ type ExecutionReportOperation struct {
 	value native.ExecutionReportOperation
 
 	// retainInstrument keeps the Instrument (and its two constituent Assets)
-	// alive while the C struct's PitStringView fields point to their C-heap
+	// alive while the C struct's OpenPitStringView fields point to their C-heap
 	// buffers.  See param/asset.go for the full explanation.
 	retainInstrument param.Instrument
 }

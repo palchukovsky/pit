@@ -19,43 +19,43 @@ package custompolicy
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../native
-#include "pit.h"
+#include "openpit.h"
 
-extern PitRejectList* pitAccountAdjustmentPolicyApply(
-    const PitAccountAdjustmentContext* ctx,
-    PitParamAccountId account_id,
-    const PitAccountAdjustment* adjustment,
-    PitMutations* mutations,
+extern OpenPitRejectList* pitAccountAdjustmentPolicyApply(
+    const OpenPitAccountAdjustmentContext* ctx,
+    OpenPitParamAccountId account_id,
+    const OpenPitAccountAdjustment* adjustment,
+    OpenPitMutations* mutations,
     void* user_data);
 
 extern void pitAccountAdjustmentPolicyClose(void* user_data);
 
-static void* pit_account_adjustment_policy_apply_fn =
+static void* openpit_account_adjustment_policy_apply_fn =
     (void*)pitAccountAdjustmentPolicyApply;
 
-static PitAccountAdjustmentPolicyFreeUserDataFn
-    pit_account_adjustment_policy_free_user_data_fn = pitAccountAdjustmentPolicyClose;
+static OpenPitAccountAdjustmentPolicyFreeUserDataFn
+    openpit_account_adjustment_policy_free_user_data_fn = pitAccountAdjustmentPolicyClose;
 
 static void* pitAccountAdjustmentPolicyApplyFnAddr(void) {
-    return &pit_account_adjustment_policy_apply_fn;
+    return &openpit_account_adjustment_policy_apply_fn;
 }
 
 static void* pitAccountAdjustmentPolicyFreeUserDataFnAddr(void) {
-    return &pit_account_adjustment_policy_free_user_data_fn;
+    return &openpit_account_adjustment_policy_free_user_data_fn;
 }
 */
 import "C"
 import "unsafe"
 
 // AccountAdjustmentPolicyApplyFnAddr returns the address of a
-// PitAccountAdjustmentPolicyApplyFn variable holding the apply callback.
+// OpenPitAccountAdjustmentPolicyApplyFn variable holding the apply callback.
 // Pass the result to native.CreateCustomAccountAdjustmentPolicy.
 func AccountAdjustmentPolicyApplyFnAddr() unsafe.Pointer {
 	return C.pitAccountAdjustmentPolicyApplyFnAddr()
 }
 
 // AccountAdjustmentPolicyFreeUserDataFnAddr returns the address of a
-// PitAccountAdjustmentPolicyFreeUserDataFn variable holding the free callback.
+// OpenPitAccountAdjustmentPolicyFreeUserDataFn variable holding the free callback.
 // Pass the result to native.CreateCustomAccountAdjustmentPolicy.
 func AccountAdjustmentPolicyFreeUserDataFnAddr() unsafe.Pointer {
 	return C.pitAccountAdjustmentPolicyFreeUserDataFnAddr()

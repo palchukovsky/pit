@@ -4,56 +4,57 @@
 
 [Back to index](index.md)
 
-## `PitPretradeCheckPreTradeStartPolicy`
+## `OpenPitPretradeCheckPreTradeStartPolicy`
 
 Opaque pointer for a policy that runs at the start-stage pre-trade check.
 
 Contract:
 
 - Returned by start-stage policy create functions.
-- May be passed to `pit_engine_builder_add_check_pre_trade_start_policy`.
+- May be passed to `openpit_engine_builder_add_check_pre_trade_start_policy`.
 - Must be released by the caller with
-  `pit_destroy_pretrade_check_pre_trade_start_policy` when no longer needed.
+  `openpit_destroy_pretrade_check_pre_trade_start_policy` when no longer
+  needed.
 
 ```c
-typedef struct PitPretradeCheckPreTradeStartPolicy
-    PitPretradeCheckPreTradeStartPolicy;
+typedef struct OpenPitPretradeCheckPreTradeStartPolicy
+    OpenPitPretradeCheckPreTradeStartPolicy;
 ```
 
-## `PitPretradePreTradePolicy`
+## `OpenPitPretradePreTradePolicy`
 
 Opaque pointer for a policy that runs during the main pre-trade check stage.
 
 Contract:
 
 - Returned by main-stage policy create functions.
-- May be passed to `pit_engine_builder_add_pre_trade_policy`.
-- Must be released by the caller with `pit_destroy_pretrade_pre_trade_policy`
-  when no longer needed.
+- May be passed to `openpit_engine_builder_add_pre_trade_policy`.
+- Must be released by the caller with
+  `openpit_destroy_pretrade_pre_trade_policy` when no longer needed.
 
 ```c
-typedef struct PitPretradePreTradePolicy PitPretradePreTradePolicy;
+typedef struct OpenPitPretradePreTradePolicy OpenPitPretradePreTradePolicy;
 ```
 
-## `PitAccountAdjustmentPolicy`
+## `OpenPitAccountAdjustmentPolicy`
 
 Opaque pointer for a policy that validates account adjustments.
 
 Contract:
 
 - Returned by account-adjustment policy create functions.
-- May be passed to `pit_engine_builder_add_account_adjustment_policy`.
-- Must be released by the caller with `pit_destroy_account_adjustment_policy`
-  when no longer needed.
+- May be passed to `openpit_engine_builder_add_account_adjustment_policy`.
+- Must be released by the caller with
+  `openpit_destroy_account_adjustment_policy` when no longer needed.
 
 ```c
-typedef struct PitAccountAdjustmentPolicy PitAccountAdjustmentPolicy;
+typedef struct OpenPitAccountAdjustmentPolicy OpenPitAccountAdjustmentPolicy;
 ```
 
-## `PitPretradePoliciesPnlBoundsBarrier`
+## `OpenPitPretradePoliciesPnlBoundsBarrier`
 
 One broker barrier definition for
-`pit_engine_builder_add_builtin_pnl_bounds_killswitch_policy`.
+`openpit_engine_builder_add_builtin_pnl_bounds_killswitch_policy`.
 
 What it describes:
 
@@ -67,14 +68,14 @@ Contract:
 - The array passed to the add function may contain multiple entries.
 
 ```c
-typedef struct PitPretradePoliciesPnlBoundsBarrier {
-    PitStringView settlement_asset;
-    PitParamPnlOptional lower_bound;
-    PitParamPnlOptional upper_bound;
-} PitPretradePoliciesPnlBoundsBarrier;
+typedef struct OpenPitPretradePoliciesPnlBoundsBarrier {
+    OpenPitStringView settlement_asset;
+    OpenPitParamPnlOptional lower_bound;
+    OpenPitParamPnlOptional upper_bound;
+} OpenPitPretradePoliciesPnlBoundsBarrier;
 ```
 
-## `PitPretradePoliciesPnlBoundsAccountBarrier`
+## `OpenPitPretradePoliciesPnlBoundsAccountBarrier`
 
 Per-(account, settlement-asset) P&L bounds barrier with an initial P&L seed.
 
@@ -86,120 +87,120 @@ What it describes:
 - Both the broker barrier (if any) and this account+asset barrier are
   evaluated on every check; the order passes only if neither is breached.
 
-Passed to `pit_engine_builder_add_builtin_pnl_bounds_killswitch_policy` in the
-`account` array.
+Passed to `openpit_engine_builder_add_builtin_pnl_bounds_killswitch_policy` in
+the `account` array.
 
 ```c
-typedef struct PitPretradePoliciesPnlBoundsAccountBarrier {
-    PitParamAccountId account_id;
-    PitStringView settlement_asset;
-    PitParamPnlOptional lower_bound;
-    PitParamPnlOptional upper_bound;
-    PitParamPnl initial_pnl;
-} PitPretradePoliciesPnlBoundsAccountBarrier;
+typedef struct OpenPitPretradePoliciesPnlBoundsAccountBarrier {
+    OpenPitParamAccountId account_id;
+    OpenPitStringView settlement_asset;
+    OpenPitParamPnlOptional lower_bound;
+    OpenPitParamPnlOptional upper_bound;
+    OpenPitParamPnl initial_pnl;
+} OpenPitPretradePoliciesPnlBoundsAccountBarrier;
 ```
 
-## `PitPretradePoliciesRateLimitBrokerBarrier`
+## `OpenPitPretradePoliciesRateLimitBrokerBarrier`
 
 Broker-wide rate-limit barrier for
-`pit_engine_builder_add_builtin_rate_limit_policy`.
+`openpit_engine_builder_add_builtin_rate_limit_policy`.
 
 ```c
-typedef struct PitPretradePoliciesRateLimitBrokerBarrier {
+typedef struct OpenPitPretradePoliciesRateLimitBrokerBarrier {
     size_t max_orders;
     uint64_t window_nanoseconds;
-} PitPretradePoliciesRateLimitBrokerBarrier;
+} OpenPitPretradePoliciesRateLimitBrokerBarrier;
 ```
 
-## `PitPretradePoliciesRateLimitAssetBarrier`
+## `OpenPitPretradePoliciesRateLimitAssetBarrier`
 
 Per-settlement-asset rate-limit barrier for
-`pit_engine_builder_add_builtin_rate_limit_policy`.
+`openpit_engine_builder_add_builtin_rate_limit_policy`.
 
 ```c
-typedef struct PitPretradePoliciesRateLimitAssetBarrier {
-    PitStringView settlement_asset;
+typedef struct OpenPitPretradePoliciesRateLimitAssetBarrier {
+    OpenPitStringView settlement_asset;
     size_t max_orders;
     uint64_t window_nanoseconds;
-} PitPretradePoliciesRateLimitAssetBarrier;
+} OpenPitPretradePoliciesRateLimitAssetBarrier;
 ```
 
-## `PitPretradePoliciesRateLimitAccountBarrier`
+## `OpenPitPretradePoliciesRateLimitAccountBarrier`
 
 Per-account rate-limit barrier for
-`pit_engine_builder_add_builtin_rate_limit_policy`.
+`openpit_engine_builder_add_builtin_rate_limit_policy`.
 
 ```c
-typedef struct PitPretradePoliciesRateLimitAccountBarrier {
-    PitParamAccountId account_id;
+typedef struct OpenPitPretradePoliciesRateLimitAccountBarrier {
+    OpenPitParamAccountId account_id;
     size_t max_orders;
     uint64_t window_nanoseconds;
-} PitPretradePoliciesRateLimitAccountBarrier;
+} OpenPitPretradePoliciesRateLimitAccountBarrier;
 ```
 
-## `PitPretradePoliciesRateLimitAccountAssetBarrier`
+## `OpenPitPretradePoliciesRateLimitAccountAssetBarrier`
 
 Per-(account, settlement-asset) rate-limit barrier for
-`pit_engine_builder_add_builtin_rate_limit_policy`.
+`openpit_engine_builder_add_builtin_rate_limit_policy`.
 
 ```c
-typedef struct PitPretradePoliciesRateLimitAccountAssetBarrier {
-    PitParamAccountId account_id;
-    PitStringView settlement_asset;
+typedef struct OpenPitPretradePoliciesRateLimitAccountAssetBarrier {
+    OpenPitParamAccountId account_id;
+    OpenPitStringView settlement_asset;
     size_t max_orders;
     uint64_t window_nanoseconds;
-} PitPretradePoliciesRateLimitAccountAssetBarrier;
+} OpenPitPretradePoliciesRateLimitAccountAssetBarrier;
 ```
 
-## `PitPretradePoliciesOrderSizeLimit`
+## `OpenPitPretradePoliciesOrderSizeLimit`
 
 Shared order-size limits for
-`pit_engine_builder_add_builtin_order_size_limit_policy`.
+`openpit_engine_builder_add_builtin_order_size_limit_policy`.
 
 ```c
-typedef struct PitPretradePoliciesOrderSizeLimit {
-    PitParamQuantity max_quantity;
-    PitParamVolume max_notional;
-} PitPretradePoliciesOrderSizeLimit;
+typedef struct OpenPitPretradePoliciesOrderSizeLimit {
+    OpenPitParamQuantity max_quantity;
+    OpenPitParamVolume max_notional;
+} OpenPitPretradePoliciesOrderSizeLimit;
 ```
 
-## `PitPretradePoliciesOrderSizeBrokerBarrier`
+## `OpenPitPretradePoliciesOrderSizeBrokerBarrier`
 
 Broker-wide order-size barrier for
-`pit_engine_builder_add_builtin_order_size_limit_policy`.
+`openpit_engine_builder_add_builtin_order_size_limit_policy`.
 
 ```c
-typedef struct PitPretradePoliciesOrderSizeBrokerBarrier {
-    PitPretradePoliciesOrderSizeLimit limit;
-} PitPretradePoliciesOrderSizeBrokerBarrier;
+typedef struct OpenPitPretradePoliciesOrderSizeBrokerBarrier {
+    OpenPitPretradePoliciesOrderSizeLimit limit;
+} OpenPitPretradePoliciesOrderSizeBrokerBarrier;
 ```
 
-## `PitPretradePoliciesOrderSizeAssetBarrier`
+## `OpenPitPretradePoliciesOrderSizeAssetBarrier`
 
 Per-settlement-asset order-size barrier for
-`pit_engine_builder_add_builtin_order_size_limit_policy`.
+`openpit_engine_builder_add_builtin_order_size_limit_policy`.
 
 ```c
-typedef struct PitPretradePoliciesOrderSizeAssetBarrier {
-    PitPretradePoliciesOrderSizeLimit limit;
-    PitStringView settlement_asset;
-} PitPretradePoliciesOrderSizeAssetBarrier;
+typedef struct OpenPitPretradePoliciesOrderSizeAssetBarrier {
+    OpenPitPretradePoliciesOrderSizeLimit limit;
+    OpenPitStringView settlement_asset;
+} OpenPitPretradePoliciesOrderSizeAssetBarrier;
 ```
 
-## `PitPretradePoliciesOrderSizeAccountAssetBarrier`
+## `OpenPitPretradePoliciesOrderSizeAccountAssetBarrier`
 
 Per-(account, settlement-asset) order-size barrier for
-`pit_engine_builder_add_builtin_order_size_limit_policy`.
+`openpit_engine_builder_add_builtin_order_size_limit_policy`.
 
 ```c
-typedef struct PitPretradePoliciesOrderSizeAccountAssetBarrier {
-    PitPretradePoliciesOrderSizeLimit limit;
-    PitParamAccountId account_id;
-    PitStringView settlement_asset;
-} PitPretradePoliciesOrderSizeAccountAssetBarrier;
+typedef struct OpenPitPretradePoliciesOrderSizeAccountAssetBarrier {
+    OpenPitPretradePoliciesOrderSizeLimit limit;
+    OpenPitParamAccountId account_id;
+    OpenPitStringView settlement_asset;
+} OpenPitPretradePoliciesOrderSizeAccountAssetBarrier;
 ```
 
-## `pit_engine_builder_add_builtin_order_validation_policy`
+## `openpit_engine_builder_add_builtin_order_validation_policy`
 
 Adds the built-in order-validation policy to the engine builder.
 
@@ -214,17 +215,17 @@ Success:
 Error:
 
 - returns `false` when the builder is null or already consumed;
-- if `out_error` is not null, writes a caller-owned `PitSharedString` error
-  handle that MUST be released with `pit_destroy_shared_string`.
+- if `out_error` is not null, writes a caller-owned `OpenPitSharedString`
+  error handle that MUST be released with `openpit_destroy_shared_string`.
 
 ```c
-bool pit_engine_builder_add_builtin_order_validation_policy(
-    PitEngineBuilder * builder,
-    PitOutError out_error
+bool openpit_engine_builder_add_builtin_order_validation_policy(
+    OpenPitEngineBuilder * builder,
+    OpenPitOutError out_error
 );
 ```
 
-## `pit_engine_builder_add_builtin_rate_limit_policy`
+## `openpit_engine_builder_add_builtin_rate_limit_policy`
 
 Adds the built-in rate-limit policy to the engine builder.
 
@@ -245,24 +246,24 @@ Error:
 
 - returns `false` when the builder is null or already consumed, when no
   barrier axis is configured, or when argument parsing fails;
-- if `out_error` is not null, writes a caller-owned `PitSharedString` error
-  handle that MUST be released with `pit_destroy_shared_string`.
+- if `out_error` is not null, writes a caller-owned `OpenPitSharedString`
+  error handle that MUST be released with `openpit_destroy_shared_string`.
 
 ```c
-bool pit_engine_builder_add_builtin_rate_limit_policy(
-    PitEngineBuilder * builder,
-    const PitPretradePoliciesRateLimitBrokerBarrier * broker,
-    const PitPretradePoliciesRateLimitAssetBarrier * asset,
+bool openpit_engine_builder_add_builtin_rate_limit_policy(
+    OpenPitEngineBuilder * builder,
+    const OpenPitPretradePoliciesRateLimitBrokerBarrier * broker,
+    const OpenPitPretradePoliciesRateLimitAssetBarrier * asset,
     size_t asset_len,
-    const PitPretradePoliciesRateLimitAccountBarrier * account,
+    const OpenPitPretradePoliciesRateLimitAccountBarrier * account,
     size_t account_len,
-    const PitPretradePoliciesRateLimitAccountAssetBarrier * account_asset,
+    const OpenPitPretradePoliciesRateLimitAccountAssetBarrier * account_asset,
     size_t account_asset_len,
-    PitOutError out_error
+    OpenPitOutError out_error
 );
 ```
 
-## `pit_engine_builder_add_builtin_order_size_limit_policy`
+## `openpit_engine_builder_add_builtin_order_size_limit_policy`
 
 Adds the built-in order-size limit policy to the engine builder.
 
@@ -284,22 +285,22 @@ Error:
 
 - returns `false` when the builder is null or already consumed, when no
   barrier axis is configured, or when argument parsing fails;
-- if `out_error` is not null, writes a caller-owned `PitSharedString` error
-  handle that MUST be released with `pit_destroy_shared_string`.
+- if `out_error` is not null, writes a caller-owned `OpenPitSharedString`
+  error handle that MUST be released with `openpit_destroy_shared_string`.
 
 ```c
-bool pit_engine_builder_add_builtin_order_size_limit_policy(
-    PitEngineBuilder * builder,
-    const PitPretradePoliciesOrderSizeBrokerBarrier * broker,
-    const PitPretradePoliciesOrderSizeAssetBarrier * asset,
+bool openpit_engine_builder_add_builtin_order_size_limit_policy(
+    OpenPitEngineBuilder * builder,
+    const OpenPitPretradePoliciesOrderSizeBrokerBarrier * broker,
+    const OpenPitPretradePoliciesOrderSizeAssetBarrier * asset,
     size_t asset_len,
-    const PitPretradePoliciesOrderSizeAccountAssetBarrier * account_asset,
+    const OpenPitPretradePoliciesOrderSizeAccountAssetBarrier * account_asset,
     size_t account_asset_len,
-    PitOutError out_error
+    OpenPitOutError out_error
 );
 ```
 
-## `pit_engine_builder_add_builtin_pnl_bounds_killswitch_policy`
+## `openpit_engine_builder_add_builtin_pnl_bounds_killswitch_policy`
 
 Adds the built-in P&L bounds kill-switch policy to the engine builder.
 
@@ -320,69 +321,69 @@ Error:
 
 - returns `false` when the builder is null or already consumed, when no
   barrier is configured, or when argument parsing fails;
-- if `out_error` is not null, writes a caller-owned `PitSharedString` error
-  handle that MUST be released with `pit_destroy_shared_string`.
+- if `out_error` is not null, writes a caller-owned `OpenPitSharedString`
+  error handle that MUST be released with `openpit_destroy_shared_string`.
 
 ```c
-bool pit_engine_builder_add_builtin_pnl_bounds_killswitch_policy(
-    PitEngineBuilder * builder,
-    const PitPretradePoliciesPnlBoundsBarrier * broker,
+bool openpit_engine_builder_add_builtin_pnl_bounds_killswitch_policy(
+    OpenPitEngineBuilder * builder,
+    const OpenPitPretradePoliciesPnlBoundsBarrier * broker,
     size_t broker_len,
-    const PitPretradePoliciesPnlBoundsAccountBarrier * account,
+    const OpenPitPretradePoliciesPnlBoundsAccountBarrier * account,
     size_t account_len,
-    PitOutError out_error
+    OpenPitOutError out_error
 );
 ```
 
-## `pit_destroy_pretrade_check_pre_trade_start_policy`
+## `openpit_destroy_pretrade_check_pre_trade_start_policy`
 
 ```c
-void pit_destroy_pretrade_check_pre_trade_start_policy(
-    PitPretradeCheckPreTradeStartPolicy * policy
+void openpit_destroy_pretrade_check_pre_trade_start_policy(
+    OpenPitPretradeCheckPreTradeStartPolicy * policy
 );
 ```
 
-## `pit_destroy_pretrade_pre_trade_policy`
+## `openpit_destroy_pretrade_pre_trade_policy`
 
 ```c
-void pit_destroy_pretrade_pre_trade_policy(
-    PitPretradePreTradePolicy * policy
+void openpit_destroy_pretrade_pre_trade_policy(
+    OpenPitPretradePreTradePolicy * policy
 );
 ```
 
-## `pit_destroy_account_adjustment_policy`
+## `openpit_destroy_account_adjustment_policy`
 
 ```c
-void pit_destroy_account_adjustment_policy(
-    PitAccountAdjustmentPolicy * policy
+void openpit_destroy_account_adjustment_policy(
+    OpenPitAccountAdjustmentPolicy * policy
 );
 ```
 
-## `pit_pretrade_check_pre_trade_start_policy_get_name`
+## `openpit_pretrade_check_pre_trade_start_policy_get_name`
 
 ```c
-PitStringView pit_pretrade_check_pre_trade_start_policy_get_name(
-    const PitPretradeCheckPreTradeStartPolicy * policy
+OpenPitStringView openpit_pretrade_check_pre_trade_start_policy_get_name(
+    const OpenPitPretradeCheckPreTradeStartPolicy * policy
 );
 ```
 
-## `pit_pretrade_pre_trade_policy_get_name`
+## `openpit_pretrade_pre_trade_policy_get_name`
 
 ```c
-PitStringView pit_pretrade_pre_trade_policy_get_name(
-    const PitPretradePreTradePolicy * policy
+OpenPitStringView openpit_pretrade_pre_trade_policy_get_name(
+    const OpenPitPretradePreTradePolicy * policy
 );
 ```
 
-## `pit_account_adjustment_policy_get_name`
+## `openpit_account_adjustment_policy_get_name`
 
 ```c
-PitStringView pit_account_adjustment_policy_get_name(
-    const PitAccountAdjustmentPolicy * policy
+OpenPitStringView openpit_account_adjustment_policy_get_name(
+    const OpenPitAccountAdjustmentPolicy * policy
 );
 ```
 
-## `pit_engine_builder_add_check_pre_trade_start_policy`
+## `openpit_engine_builder_add_check_pre_trade_start_policy`
 
 Adds a start-stage policy to the engine builder.
 
@@ -402,25 +403,25 @@ Success:
 Error:
 
 - returns `false` when the builder or policy cannot be used;
-- if `out_error` is not null, writes a caller-owned `PitSharedString` error
-  handle that MUST be released with `pit_destroy_shared_string`.
+- if `out_error` is not null, writes a caller-owned `OpenPitSharedString`
+  error handle that MUST be released with `openpit_destroy_shared_string`.
 
 Lifetime contract:
 
 - The engine builder retains its own reference to the policy object.
 - The caller still owns the passed pointer and must release that local pointer
-  separately with `pit_destroy_pretrade_check_pre_trade_start_policy` when it
-  is no longer needed.
+  separately with `openpit_destroy_pretrade_check_pre_trade_start_policy` when
+  it is no longer needed.
 
 ```c
-bool pit_engine_builder_add_check_pre_trade_start_policy(
-    PitEngineBuilder * builder,
-    PitPretradeCheckPreTradeStartPolicy * policy,
-    PitOutError out_error
+bool openpit_engine_builder_add_check_pre_trade_start_policy(
+    OpenPitEngineBuilder * builder,
+    OpenPitPretradeCheckPreTradeStartPolicy * policy,
+    OpenPitOutError out_error
 );
 ```
 
-## `pit_engine_builder_add_pre_trade_policy`
+## `openpit_engine_builder_add_pre_trade_policy`
 
 Adds a main-stage pre-trade policy to the engine builder.
 
@@ -436,25 +437,25 @@ Success:
 Error:
 
 - returns `false` when the builder or policy cannot be used;
-- if `out_error` is not null, writes a caller-owned `PitSharedString` error
-  handle that MUST be released with `pit_destroy_shared_string`.
+- if `out_error` is not null, writes a caller-owned `OpenPitSharedString`
+  error handle that MUST be released with `openpit_destroy_shared_string`.
 
 Lifetime contract:
 
 - The engine builder retains its own reference to the policy object.
 - The caller still owns the passed pointer and must release that local pointer
-  separately with `pit_destroy_pretrade_pre_trade_policy` when it is no longer
-  needed.
+  separately with `openpit_destroy_pretrade_pre_trade_policy` when it is no
+  longer needed.
 
 ```c
-bool pit_engine_builder_add_pre_trade_policy(
-    PitEngineBuilder * builder,
-    PitPretradePreTradePolicy * policy,
-    PitOutError out_error
+bool openpit_engine_builder_add_pre_trade_policy(
+    OpenPitEngineBuilder * builder,
+    OpenPitPretradePreTradePolicy * policy,
+    OpenPitOutError out_error
 );
 ```
 
-## `pit_engine_builder_add_account_adjustment_policy`
+## `openpit_engine_builder_add_account_adjustment_policy`
 
 Adds an account-adjustment policy to the engine builder.
 
@@ -470,25 +471,25 @@ Success:
 Error:
 
 - returns `false` when the builder or policy cannot be used;
-- if `out_error` is not null, writes a caller-owned `PitSharedString` error
-  handle that MUST be released with `pit_destroy_shared_string`.
+- if `out_error` is not null, writes a caller-owned `OpenPitSharedString`
+  error handle that MUST be released with `openpit_destroy_shared_string`.
 
 Lifetime contract:
 
 - The engine builder retains its own reference to the policy object.
 - The caller still owns the passed pointer and must release that local pointer
-  separately with `pit_destroy_account_adjustment_policy` when it is no longer
-  needed.
+  separately with `openpit_destroy_account_adjustment_policy` when it is no
+  longer needed.
 
 ```c
-bool pit_engine_builder_add_account_adjustment_policy(
-    PitEngineBuilder * builder,
-    PitAccountAdjustmentPolicy * policy,
-    PitOutError out_error
+bool openpit_engine_builder_add_account_adjustment_policy(
+    OpenPitEngineBuilder * builder,
+    OpenPitAccountAdjustmentPolicy * policy,
+    OpenPitOutError out_error
 );
 ```
 
-## `PitPretradeContext`
+## `OpenPitPretradeContext`
 
 Opaque context passed to main-stage C policy callbacks.
 
@@ -499,10 +500,10 @@ Future extension: this type is the designated seam for engine storage-cell
 access. A read accessor will be added here when the engine store is introduced.
 
 ```c
-typedef struct PitPretradeContext PitPretradeContext;
+typedef struct OpenPitPretradeContext OpenPitPretradeContext;
 ```
 
-## `PitAccountAdjustmentContext`
+## `OpenPitAccountAdjustmentContext`
 
 Opaque context passed to account-adjustment C policy callbacks.
 
@@ -513,10 +514,10 @@ Future extension: this type is the designated seam for engine storage-cell
 access. A read accessor will be added here when the engine store is introduced.
 
 ```c
-typedef struct PitAccountAdjustmentContext PitAccountAdjustmentContext;
+typedef struct OpenPitAccountAdjustmentContext OpenPitAccountAdjustmentContext;
 ```
 
-## `PitMutations`
+## `OpenPitMutations`
 
 Opaque, non-owning pointer to the mutation collector.
 
@@ -524,36 +525,36 @@ Valid only during the policy callback that received it. The caller must not
 store or use this pointer after the callback returns.
 
 ```c
-typedef struct PitMutations PitMutations;
+typedef struct OpenPitMutations OpenPitMutations;
 ```
 
-## `PitMutationFn`
+## `OpenPitMutationFn`
 
 Callback invoked for either commit or rollback of a registered mutation.
 
 ```c
-typedef void (*PitMutationFn)(
+typedef void (*OpenPitMutationFn)(
     void * user_data
 );
 ```
 
-## `PitMutationFreeFn`
+## `OpenPitMutationFreeFn`
 
 Optional callback to release mutation user_data after execution.
 
-Called exactly once per `pit_mutations_push`:
+Called exactly once per `openpit_mutations_push`:
 
 - after `commit_fn` when commit runs;
 - after `rollback_fn` when rollback runs;
 - or on drop if neither action ran.
 
 ```c
-typedef void (*PitMutationFreeFn)(
+typedef void (*OpenPitMutationFreeFn)(
     void * user_data
 );
 ```
 
-## `pit_mutations_push`
+## `openpit_mutations_push`
 
 Registers one commit/rollback mutation in the provided collector.
 
@@ -572,21 +573,21 @@ Contract:
 Error:
 
 - returns `false` when `mutations` is null or invalid;
-- if `out_error` is not null, writes a caller-owned `PitSharedString` error
-  handle that MUST be released with `pit_destroy_shared_string`.
+- if `out_error` is not null, writes a caller-owned `OpenPitSharedString`
+  error handle that MUST be released with `openpit_destroy_shared_string`.
 
 ```c
-bool pit_mutations_push(
-    PitMutations * mutations,
-    PitMutationFn commit_fn,
-    PitMutationFn rollback_fn,
+bool openpit_mutations_push(
+    OpenPitMutations * mutations,
+    OpenPitMutationFn commit_fn,
+    OpenPitMutationFn rollback_fn,
     void * user_data,
-    PitMutationFreeFn free_fn,
-    PitOutError out_error
+    OpenPitMutationFreeFn free_fn,
+    OpenPitOutError out_error
 );
 ```
 
-## `PitPretradeCheckPreTradeStartPolicyCheckPreTradeStartFn`
+## `OpenPitPretradeCheckPreTradeStartPolicyCheckPreTradeStartFn`
 
 Callback used by a custom start-stage policy to validate one order.
 
@@ -604,21 +605,21 @@ Contract:
 - A rejected order must set explicit `code` and `scope` values in every list
   item.
 - The returned list ownership is transferred to the engine; create it with
-  `pit_create_reject_list`.
+  `openpit_create_reject_list`.
 - Every reject payload is copied into internal storage before the callback
   returns.
 - `user_data` is passed through unchanged from policy creation.
 
 ```c
-typedef PitRejectList *
-(*PitPretradeCheckPreTradeStartPolicyCheckPreTradeStartFn)(
-    const PitPretradeContext * ctx,
-    const PitOrder * order,
+typedef OpenPitRejectList *
+(*OpenPitPretradeCheckPreTradeStartPolicyCheckPreTradeStartFn)(
+    const OpenPitPretradeContext * ctx,
+    const OpenPitOrder * order,
     void * user_data
 );
 ```
 
-## `PitPretradeCheckPreTradeStartPolicyApplyExecutionReportFn`
+## `OpenPitPretradeCheckPreTradeStartPolicyApplyExecutionReportFn`
 
 Callback used by a custom start-stage policy to observe an execution report.
 
@@ -636,13 +637,13 @@ Contract:
 - `user_data` is passed through unchanged from policy creation.
 
 ```c
-typedef bool (*PitPretradeCheckPreTradeStartPolicyApplyExecutionReportFn)(
-    const PitExecutionReport * report,
+typedef bool (*OpenPitPretradeCheckPreTradeStartPolicyApplyExecutionReportFn)(
+    const OpenPitExecutionReport * report,
     void * user_data
 );
 ```
 
-## `PitPretradeCheckPreTradeStartPolicyFreeUserDataFn`
+## `OpenPitPretradeCheckPreTradeStartPolicyFreeUserDataFn`
 
 Callback invoked when the last reference to a custom start-stage policy is
 released and the policy object is about to be destroyed.
@@ -656,12 +657,12 @@ Contract:
 - The callback must release any resources associated with `user_data`.
 
 ```c
-typedef void (*PitPretradeCheckPreTradeStartPolicyFreeUserDataFn)(
+typedef void (*OpenPitPretradeCheckPreTradeStartPolicyFreeUserDataFn)(
     void * user_data
 );
 ```
 
-## `PitPretradePreTradePolicyCheckFn`
+## `OpenPitPretradePreTradePolicyCheckFn`
 
 Callback used by a custom main-stage policy to perform a pre-trade check.
 
@@ -681,21 +682,21 @@ Contract:
 - Return a non-empty reject list to reject the order.
 - Every returned reject must contain explicit `code` and `scope` values.
 - The returned list ownership is transferred to the engine; create it with
-  `pit_create_reject_list`.
+  `openpit_create_reject_list`.
 - Every reject payload is copied into internal storage before this callback
   returns.
 - `user_data` is passed through unchanged from policy creation.
 
 ```c
-typedef PitRejectList * (*PitPretradePreTradePolicyCheckFn)(
-    const PitPretradeContext * ctx,
-    const PitOrder * order,
-    PitMutations * mutations,
+typedef OpenPitRejectList * (*OpenPitPretradePreTradePolicyCheckFn)(
+    const OpenPitPretradeContext * ctx,
+    const OpenPitOrder * order,
+    OpenPitMutations * mutations,
     void * user_data
 );
 ```
 
-## `PitPretradePreTradePolicyApplyExecutionReportFn`
+## `OpenPitPretradePreTradePolicyApplyExecutionReportFn`
 
 Callback used by a custom main-stage policy to observe an execution report.
 
@@ -713,13 +714,13 @@ Contract:
 - `user_data` is passed through unchanged from policy creation.
 
 ```c
-typedef bool (*PitPretradePreTradePolicyApplyExecutionReportFn)(
-    const PitExecutionReport * report,
+typedef bool (*OpenPitPretradePreTradePolicyApplyExecutionReportFn)(
+    const OpenPitExecutionReport * report,
     void * user_data
 );
 ```
 
-## `PitPretradePreTradePolicyFreeUserDataFn`
+## `OpenPitPretradePreTradePolicyFreeUserDataFn`
 
 Callback invoked when the last reference to a custom main-stage policy is
 released and the policy object is about to be destroyed.
@@ -733,12 +734,12 @@ Contract:
 - The callback must release any resources associated with `user_data`.
 
 ```c
-typedef void (*PitPretradePreTradePolicyFreeUserDataFn)(
+typedef void (*OpenPitPretradePreTradePolicyFreeUserDataFn)(
     void * user_data
 );
 ```
 
-## `PitAccountAdjustmentPolicyApplyFn`
+## `OpenPitAccountAdjustmentPolicyApplyFn`
 
 Callback used by a custom account-adjustment policy to validate one adjustment.
 
@@ -762,16 +763,16 @@ Contract:
 - `user_data` is passed through unchanged from policy creation.
 
 ```c
-typedef PitRejectList * (*PitAccountAdjustmentPolicyApplyFn)(
-    const PitAccountAdjustmentContext * ctx,
-    PitParamAccountId account_id,
-    const PitAccountAdjustment * adjustment,
-    PitMutations * mutations,
+typedef OpenPitRejectList * (*OpenPitAccountAdjustmentPolicyApplyFn)(
+    const OpenPitAccountAdjustmentContext * ctx,
+    OpenPitParamAccountId account_id,
+    const OpenPitAccountAdjustment * adjustment,
+    OpenPitMutations * mutations,
     void * user_data
 );
 ```
 
-## `PitAccountAdjustmentPolicyFreeUserDataFn`
+## `OpenPitAccountAdjustmentPolicyFreeUserDataFn`
 
 Callback invoked when the last reference to a custom account-adjustment policy
 is released and the policy object is about to be destroyed.
@@ -785,12 +786,12 @@ Contract:
 - The callback must release any resources associated with `user_data`.
 
 ```c
-typedef void (*PitAccountAdjustmentPolicyFreeUserDataFn)(
+typedef void (*OpenPitAccountAdjustmentPolicyFreeUserDataFn)(
     void * user_data
 );
 ```
 
-## `pit_create_pretrade_custom_check_pre_trade_start_policy`
+## `openpit_create_pretrade_custom_check_pre_trade_start_policy`
 
 Creates a custom start-stage policy from caller-provided callbacks.
 
@@ -811,10 +812,11 @@ Contract:
 - `user_data` is opaque to the SDK: the engine never inspects, dereferences,
   or frees it; it is forwarded verbatim to the registered callbacks. Lifetime,
   thread-safety, and meaning of the pointed-at state are entirely the caller's
-  responsibility. Under `PitSyncPolicy_Local` or `PitSyncPolicy_Account`, the
-  caller serialises per-handle invocation per the SDK threading contract;
-  under `PitSyncPolicy_Full`, the caller is responsible for making any state
-  reachable through `user_data` safe under concurrent invocation.
+  responsibility. Under `OpenPitSyncPolicy_Local` or
+  `OpenPitSyncPolicy_Account`, the caller serialises per-handle invocation per
+  the SDK threading contract; under `OpenPitSyncPolicy_Full`, the caller is
+  responsible for making any state reachable through `user_data` safe under
+  concurrent invocation.
 
 Success:
 
@@ -823,33 +825,34 @@ Success:
 Error:
 
 - returns null when `name` is invalid;
-- if `out_error` is not null, writes a caller-owned `PitSharedString` error
-  handle that MUST be released with `pit_destroy_shared_string`.
+- if `out_error` is not null, writes a caller-owned `OpenPitSharedString`
+  error handle that MUST be released with `openpit_destroy_shared_string`.
 
 Lifetime contract:
 
 - The policy stores its own copy of `name`; the caller may release the input
   string after this function returns.
 - The returned pointer is owned by the caller and must be released with
-  `pit_destroy_pretrade_check_pre_trade_start_policy` when no longer needed.
+  `openpit_destroy_pretrade_check_pre_trade_start_policy` when no longer
+  needed.
 - If the policy is added to the engine builder, the engine keeps its own
   reference, but the caller must still release the caller-owned pointer.
 - `free_user_data_fn` runs once the last reference to the policy is released;
   when the engine is the final holder, it runs as part of engine destruction.
 
 ```c
-PitPretradeCheckPreTradeStartPolicy *
-pit_create_pretrade_custom_check_pre_trade_start_policy(
-    PitStringView name,
-    PitPretradeCheckPreTradeStartPolicyCheckPreTradeStartFn check_fn,
-    PitPretradeCheckPreTradeStartPolicyApplyExecutionReportFn apply_execution_report_fn,
-    PitPretradeCheckPreTradeStartPolicyFreeUserDataFn free_user_data_fn,
+OpenPitPretradeCheckPreTradeStartPolicy *
+openpit_create_pretrade_custom_check_pre_trade_start_policy(
+    OpenPitStringView name,
+    OpenPitPretradeCheckPreTradeStartPolicyCheckPreTradeStartFn check_fn,
+    OpenPitPretradeCheckPreTradeStartPolicyApplyExecutionReportFn apply_execution_report_fn,
+    OpenPitPretradeCheckPreTradeStartPolicyFreeUserDataFn free_user_data_fn,
     void * user_data,
-    PitOutError out_error
+    OpenPitOutError out_error
 );
 ```
 
-## `pit_create_pretrade_custom_pre_trade_policy`
+## `openpit_create_pretrade_custom_pre_trade_policy`
 
 Creates a custom main-stage pre-trade policy from caller-provided callbacks.
 
@@ -867,10 +870,11 @@ Contract:
 - `user_data` is opaque to the SDK: the engine never inspects, dereferences,
   or frees it; it is forwarded verbatim to the registered callbacks. Lifetime,
   thread-safety, and meaning of the pointed-at state are entirely the caller's
-  responsibility. Under `PitSyncPolicy_Local` or `PitSyncPolicy_Account`, the
-  caller serialises per-handle invocation per the SDK threading contract;
-  under `PitSyncPolicy_Full`, the caller is responsible for making any state
-  reachable through `user_data` safe under concurrent invocation.
+  responsibility. Under `OpenPitSyncPolicy_Local` or
+  `OpenPitSyncPolicy_Account`, the caller serialises per-handle invocation per
+  the SDK threading contract; under `OpenPitSyncPolicy_Full`, the caller is
+  responsible for making any state reachable through `user_data` safe under
+  concurrent invocation.
 
 Success:
 
@@ -879,32 +883,32 @@ Success:
 Error:
 
 - returns null when `name` is invalid;
-- if `out_error` is not null, writes a caller-owned `PitSharedString` error
-  handle that MUST be released with `pit_destroy_shared_string`.
+- if `out_error` is not null, writes a caller-owned `OpenPitSharedString`
+  error handle that MUST be released with `openpit_destroy_shared_string`.
 
 Lifetime contract:
 
 - The policy stores its own copy of `name`; the caller may release the input
   string after this function returns.
 - The returned pointer is owned by the caller and must be released with
-  `pit_destroy_pretrade_pre_trade_policy` when no longer needed.
+  `openpit_destroy_pretrade_pre_trade_policy` when no longer needed.
 - If the policy is added to the engine builder, the engine keeps its own
   reference, but the caller must still release the caller-owned pointer.
 - `free_user_data_fn` runs once the last reference to the policy is released;
   when the engine is the final holder, it runs as part of engine destruction.
 
 ```c
-PitPretradePreTradePolicy * pit_create_pretrade_custom_pre_trade_policy(
-    PitStringView name,
-    PitPretradePreTradePolicyCheckFn check_fn,
-    PitPretradePreTradePolicyApplyExecutionReportFn apply_fn,
-    PitPretradePreTradePolicyFreeUserDataFn free_user_data_fn,
+OpenPitPretradePreTradePolicy * openpit_create_pretrade_custom_pre_trade_policy(
+    OpenPitStringView name,
+    OpenPitPretradePreTradePolicyCheckFn check_fn,
+    OpenPitPretradePreTradePolicyApplyExecutionReportFn apply_fn,
+    OpenPitPretradePreTradePolicyFreeUserDataFn free_user_data_fn,
     void * user_data,
-    PitOutError out_error
+    OpenPitOutError out_error
 );
 ```
 
-## `pit_create_custom_account_adjustment_policy`
+## `openpit_create_custom_account_adjustment_policy`
 
 Creates a custom account-adjustment policy from caller-provided callbacks.
 
@@ -921,10 +925,11 @@ Contract:
 - `user_data` is opaque to the SDK: the engine never inspects, dereferences,
   or frees it; it is forwarded verbatim to the registered callbacks. Lifetime,
   thread-safety, and meaning of the pointed-at state are entirely the caller's
-  responsibility. Under `PitSyncPolicy_Local` or `PitSyncPolicy_Account`, the
-  caller serialises per-handle invocation per the SDK threading contract;
-  under `PitSyncPolicy_Full`, the caller is responsible for making any state
-  reachable through `user_data` safe under concurrent invocation.
+  responsibility. Under `OpenPitSyncPolicy_Local` or
+  `OpenPitSyncPolicy_Account`, the caller serialises per-handle invocation per
+  the SDK threading contract; under `OpenPitSyncPolicy_Full`, the caller is
+  responsible for making any state reachable through `user_data` safe under
+  concurrent invocation.
 
 Success:
 
@@ -933,26 +938,27 @@ Success:
 Error:
 
 - returns null when `name` is invalid;
-- if `out_error` is not null, writes a caller-owned `PitSharedString` error
-  handle that MUST be released with `pit_destroy_shared_string`.
+- if `out_error` is not null, writes a caller-owned `OpenPitSharedString`
+  error handle that MUST be released with `openpit_destroy_shared_string`.
 
 Lifetime contract:
 
 - The policy stores its own copy of `name`; the caller may release the input
   string after this function returns.
 - The returned pointer is owned by the caller and must be released with
-  `pit_destroy_account_adjustment_policy` when no longer needed.
+  `openpit_destroy_account_adjustment_policy` when no longer needed.
 - If the policy is added to the engine builder, the engine keeps its own
   reference, but the caller must still release the caller-owned pointer.
 - `free_user_data_fn` runs once the last reference to the policy is released;
   when the engine is the final holder, it runs as part of engine destruction.
 
 ```c
-PitAccountAdjustmentPolicy * pit_create_custom_account_adjustment_policy(
-    PitStringView name,
-    PitAccountAdjustmentPolicyApplyFn apply_fn,
-    PitAccountAdjustmentPolicyFreeUserDataFn free_user_data_fn,
+OpenPitAccountAdjustmentPolicy *
+openpit_create_custom_account_adjustment_policy(
+    OpenPitStringView name,
+    OpenPitAccountAdjustmentPolicyApplyFn apply_fn,
+    OpenPitAccountAdjustmentPolicyFreeUserDataFn free_user_data_fn,
     void * user_data,
-    PitOutError out_error
+    OpenPitOutError out_error
 );
 ```

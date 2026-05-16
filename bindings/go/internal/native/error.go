@@ -18,7 +18,7 @@
 package native
 
 /*
-#include "pit.h"
+#include "openpit.h"
 */
 import "C"
 
@@ -68,9 +68,9 @@ func consumeParamError(handle ParamErrorHandle, fallback string, args ...any) er
 	code := handle.code
 	msg := ""
 	if handle.message != nil {
-		msg = newStringView(C.pit_shared_string_view(handle.message)).Safe()
+		msg = newStringView(C.openpit_shared_string_view(handle.message)).Safe()
 	}
-	C.pit_destroy_param_error(handle)
+	C.openpit_destroy_param_error(handle)
 
 	sentinel := paramErrorByCode[code]
 	if sentinel != nil {

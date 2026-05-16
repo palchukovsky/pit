@@ -38,18 +38,19 @@ use openpit::pretrade::{CheckPreTradeStartPolicy, PreTradeContext, PreTradePolic
 use openpit::storage::StorageBuilder;
 use openpit::{AccountAdjustmentContext, AccountAdjustmentPolicy, Mutation, Mutations};
 
-use crate::account_adjustment::{export_account_adjustment, PitAccountAdjustment};
-use crate::execution_report::{export_execution_report, PitExecutionReport};
-use crate::order::{export_order, PitOrder};
-use crate::reject::PitRejectList;
-use crate::PitStringView;
+use crate::account_adjustment::{export_account_adjustment, OpenPitAccountAdjustment};
+use crate::execution_report::{export_execution_report, OpenPitExecutionReport};
+use crate::order::{export_order, OpenPitOrder};
+use crate::reject::OpenPitRejectList;
+use crate::OpenPitStringView;
 use crate::{AccountAdjustment, ExecutionReport, Order};
 
 use crate::param::{
-    PitParamAccountId, PitParamPnl, PitParamPnlOptional, PitParamQuantity, PitParamVolume,
+    OpenPitParamAccountId, OpenPitParamPnl, OpenPitParamPnlOptional, OpenPitParamQuantity,
+    OpenPitParamVolume,
 };
 
-use crate::last_error::{write_error, PitOutError};
+use crate::last_error::{write_error, OpenPitOutError};
 use crate::write_error_format;
 
 //--------------------------------------------------------------------------------------------------
@@ -112,7 +113,7 @@ macro_rules! impl_dyn_policy_sync {
 ///   longer needed. Destroying the caller pointer does not remove the policy from
 ///   the engine if the engine already retained it.
 /// - Destroy the caller-owned pointer with the matching
-///   `pit_destroy_pretrade_*_policy` function exactly once.
+///   `openpit_destroy_pretrade_*_policy` function exactly once.
 pub struct PolicyHandle<P: ?Sized> {
     policy: Arc<P>,
 }
@@ -122,8 +123,8 @@ impl<P: ?Sized + GeneralPreTradePolicy> PolicyHandle<P> {
         Box::into_raw(Box::new(Self { policy }))
     }
 
-    fn get_name(&self) -> PitStringView {
-        PitStringView::from_utf8(self.policy.name())
+    fn get_name(&self) -> OpenPitStringView {
+        OpenPitStringView::from_utf8(self.policy.name())
     }
 }
 
@@ -134,30 +135,31 @@ impl<P: ?Sized + GeneralPreTradePolicy> PolicyHandle<P> {
 /// Contract:
 /// - Returned by start-stage policy create functions.
 /// - May be passed to
-///   `pit_engine_builder_add_check_pre_trade_start_policy`.
+///   `openpit_engine_builder_add_check_pre_trade_start_policy`.
 /// - Must be released by the caller with
-///   `pit_destroy_pretrade_check_pre_trade_start_policy` when no longer needed.
-pub type PitPretradeCheckPreTradeStartPolicy =
+///   `openpit_destroy_pretrade_check_pre_trade_start_policy` when no longer needed.
+pub type OpenPitPretradeCheckPreTradeStartPolicy =
     PolicyHandle<dyn CheckPreTradeStartPolicy<Order, ExecutionReport>>;
 
 /// Opaque pointer for a policy that runs during the main pre-trade check stage.
 ///
 /// Contract:
 /// - Returned by main-stage policy create functions.
-/// - May be passed to `pit_engine_builder_add_pre_trade_policy`.
+/// - May be passed to `openpit_engine_builder_add_pre_trade_policy`.
 /// - Must be released by the caller with
-///   `pit_destroy_pretrade_pre_trade_policy` when no longer needed.
-pub type PitPretradePreTradePolicy = PolicyHandle<dyn PreTradePolicy<Order, ExecutionReport>>;
+///   `openpit_destroy_pretrade_pre_trade_policy` when no longer needed.
+pub type OpenPitPretradePreTradePolicy = PolicyHandle<dyn PreTradePolicy<Order, ExecutionReport>>;
 
 /// Opaque pointer for a policy that validates account adjustments.
 ///
 /// Contract:
 /// - Returned by account-adjustment policy create functions.
 /// - May be passed to
-///   `pit_engine_builder_add_account_adjustment_policy`.
+///   `openpit_engine_builder_add_account_adjustment_policy`.
 /// - Must be released by the caller with
-///   `pit_destroy_account_adjustment_policy` when no longer needed.
-pub type PitAccountAdjustmentPolicy = PolicyHandle<dyn AccountAdjustmentPolicy<AccountAdjustment>>;
+///   `openpit_destroy_account_adjustment_policy` when no longer needed.
+pub type OpenPitAccountAdjustmentPolicy =
+    PolicyHandle<dyn AccountAdjustmentPolicy<AccountAdjustment>>;
 
 //--------------------------------------------------------------------------------------------------
 
@@ -186,7 +188,7 @@ impl GeneralPreTradePolicy for dyn AccountAdjustmentPolicy<AccountAdjustment> {
 //--------------------------------------------------------------------------------------------------
 
 /// One broker barrier definition for
-/// `pit_engine_builder_add_builtin_pnl_bounds_killswitch_policy`.
+/// `openpit_engine_builder_add_builtin_pnl_bounds_killswitch_policy`.
 ///
 /// What it describes:
 /// - A settlement asset and its lower/upper P&L bounds applied as a broker
@@ -198,13 +200,13 @@ impl GeneralPreTradePolicy for dyn AccountAdjustmentPolicy<AccountAdjustment> {
 /// - The array passed to the add function may contain multiple entries.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct PitPretradePoliciesPnlBoundsBarrier {
+pub struct OpenPitPretradePoliciesPnlBoundsBarrier {
     /// Settlement asset whose accumulated P&L is being monitored.
-    pub settlement_asset: PitStringView,
+    pub settlement_asset: OpenPitStringView,
     /// Optional lower bound for accumulated P&L.
-    pub lower_bound: PitParamPnlOptional,
+    pub lower_bound: OpenPitParamPnlOptional,
     /// Optional upper bound for accumulated P&L.
-    pub upper_bound: PitParamPnlOptional,
+    pub upper_bound: OpenPitParamPnlOptional,
 }
 
 /// Per-(account, settlement-asset) P&L bounds barrier with an initial P&L seed.
@@ -216,28 +218,28 @@ pub struct PitPretradePoliciesPnlBoundsBarrier {
 /// - Both the broker barrier (if any) and this account+asset barrier are
 ///   evaluated on every check; the order passes only if neither is breached.
 ///
-/// Passed to `pit_engine_builder_add_builtin_pnl_bounds_killswitch_policy` in
+/// Passed to `openpit_engine_builder_add_builtin_pnl_bounds_killswitch_policy` in
 /// the `account` array.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct PitPretradePoliciesPnlBoundsAccountBarrier {
+pub struct OpenPitPretradePoliciesPnlBoundsAccountBarrier {
     /// Account this barrier applies to.
-    pub account_id: PitParamAccountId,
+    pub account_id: OpenPitParamAccountId,
     /// Settlement asset whose accumulated P&L is being monitored.
-    pub settlement_asset: PitStringView,
+    pub settlement_asset: OpenPitStringView,
     /// Optional lower bound for accumulated P&L for this account+asset pair.
-    pub lower_bound: PitParamPnlOptional,
+    pub lower_bound: OpenPitParamPnlOptional,
     /// Optional upper bound for accumulated P&L for this account+asset pair.
-    pub upper_bound: PitParamPnlOptional,
+    pub upper_bound: OpenPitParamPnlOptional,
     /// Starting accumulated P&L pre-loaded into storage at construction.
-    pub initial_pnl: PitParamPnl,
+    pub initial_pnl: OpenPitParamPnl,
 }
 
 /// Broker-wide rate-limit barrier for
-/// `pit_engine_builder_add_builtin_rate_limit_policy`.
+/// `openpit_engine_builder_add_builtin_rate_limit_policy`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct PitPretradePoliciesRateLimitBrokerBarrier {
+pub struct OpenPitPretradePoliciesRateLimitBrokerBarrier {
     /// Maximum number of orders accepted within the window.
     pub max_orders: usize,
     /// Window duration in nanoseconds.
@@ -245,12 +247,12 @@ pub struct PitPretradePoliciesRateLimitBrokerBarrier {
 }
 
 /// Per-settlement-asset rate-limit barrier for
-/// `pit_engine_builder_add_builtin_rate_limit_policy`.
+/// `openpit_engine_builder_add_builtin_rate_limit_policy`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct PitPretradePoliciesRateLimitAssetBarrier {
+pub struct OpenPitPretradePoliciesRateLimitAssetBarrier {
     /// Settlement asset this barrier applies to.
-    pub settlement_asset: PitStringView,
+    pub settlement_asset: OpenPitStringView,
     /// Maximum number of orders accepted within the window.
     pub max_orders: usize,
     /// Window duration in nanoseconds.
@@ -258,12 +260,12 @@ pub struct PitPretradePoliciesRateLimitAssetBarrier {
 }
 
 /// Per-account rate-limit barrier for
-/// `pit_engine_builder_add_builtin_rate_limit_policy`.
+/// `openpit_engine_builder_add_builtin_rate_limit_policy`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct PitPretradePoliciesRateLimitAccountBarrier {
+pub struct OpenPitPretradePoliciesRateLimitAccountBarrier {
     /// Account this barrier applies to.
-    pub account_id: PitParamAccountId,
+    pub account_id: OpenPitParamAccountId,
     /// Maximum number of orders accepted within the window.
     pub max_orders: usize,
     /// Window duration in nanoseconds.
@@ -271,14 +273,14 @@ pub struct PitPretradePoliciesRateLimitAccountBarrier {
 }
 
 /// Per-(account, settlement-asset) rate-limit barrier for
-/// `pit_engine_builder_add_builtin_rate_limit_policy`.
+/// `openpit_engine_builder_add_builtin_rate_limit_policy`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct PitPretradePoliciesRateLimitAccountAssetBarrier {
+pub struct OpenPitPretradePoliciesRateLimitAccountAssetBarrier {
     /// Account this barrier applies to.
-    pub account_id: PitParamAccountId,
+    pub account_id: OpenPitParamAccountId,
     /// Settlement asset this barrier applies to.
-    pub settlement_asset: PitStringView,
+    pub settlement_asset: OpenPitStringView,
     /// Maximum number of orders accepted within the window.
     pub max_orders: usize,
     /// Window duration in nanoseconds.
@@ -286,52 +288,52 @@ pub struct PitPretradePoliciesRateLimitAccountAssetBarrier {
 }
 
 /// Shared order-size limits for
-/// `pit_engine_builder_add_builtin_order_size_limit_policy`.
+/// `openpit_engine_builder_add_builtin_order_size_limit_policy`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct PitPretradePoliciesOrderSizeLimit {
+pub struct OpenPitPretradePoliciesOrderSizeLimit {
     /// Maximum allowed quantity for one order.
-    pub max_quantity: PitParamQuantity,
+    pub max_quantity: OpenPitParamQuantity,
     /// Maximum allowed notional for one order.
-    pub max_notional: PitParamVolume,
+    pub max_notional: OpenPitParamVolume,
 }
 
 /// Broker-wide order-size barrier for
-/// `pit_engine_builder_add_builtin_order_size_limit_policy`.
+/// `openpit_engine_builder_add_builtin_order_size_limit_policy`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct PitPretradePoliciesOrderSizeBrokerBarrier {
+pub struct OpenPitPretradePoliciesOrderSizeBrokerBarrier {
     /// Size limits for this broker barrier.
-    pub limit: PitPretradePoliciesOrderSizeLimit,
+    pub limit: OpenPitPretradePoliciesOrderSizeLimit,
 }
 
 /// Per-settlement-asset order-size barrier for
-/// `pit_engine_builder_add_builtin_order_size_limit_policy`.
+/// `openpit_engine_builder_add_builtin_order_size_limit_policy`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct PitPretradePoliciesOrderSizeAssetBarrier {
+pub struct OpenPitPretradePoliciesOrderSizeAssetBarrier {
     /// Size limits for this asset barrier.
-    pub limit: PitPretradePoliciesOrderSizeLimit,
+    pub limit: OpenPitPretradePoliciesOrderSizeLimit,
     /// Settlement asset this barrier applies to.
-    pub settlement_asset: PitStringView,
+    pub settlement_asset: OpenPitStringView,
 }
 
 /// Per-(account, settlement-asset) order-size barrier for
-/// `pit_engine_builder_add_builtin_order_size_limit_policy`.
+/// `openpit_engine_builder_add_builtin_order_size_limit_policy`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct PitPretradePoliciesOrderSizeAccountAssetBarrier {
+pub struct OpenPitPretradePoliciesOrderSizeAccountAssetBarrier {
     /// Size limits for this account+asset barrier.
-    pub limit: PitPretradePoliciesOrderSizeLimit,
+    pub limit: OpenPitPretradePoliciesOrderSizeLimit,
     /// Account this barrier applies to.
-    pub account_id: PitParamAccountId,
+    pub account_id: OpenPitParamAccountId,
     /// Settlement asset this barrier applies to.
-    pub settlement_asset: PitStringView,
+    pub settlement_asset: OpenPitStringView,
 }
 
 fn policy_storage(
-    builder: &crate::engine::PitEngineBuilder,
-) -> Option<&StorageBuilder<pit_interop::sync_policy::StorageLockingPolicyFactory>> {
+    builder: &crate::engine::OpenPitEngineBuilder,
+) -> Option<&StorageBuilder<openpit_interop::sync_policy::StorageLockingPolicyFactory>> {
     match builder.inner.as_ref()? {
         crate::engine::BuilderState::Synced(builder) => Some(builder.storage_builder()),
         crate::engine::BuilderState::Ready(builder) => Some(builder.storage_builder()),
@@ -342,7 +344,7 @@ unsafe fn try_slice_arg<'a, T>(
     ptr: *const T,
     len: usize,
     label: &str,
-    out_error: PitOutError,
+    out_error: OpenPitOutError,
 ) -> Option<&'a [T]> {
     if len == 0 {
         return Some(&[]);
@@ -355,10 +357,10 @@ unsafe fn try_slice_arg<'a, T>(
 }
 
 fn parse_settlement_asset_or_error(
-    settlement: PitStringView,
+    settlement: OpenPitStringView,
     label: &str,
     index: usize,
-    out_error: PitOutError,
+    out_error: OpenPitOutError,
 ) -> Option<Asset> {
     let settlement_raw = match unsafe { cstr_arg(settlement) } {
         Some(v) => v,
@@ -388,11 +390,11 @@ fn parse_settlement_asset_or_error(
 }
 
 fn parse_optional_pnl_or_error(
-    bound: PitParamPnlOptional,
+    bound: OpenPitParamPnlOptional,
     label: &str,
     index: usize,
     field: &str,
-    out_error: PitOutError,
+    out_error: OpenPitOutError,
 ) -> Result<Option<Pnl>, ()> {
     if !bound.is_set {
         return Ok(None);
@@ -424,11 +426,11 @@ fn parse_optional_pnl_or_error(
 ///
 /// Error:
 /// - returns `false` when the builder is null or already consumed;
-/// - if `out_error` is not null, writes a caller-owned `PitSharedString`
-///   error handle that MUST be released with `pit_destroy_shared_string`.
-pub extern "C" fn pit_engine_builder_add_builtin_order_validation_policy(
-    builder: *mut crate::engine::PitEngineBuilder,
-    out_error: PitOutError,
+/// - if `out_error` is not null, writes a caller-owned `OpenPitSharedString`
+///   error handle that MUST be released with `openpit_destroy_shared_string`.
+pub extern "C" fn openpit_engine_builder_add_builtin_order_validation_policy(
+    builder: *mut crate::engine::OpenPitEngineBuilder,
+    out_error: OpenPitOutError,
 ) -> bool {
     if builder.is_null() {
         write_error(out_error, "engine builder is null");
@@ -464,18 +466,18 @@ pub extern "C" fn pit_engine_builder_add_builtin_order_validation_policy(
 /// Error:
 /// - returns `false` when the builder is null or already consumed, when no
 ///   barrier axis is configured, or when argument parsing fails;
-/// - if `out_error` is not null, writes a caller-owned `PitSharedString`
-///   error handle that MUST be released with `pit_destroy_shared_string`.
-pub unsafe extern "C" fn pit_engine_builder_add_builtin_rate_limit_policy(
-    builder: *mut crate::engine::PitEngineBuilder,
-    broker: *const PitPretradePoliciesRateLimitBrokerBarrier,
-    asset: *const PitPretradePoliciesRateLimitAssetBarrier,
+/// - if `out_error` is not null, writes a caller-owned `OpenPitSharedString`
+///   error handle that MUST be released with `openpit_destroy_shared_string`.
+pub unsafe extern "C" fn openpit_engine_builder_add_builtin_rate_limit_policy(
+    builder: *mut crate::engine::OpenPitEngineBuilder,
+    broker: *const OpenPitPretradePoliciesRateLimitBrokerBarrier,
+    asset: *const OpenPitPretradePoliciesRateLimitAssetBarrier,
     asset_len: usize,
-    account: *const PitPretradePoliciesRateLimitAccountBarrier,
+    account: *const OpenPitPretradePoliciesRateLimitAccountBarrier,
     account_len: usize,
-    account_asset: *const PitPretradePoliciesRateLimitAccountAssetBarrier,
+    account_asset: *const OpenPitPretradePoliciesRateLimitAccountAssetBarrier,
     account_asset_len: usize,
-    out_error: PitOutError,
+    out_error: OpenPitOutError,
 ) -> bool {
     if builder.is_null() {
         write_error(out_error, "engine builder is null");
@@ -617,16 +619,16 @@ pub unsafe extern "C" fn pit_engine_builder_add_builtin_rate_limit_policy(
 /// Error:
 /// - returns `false` when the builder is null or already consumed, when no
 ///   barrier axis is configured, or when argument parsing fails;
-/// - if `out_error` is not null, writes a caller-owned `PitSharedString`
-///   error handle that MUST be released with `pit_destroy_shared_string`.
-pub unsafe extern "C" fn pit_engine_builder_add_builtin_order_size_limit_policy(
-    builder: *mut crate::engine::PitEngineBuilder,
-    broker: *const PitPretradePoliciesOrderSizeBrokerBarrier,
-    asset: *const PitPretradePoliciesOrderSizeAssetBarrier,
+/// - if `out_error` is not null, writes a caller-owned `OpenPitSharedString`
+///   error handle that MUST be released with `openpit_destroy_shared_string`.
+pub unsafe extern "C" fn openpit_engine_builder_add_builtin_order_size_limit_policy(
+    builder: *mut crate::engine::OpenPitEngineBuilder,
+    broker: *const OpenPitPretradePoliciesOrderSizeBrokerBarrier,
+    asset: *const OpenPitPretradePoliciesOrderSizeAssetBarrier,
     asset_len: usize,
-    account_asset: *const PitPretradePoliciesOrderSizeAccountAssetBarrier,
+    account_asset: *const OpenPitPretradePoliciesOrderSizeAccountAssetBarrier,
     account_asset_len: usize,
-    out_error: PitOutError,
+    out_error: OpenPitOutError,
 ) -> bool {
     if builder.is_null() {
         write_error(out_error, "engine builder is null");
@@ -791,15 +793,15 @@ pub unsafe extern "C" fn pit_engine_builder_add_builtin_order_size_limit_policy(
 /// Error:
 /// - returns `false` when the builder is null or already consumed, when no
 ///   barrier is configured, or when argument parsing fails;
-/// - if `out_error` is not null, writes a caller-owned `PitSharedString`
-///   error handle that MUST be released with `pit_destroy_shared_string`.
-pub unsafe extern "C" fn pit_engine_builder_add_builtin_pnl_bounds_killswitch_policy(
-    builder: *mut crate::engine::PitEngineBuilder,
-    broker: *const PitPretradePoliciesPnlBoundsBarrier,
+/// - if `out_error` is not null, writes a caller-owned `OpenPitSharedString`
+///   error handle that MUST be released with `openpit_destroy_shared_string`.
+pub unsafe extern "C" fn openpit_engine_builder_add_builtin_pnl_bounds_killswitch_policy(
+    builder: *mut crate::engine::OpenPitEngineBuilder,
+    broker: *const OpenPitPretradePoliciesPnlBoundsBarrier,
     broker_len: usize,
-    account: *const PitPretradePoliciesPnlBoundsAccountBarrier,
+    account: *const OpenPitPretradePoliciesPnlBoundsAccountBarrier,
     account_len: usize,
-    out_error: PitOutError,
+    out_error: OpenPitOutError,
 ) -> bool {
     if builder.is_null() {
         write_error(out_error, "engine builder is null");
@@ -971,8 +973,8 @@ policy_destroy_fn!(
     ///   keeps its own reference and may continue using the policy.
     /// - Destroying this caller-owned pointer does not remove the policy from
     ///   the engine.
-    pit_destroy_pretrade_check_pre_trade_start_policy,
-    PitPretradeCheckPreTradeStartPolicy
+    openpit_destroy_pretrade_check_pre_trade_start_policy,
+    OpenPitPretradeCheckPreTradeStartPolicy
 );
 
 policy_destroy_fn!(
@@ -988,8 +990,8 @@ policy_destroy_fn!(
     ///   keeps its own reference and may continue using the policy.
     /// - Destroying this caller-owned pointer does not remove the policy from
     ///   the engine.
-    pit_destroy_pretrade_pre_trade_policy,
-    PitPretradePreTradePolicy
+    openpit_destroy_pretrade_pre_trade_policy,
+    OpenPitPretradePreTradePolicy
 );
 
 policy_destroy_fn!(
@@ -1005,8 +1007,8 @@ policy_destroy_fn!(
     ///   keeps its own reference and may continue using the policy.
     /// - Destroying this caller-owned pointer does not remove the policy from
     ///   the engine.
-    pit_destroy_account_adjustment_policy,
-    PitAccountAdjustmentPolicy
+    openpit_destroy_account_adjustment_policy,
+    OpenPitAccountAdjustmentPolicy
 );
 
 //--------------------------------------------------------------------------------------------------
@@ -1015,7 +1017,7 @@ macro_rules! policy_get_name_fn {
     ($(#[$meta:meta])* $fn_name:ident, $handle_ty:ty) => {
         $(#[$meta])*
         #[no_mangle]
-        pub extern "C" fn $fn_name(policy: *const $handle_ty) -> PitStringView {
+        pub extern "C" fn $fn_name(policy: *const $handle_ty) -> OpenPitStringView {
             assert!(!policy.is_null());
             unsafe { (&*policy).get_name() }
         }
@@ -1032,8 +1034,8 @@ policy_get_name_fn!(
     /// - The view remains valid while the policy object is alive and its name
     ///   is not changed.
     /// - Passing an invalid pointer aborts the call.
-    pit_pretrade_check_pre_trade_start_policy_get_name,
-    PitPretradeCheckPreTradeStartPolicy
+    openpit_pretrade_check_pre_trade_start_policy_get_name,
+    OpenPitPretradeCheckPreTradeStartPolicy
 );
 
 policy_get_name_fn!(
@@ -1046,8 +1048,8 @@ policy_get_name_fn!(
     /// - The view remains valid while the policy object is alive and its name
     ///   is not changed.
     /// - Passing an invalid pointer aborts the call.
-    pit_pretrade_pre_trade_policy_get_name,
-    PitPretradePreTradePolicy
+    openpit_pretrade_pre_trade_policy_get_name,
+    OpenPitPretradePreTradePolicy
 );
 
 policy_get_name_fn!(
@@ -1060,16 +1062,16 @@ policy_get_name_fn!(
     /// - The view remains valid while the policy object is alive and its name
     ///   is not changed.
     /// - Passing an invalid pointer aborts the call.
-    pit_account_adjustment_policy_get_name,
-    PitAccountAdjustmentPolicy
+    openpit_account_adjustment_policy_get_name,
+    OpenPitAccountAdjustmentPolicy
 );
 
 //--------------------------------------------------------------------------------------------------
 
 fn get_policy_arc<P: ?Sized>(
-    builder: *mut crate::engine::PitEngineBuilder,
+    builder: *mut crate::engine::OpenPitEngineBuilder,
     policy: *mut PolicyHandle<P>,
-) -> Result<(*mut crate::engine::PitEngineBuilder, Arc<P>), String> {
+) -> Result<(*mut crate::engine::OpenPitEngineBuilder, Arc<P>), String> {
     if builder.is_null() {
         return Err("engine builder is null".to_string());
     }
@@ -1095,18 +1097,18 @@ fn get_policy_arc<P: ?Sized>(
 ///
 /// Error:
 /// - returns `false` when the builder or policy cannot be used;
-/// - if `out_error` is not null, writes a caller-owned `PitSharedString`
-///   error handle that MUST be released with `pit_destroy_shared_string`.
+/// - if `out_error` is not null, writes a caller-owned `OpenPitSharedString`
+///   error handle that MUST be released with `openpit_destroy_shared_string`.
 ///
 /// Lifetime contract:
 /// - The engine builder retains its own reference to the policy object.
 /// - The caller still owns the passed pointer and must release that local pointer
-///   separately with `pit_destroy_pretrade_check_pre_trade_start_policy` when
+///   separately with `openpit_destroy_pretrade_check_pre_trade_start_policy` when
 ///   it is no longer needed.
-pub extern "C" fn pit_engine_builder_add_check_pre_trade_start_policy(
-    builder: *mut crate::engine::PitEngineBuilder,
-    policy: *mut PitPretradeCheckPreTradeStartPolicy,
-    out_error: PitOutError,
+pub extern "C" fn openpit_engine_builder_add_check_pre_trade_start_policy(
+    builder: *mut crate::engine::OpenPitEngineBuilder,
+    policy: *mut OpenPitPretradeCheckPreTradeStartPolicy,
+    out_error: OpenPitOutError,
 ) -> bool {
     let result = get_policy_arc(builder, policy).and_then(|(b, policy)| {
         crate::engine::add_check_pre_trade_start_policy_to_builder(
@@ -1135,18 +1137,18 @@ pub extern "C" fn pit_engine_builder_add_check_pre_trade_start_policy(
 ///
 /// Error:
 /// - returns `false` when the builder or policy cannot be used;
-/// - if `out_error` is not null, writes a caller-owned `PitSharedString`
-///   error handle that MUST be released with `pit_destroy_shared_string`.
+/// - if `out_error` is not null, writes a caller-owned `OpenPitSharedString`
+///   error handle that MUST be released with `openpit_destroy_shared_string`.
 ///
 /// Lifetime contract:
 /// - The engine builder retains its own reference to the policy object.
 /// - The caller still owns the passed pointer and must release that local pointer
-///   separately with `pit_destroy_pretrade_pre_trade_policy` when it is no
+///   separately with `openpit_destroy_pretrade_pre_trade_policy` when it is no
 ///   longer needed.
-pub extern "C" fn pit_engine_builder_add_pre_trade_policy(
-    builder: *mut crate::engine::PitEngineBuilder,
-    policy: *mut PitPretradePreTradePolicy,
-    out_error: PitOutError,
+pub extern "C" fn openpit_engine_builder_add_pre_trade_policy(
+    builder: *mut crate::engine::OpenPitEngineBuilder,
+    policy: *mut OpenPitPretradePreTradePolicy,
+    out_error: OpenPitOutError,
 ) -> bool {
     let result = get_policy_arc(builder, policy).and_then(|(b, policy)| {
         crate::engine::add_pre_trade_policy_to_builder(
@@ -1175,18 +1177,18 @@ pub extern "C" fn pit_engine_builder_add_pre_trade_policy(
 ///
 /// Error:
 /// - returns `false` when the builder or policy cannot be used;
-/// - if `out_error` is not null, writes a caller-owned `PitSharedString`
-///   error handle that MUST be released with `pit_destroy_shared_string`.
+/// - if `out_error` is not null, writes a caller-owned `OpenPitSharedString`
+///   error handle that MUST be released with `openpit_destroy_shared_string`.
 ///
 /// Lifetime contract:
 /// - The engine builder retains its own reference to the policy object.
 /// - The caller still owns the passed pointer and must release that local pointer
-///   separately with `pit_destroy_account_adjustment_policy` when it
+///   separately with `openpit_destroy_account_adjustment_policy` when it
 ///   is no longer needed.
-pub extern "C" fn pit_engine_builder_add_account_adjustment_policy(
-    builder: *mut crate::engine::PitEngineBuilder,
-    policy: *mut PitAccountAdjustmentPolicy,
-    out_error: PitOutError,
+pub extern "C" fn openpit_engine_builder_add_account_adjustment_policy(
+    builder: *mut crate::engine::OpenPitEngineBuilder,
+    policy: *mut OpenPitAccountAdjustmentPolicy,
+    out_error: OpenPitOutError,
 ) -> bool {
     let result = get_policy_arc(builder, policy).and_then(|(b, policy)| {
         crate::engine::add_account_adjustment_policy_to_builder(
@@ -1213,7 +1215,7 @@ pub extern "C" fn pit_engine_builder_add_account_adjustment_policy(
 /// Future extension: this type is the designated seam for engine
 /// storage-cell access. A read accessor will be added here when the engine
 /// store is introduced.
-pub struct PitPretradeContext;
+pub struct OpenPitPretradeContext;
 
 /// Opaque context passed to account-adjustment C policy callbacks.
 ///
@@ -1223,30 +1225,30 @@ pub struct PitPretradeContext;
 /// Future extension: this type is the designated seam for engine
 /// storage-cell access. A read accessor will be added here when the engine
 /// store is introduced.
-pub struct PitAccountAdjustmentContext;
+pub struct OpenPitAccountAdjustmentContext;
 
 /// Opaque, non-owning pointer to the mutation collector.
 ///
 /// Valid only during the policy callback that received it.
 /// The caller must not store or use this pointer after the callback returns.
-pub struct PitMutations {
+pub struct OpenPitMutations {
     mutations: *mut Mutations,
 }
 
 /// Callback invoked for either commit or rollback of a registered mutation.
-pub type PitMutationFn = unsafe extern "C" fn(user_data: *mut c_void);
+pub type OpenPitMutationFn = unsafe extern "C" fn(user_data: *mut c_void);
 
 /// Optional callback to release mutation user_data after execution.
 ///
-/// Called exactly once per `pit_mutations_push`:
+/// Called exactly once per `openpit_mutations_push`:
 /// - after `commit_fn` when commit runs;
 /// - after `rollback_fn` when rollback runs;
 /// - or on drop if neither action ran.
-pub type PitMutationFreeFn = unsafe extern "C" fn(user_data: *mut c_void);
+pub type OpenPitMutationFreeFn = unsafe extern "C" fn(user_data: *mut c_void);
 
 struct FfiMutationGuard {
     user_data: *mut c_void,
-    free_fn: Option<PitMutationFreeFn>,
+    free_fn: Option<OpenPitMutationFreeFn>,
 }
 
 impl Drop for FfiMutationGuard {
@@ -1273,24 +1275,24 @@ impl Drop for FfiMutationGuard {
 ///
 /// Error:
 /// - returns `false` when `mutations` is null or invalid;
-/// - if `out_error` is not null, writes a caller-owned `PitSharedString`
-///   error handle that MUST be released with `pit_destroy_shared_string`.
-pub unsafe extern "C" fn pit_mutations_push(
-    mutations: *mut PitMutations,
-    commit_fn: PitMutationFn,
-    rollback_fn: PitMutationFn,
+/// - if `out_error` is not null, writes a caller-owned `OpenPitSharedString`
+///   error handle that MUST be released with `openpit_destroy_shared_string`.
+pub unsafe extern "C" fn openpit_mutations_push(
+    mutations: *mut OpenPitMutations,
+    commit_fn: OpenPitMutationFn,
+    rollback_fn: OpenPitMutationFn,
     user_data: *mut c_void,
-    free_fn: Option<PitMutationFreeFn>,
-    out_error: PitOutError,
+    free_fn: Option<OpenPitMutationFreeFn>,
+    out_error: OpenPitOutError,
 ) -> bool {
     if mutations.is_null() {
-        write_error(out_error, "pit_mutations_push: mutations is null");
+        write_error(out_error, "openpit_mutations_push: mutations is null");
         return false;
     }
 
     let raw_mutations = unsafe { (*mutations).mutations };
     if raw_mutations.is_null() {
-        write_error(out_error, "pit_mutations_push: inner mutations is null");
+        write_error(out_error, "openpit_mutations_push: inner mutations is null");
         return false;
     }
 
@@ -1331,16 +1333,16 @@ pub unsafe extern "C" fn pit_mutations_push(
 /// - A rejected order must set explicit `code` and `scope` values in every
 ///   list item.
 /// - The returned list ownership is transferred to the engine; create it with
-///   `pit_create_reject_list`.
+///   `openpit_create_reject_list`.
 /// - Every reject payload is copied into internal storage before the callback
 ///   returns.
 /// - `user_data` is passed through unchanged from policy creation.
-pub type PitPretradeCheckPreTradeStartPolicyCheckPreTradeStartFn =
+pub type OpenPitPretradeCheckPreTradeStartPolicyCheckPreTradeStartFn =
     unsafe extern "C" fn(
-        ctx: *const PitPretradeContext,
-        order: *const PitOrder,
+        ctx: *const OpenPitPretradeContext,
+        order: *const OpenPitOrder,
         user_data: *mut c_void,
-    ) -> *mut PitRejectList;
+    ) -> *mut OpenPitRejectList;
 
 /// Callback used by a custom start-stage policy to observe an execution report.
 ///
@@ -1355,8 +1357,8 @@ pub type PitPretradeCheckPreTradeStartPolicyCheckPreTradeStartFn =
 ///   update.
 /// - Return `false` when nothing changed.
 /// - `user_data` is passed through unchanged from policy creation.
-pub type PitPretradeCheckPreTradeStartPolicyApplyExecutionReportFn =
-    unsafe extern "C" fn(report: *const PitExecutionReport, user_data: *mut c_void) -> bool;
+pub type OpenPitPretradeCheckPreTradeStartPolicyApplyExecutionReportFn =
+    unsafe extern "C" fn(report: *const OpenPitExecutionReport, user_data: *mut c_void) -> bool;
 
 /// Callback invoked when the last reference to a custom start-stage policy is
 /// released and the policy object is about to be destroyed.
@@ -1367,7 +1369,7 @@ pub type PitPretradeCheckPreTradeStartPolicyApplyExecutionReportFn =
 ///   this policy instance.
 /// - `user_data` is the same value that was passed at policy creation.
 /// - The callback must release any resources associated with `user_data`.
-pub type PitPretradeCheckPreTradeStartPolicyFreeUserDataFn =
+pub type OpenPitPretradeCheckPreTradeStartPolicyFreeUserDataFn =
     unsafe extern "C" fn(user_data: *mut c_void);
 
 /// Callback used by a custom main-stage policy to perform a pre-trade check.
@@ -1387,16 +1389,16 @@ pub type PitPretradeCheckPreTradeStartPolicyFreeUserDataFn =
 /// - Return a non-empty reject list to reject the order.
 /// - Every returned reject must contain explicit `code` and `scope` values.
 /// - The returned list ownership is transferred to the engine; create it with
-///   `pit_create_reject_list`.
+///   `openpit_create_reject_list`.
 /// - Every reject payload is copied into internal storage before this callback
 ///   returns.
 /// - `user_data` is passed through unchanged from policy creation.
-pub type PitPretradePreTradePolicyCheckFn = unsafe extern "C" fn(
-    ctx: *const PitPretradeContext,
-    order: *const PitOrder,
-    mutations: *mut PitMutations,
+pub type OpenPitPretradePreTradePolicyCheckFn = unsafe extern "C" fn(
+    ctx: *const OpenPitPretradeContext,
+    order: *const OpenPitOrder,
+    mutations: *mut OpenPitMutations,
     user_data: *mut c_void,
-) -> *mut PitRejectList;
+) -> *mut OpenPitRejectList;
 
 /// Callback used by a custom main-stage policy to observe an execution report.
 ///
@@ -1411,8 +1413,8 @@ pub type PitPretradePreTradePolicyCheckFn = unsafe extern "C" fn(
 ///   update.
 /// - Return `false` when nothing changed.
 /// - `user_data` is passed through unchanged from policy creation.
-pub type PitPretradePreTradePolicyApplyExecutionReportFn =
-    unsafe extern "C" fn(report: *const PitExecutionReport, user_data: *mut c_void) -> bool;
+pub type OpenPitPretradePreTradePolicyApplyExecutionReportFn =
+    unsafe extern "C" fn(report: *const OpenPitExecutionReport, user_data: *mut c_void) -> bool;
 
 /// Callback invoked when the last reference to a custom main-stage policy is
 /// released and the policy object is about to be destroyed.
@@ -1423,7 +1425,7 @@ pub type PitPretradePreTradePolicyApplyExecutionReportFn =
 ///   this policy instance.
 /// - `user_data` is the same value that was passed at policy creation.
 /// - The callback must release any resources associated with `user_data`.
-pub type PitPretradePreTradePolicyFreeUserDataFn = unsafe extern "C" fn(user_data: *mut c_void);
+pub type OpenPitPretradePreTradePolicyFreeUserDataFn = unsafe extern "C" fn(user_data: *mut c_void);
 
 /// Callback used by a custom account-adjustment policy to validate one
 /// adjustment.
@@ -1445,13 +1447,13 @@ pub type PitPretradePreTradePolicyFreeUserDataFn = unsafe extern "C" fn(user_dat
 /// - Return a non-empty reject list to reject the adjustment.
 /// - Returned reject list ownership is transferred to the callee.
 /// - `user_data` is passed through unchanged from policy creation.
-pub type PitAccountAdjustmentPolicyApplyFn = unsafe extern "C" fn(
-    ctx: *const PitAccountAdjustmentContext,
-    account_id: PitParamAccountId,
-    adjustment: *const PitAccountAdjustment,
-    mutations: *mut PitMutations,
+pub type OpenPitAccountAdjustmentPolicyApplyFn = unsafe extern "C" fn(
+    ctx: *const OpenPitAccountAdjustmentContext,
+    account_id: OpenPitParamAccountId,
+    adjustment: *const OpenPitAccountAdjustment,
+    mutations: *mut OpenPitMutations,
     user_data: *mut c_void,
-) -> *mut PitRejectList;
+) -> *mut OpenPitRejectList;
 
 /// Callback invoked when the last reference to a custom account-adjustment
 /// policy is released and the policy object is about to be destroyed.
@@ -1462,7 +1464,8 @@ pub type PitAccountAdjustmentPolicyApplyFn = unsafe extern "C" fn(
 ///   this policy instance.
 /// - `user_data` is the same value that was passed at policy creation.
 /// - The callback must release any resources associated with `user_data`.
-pub type PitAccountAdjustmentPolicyFreeUserDataFn = unsafe extern "C" fn(user_data: *mut c_void);
+pub type OpenPitAccountAdjustmentPolicyFreeUserDataFn =
+    unsafe extern "C" fn(user_data: *mut c_void);
 
 //--------------------------------------------------------------------------------------------------
 
@@ -1551,9 +1554,9 @@ impl AccountAdjustmentPolicy<AccountAdjustment> for DynAccountAdjustmentPolicy {
 
 struct CustomCheckPreTradeStartPolicy {
     name: String,
-    check_fn: PitPretradeCheckPreTradeStartPolicyCheckPreTradeStartFn,
-    apply_execution_report_fn: PitPretradeCheckPreTradeStartPolicyApplyExecutionReportFn,
-    free_user_data_fn: PitPretradeCheckPreTradeStartPolicyFreeUserDataFn,
+    check_fn: OpenPitPretradeCheckPreTradeStartPolicyCheckPreTradeStartFn,
+    apply_execution_report_fn: OpenPitPretradeCheckPreTradeStartPolicyApplyExecutionReportFn,
+    free_user_data_fn: OpenPitPretradeCheckPreTradeStartPolicyFreeUserDataFn,
     user_data: *mut c_void,
 }
 
@@ -1566,7 +1569,7 @@ impl CheckPreTradeStartPolicy<Order, ExecutionReport> for CustomCheckPreTradeSta
 
     fn check_pre_trade_start(&self, ctx: &PreTradeContext, order: &Order) -> Result<(), Rejects> {
         let input = export_order(order);
-        let c_ctx = (ctx as *const PreTradeContext).cast::<PitPretradeContext>();
+        let c_ctx = (ctx as *const PreTradeContext).cast::<OpenPitPretradeContext>();
         let rejects = unsafe { (self.check_fn)(c_ctx, &input, self.user_data) };
         import_reject_list_result(rejects)
     }
@@ -1585,9 +1588,9 @@ impl Drop for CustomCheckPreTradeStartPolicy {
 
 struct CustomPreTradePolicy {
     name: String,
-    check_fn: PitPretradePreTradePolicyCheckFn,
-    apply_execution_report_fn: PitPretradePreTradePolicyApplyExecutionReportFn,
-    free_user_data_fn: PitPretradePreTradePolicyFreeUserDataFn,
+    check_fn: OpenPitPretradePreTradePolicyCheckFn,
+    apply_execution_report_fn: OpenPitPretradePreTradePolicyApplyExecutionReportFn,
+    free_user_data_fn: OpenPitPretradePreTradePolicyFreeUserDataFn,
     user_data: *mut c_void,
 }
 
@@ -1604,11 +1607,11 @@ impl PreTradePolicy<Order, ExecutionReport> for CustomPreTradePolicy {
         order: &Order,
         mutations: &mut Mutations,
     ) -> Result<(), Rejects> {
-        let mut mutations_handle = PitMutations {
+        let mut mutations_handle = OpenPitMutations {
             mutations: mutations as *mut Mutations,
         };
         let input = export_order(order);
-        let c_ctx = (ctx as *const PreTradeContext).cast::<PitPretradeContext>();
+        let c_ctx = (ctx as *const PreTradeContext).cast::<OpenPitPretradeContext>();
         let rejects =
             unsafe { (self.check_fn)(c_ctx, &input, &mut mutations_handle, self.user_data) };
         import_reject_list_result(rejects)
@@ -1628,8 +1631,8 @@ impl Drop for CustomPreTradePolicy {
 
 struct CustomAccountAdjustmentPolicy {
     name: String,
-    apply_fn: PitAccountAdjustmentPolicyApplyFn,
-    free_user_data_fn: PitAccountAdjustmentPolicyFreeUserDataFn,
+    apply_fn: OpenPitAccountAdjustmentPolicyApplyFn,
+    free_user_data_fn: OpenPitAccountAdjustmentPolicyFreeUserDataFn,
     user_data: *mut c_void,
 }
 
@@ -1647,11 +1650,12 @@ impl AccountAdjustmentPolicy<AccountAdjustment> for CustomAccountAdjustmentPolic
         adjustment: &AccountAdjustment,
         mutations: &mut Mutations,
     ) -> Result<(), Rejects> {
-        let mut mutations_handle = PitMutations {
+        let mut mutations_handle = OpenPitMutations {
             mutations: mutations as *mut Mutations,
         };
         let input = export_account_adjustment(adjustment);
-        let c_ctx = (_ctx as *const AccountAdjustmentContext).cast::<PitAccountAdjustmentContext>();
+        let c_ctx =
+            (_ctx as *const AccountAdjustmentContext).cast::<OpenPitAccountAdjustmentContext>();
         let rejects = unsafe {
             (self.apply_fn)(
                 c_ctx,
@@ -1673,7 +1677,10 @@ impl Drop for CustomAccountAdjustmentPolicy {
 
 //--------------------------------------------------------------------------------------------------
 
-unsafe fn parse_policy_name(name_ptr: PitStringView, out_error: PitOutError) -> Option<String> {
+unsafe fn parse_policy_name(
+    name_ptr: OpenPitStringView,
+    out_error: OpenPitOutError,
+) -> Option<String> {
     if name_ptr.ptr.is_null() {
         write_error(out_error, "policy name is null");
         return None;
@@ -1693,7 +1700,7 @@ unsafe fn parse_policy_name(name_ptr: PitStringView, out_error: PitOutError) -> 
     Some(value.to_owned())
 }
 
-fn import_reject_list_result(rejects: *mut PitRejectList) -> Result<(), Rejects> {
+fn import_reject_list_result(rejects: *mut OpenPitRejectList) -> Result<(), Rejects> {
     if rejects.is_null() {
         return Ok(());
     }
@@ -1722,9 +1729,9 @@ fn import_reject_list_result(rejects: *mut PitRejectList) -> Result<(), Rejects>
 /// - `user_data` is opaque to the SDK: the engine never inspects, dereferences,
 ///   or frees it; it is forwarded verbatim to the registered callbacks.
 ///   Lifetime, thread-safety, and meaning of the pointed-at state are entirely
-///   the caller's responsibility. Under `PitSyncPolicy_Local` or
-///   `PitSyncPolicy_Account`, the caller serialises per-handle invocation per
-///   the SDK threading contract; under `PitSyncPolicy_Full`, the caller is
+///   the caller's responsibility. Under `OpenPitSyncPolicy_Local` or
+///   `OpenPitSyncPolicy_Account`, the caller serialises per-handle invocation per
+///   the SDK threading contract; under `OpenPitSyncPolicy_Full`, the caller is
 ///   responsible for making any state reachable through `user_data` safe under
 ///   concurrent invocation.
 ///
@@ -1733,27 +1740,27 @@ fn import_reject_list_result(rejects: *mut PitRejectList) -> Result<(), Rejects>
 ///
 /// Error:
 /// - returns null when `name` is invalid;
-/// - if `out_error` is not null, writes a caller-owned `PitSharedString`
-///   error handle that MUST be released with `pit_destroy_shared_string`.
+/// - if `out_error` is not null, writes a caller-owned `OpenPitSharedString`
+///   error handle that MUST be released with `openpit_destroy_shared_string`.
 ///
 /// Lifetime contract:
 /// - The policy stores its own copy of `name`; the caller may release the input
 ///   string after this function returns.
 /// - The returned pointer is owned by the caller and must be released with
-///   `pit_destroy_pretrade_check_pre_trade_start_policy` when no longer needed.
+///   `openpit_destroy_pretrade_check_pre_trade_start_policy` when no longer needed.
 /// - If the policy is added to the engine builder, the engine keeps its own
 ///   reference, but the caller must still release the caller-owned pointer.
 /// - `free_user_data_fn` runs once the last reference to the policy is
 ///   released; when the engine is the final holder, it runs as part of engine
 ///   destruction.
-pub unsafe extern "C" fn pit_create_pretrade_custom_check_pre_trade_start_policy(
-    name: PitStringView,
-    check_fn: PitPretradeCheckPreTradeStartPolicyCheckPreTradeStartFn,
-    apply_execution_report_fn: PitPretradeCheckPreTradeStartPolicyApplyExecutionReportFn,
-    free_user_data_fn: PitPretradeCheckPreTradeStartPolicyFreeUserDataFn,
+pub unsafe extern "C" fn openpit_create_pretrade_custom_check_pre_trade_start_policy(
+    name: OpenPitStringView,
+    check_fn: OpenPitPretradeCheckPreTradeStartPolicyCheckPreTradeStartFn,
+    apply_execution_report_fn: OpenPitPretradeCheckPreTradeStartPolicyApplyExecutionReportFn,
+    free_user_data_fn: OpenPitPretradeCheckPreTradeStartPolicyFreeUserDataFn,
     user_data: *mut c_void,
-    out_error: PitOutError,
-) -> *mut PitPretradeCheckPreTradeStartPolicy {
+    out_error: OpenPitOutError,
+) -> *mut OpenPitPretradeCheckPreTradeStartPolicy {
     let name = match unsafe { parse_policy_name(name, out_error) } {
         Some(v) => v,
         None => return std::ptr::null_mut(),
@@ -1767,7 +1774,7 @@ pub unsafe extern "C" fn pit_create_pretrade_custom_check_pre_trade_start_policy
         user_data,
     };
 
-    PitPretradeCheckPreTradeStartPolicy::new(Arc::new(policy))
+    OpenPitPretradeCheckPreTradeStartPolicy::new(Arc::new(policy))
 }
 
 #[no_mangle]
@@ -1786,9 +1793,9 @@ pub unsafe extern "C" fn pit_create_pretrade_custom_check_pre_trade_start_policy
 /// - `user_data` is opaque to the SDK: the engine never inspects, dereferences,
 ///   or frees it; it is forwarded verbatim to the registered callbacks.
 ///   Lifetime, thread-safety, and meaning of the pointed-at state are entirely
-///   the caller's responsibility. Under `PitSyncPolicy_Local` or
-///   `PitSyncPolicy_Account`, the caller serialises per-handle invocation per
-///   the SDK threading contract; under `PitSyncPolicy_Full`, the caller is
+///   the caller's responsibility. Under `OpenPitSyncPolicy_Local` or
+///   `OpenPitSyncPolicy_Account`, the caller serialises per-handle invocation per
+///   the SDK threading contract; under `OpenPitSyncPolicy_Full`, the caller is
 ///   responsible for making any state reachable through `user_data` safe under
 ///   concurrent invocation.
 ///
@@ -1797,27 +1804,27 @@ pub unsafe extern "C" fn pit_create_pretrade_custom_check_pre_trade_start_policy
 ///
 /// Error:
 /// - returns null when `name` is invalid;
-/// - if `out_error` is not null, writes a caller-owned `PitSharedString`
-///   error handle that MUST be released with `pit_destroy_shared_string`.
+/// - if `out_error` is not null, writes a caller-owned `OpenPitSharedString`
+///   error handle that MUST be released with `openpit_destroy_shared_string`.
 ///
 /// Lifetime contract:
 /// - The policy stores its own copy of `name`; the caller may release the input
 ///   string after this function returns.
 /// - The returned pointer is owned by the caller and must be released with
-///   `pit_destroy_pretrade_pre_trade_policy` when no longer needed.
+///   `openpit_destroy_pretrade_pre_trade_policy` when no longer needed.
 /// - If the policy is added to the engine builder, the engine keeps its own
 ///   reference, but the caller must still release the caller-owned pointer.
 /// - `free_user_data_fn` runs once the last reference to the policy is
 ///   released; when the engine is the final holder, it runs as part of engine
 ///   destruction.
-pub unsafe extern "C" fn pit_create_pretrade_custom_pre_trade_policy(
-    name: PitStringView,
-    check_fn: PitPretradePreTradePolicyCheckFn,
-    apply_fn: PitPretradePreTradePolicyApplyExecutionReportFn,
-    free_user_data_fn: PitPretradePreTradePolicyFreeUserDataFn,
+pub unsafe extern "C" fn openpit_create_pretrade_custom_pre_trade_policy(
+    name: OpenPitStringView,
+    check_fn: OpenPitPretradePreTradePolicyCheckFn,
+    apply_fn: OpenPitPretradePreTradePolicyApplyExecutionReportFn,
+    free_user_data_fn: OpenPitPretradePreTradePolicyFreeUserDataFn,
     user_data: *mut c_void,
-    out_error: PitOutError,
-) -> *mut PitPretradePreTradePolicy {
+    out_error: OpenPitOutError,
+) -> *mut OpenPitPretradePreTradePolicy {
     let name = match unsafe { parse_policy_name(name, out_error) } {
         Some(v) => v,
         None => return std::ptr::null_mut(),
@@ -1831,7 +1838,7 @@ pub unsafe extern "C" fn pit_create_pretrade_custom_pre_trade_policy(
         user_data,
     };
 
-    PitPretradePreTradePolicy::new(Arc::new(policy))
+    OpenPitPretradePreTradePolicy::new(Arc::new(policy))
 }
 
 #[no_mangle]
@@ -1849,9 +1856,9 @@ pub unsafe extern "C" fn pit_create_pretrade_custom_pre_trade_policy(
 /// - `user_data` is opaque to the SDK: the engine never inspects, dereferences,
 ///   or frees it; it is forwarded verbatim to the registered callbacks.
 ///   Lifetime, thread-safety, and meaning of the pointed-at state are entirely
-///   the caller's responsibility. Under `PitSyncPolicy_Local` or
-///   `PitSyncPolicy_Account`, the caller serialises per-handle invocation per
-///   the SDK threading contract; under `PitSyncPolicy_Full`, the caller is
+///   the caller's responsibility. Under `OpenPitSyncPolicy_Local` or
+///   `OpenPitSyncPolicy_Account`, the caller serialises per-handle invocation per
+///   the SDK threading contract; under `OpenPitSyncPolicy_Full`, the caller is
 ///   responsible for making any state reachable through `user_data` safe under
 ///   concurrent invocation.
 ///
@@ -1860,26 +1867,26 @@ pub unsafe extern "C" fn pit_create_pretrade_custom_pre_trade_policy(
 ///
 /// Error:
 /// - returns null when `name` is invalid;
-/// - if `out_error` is not null, writes a caller-owned `PitSharedString`
-///   error handle that MUST be released with `pit_destroy_shared_string`.
+/// - if `out_error` is not null, writes a caller-owned `OpenPitSharedString`
+///   error handle that MUST be released with `openpit_destroy_shared_string`.
 ///
 /// Lifetime contract:
 /// - The policy stores its own copy of `name`; the caller may release the input
 ///   string after this function returns.
 /// - The returned pointer is owned by the caller and must be released with
-///   `pit_destroy_account_adjustment_policy` when no longer needed.
+///   `openpit_destroy_account_adjustment_policy` when no longer needed.
 /// - If the policy is added to the engine builder, the engine keeps its own
 ///   reference, but the caller must still release the caller-owned pointer.
 /// - `free_user_data_fn` runs once the last reference to the policy is
 ///   released; when the engine is the final holder, it runs as part of engine
 ///   destruction.
-pub unsafe extern "C" fn pit_create_custom_account_adjustment_policy(
-    name: PitStringView,
-    apply_fn: PitAccountAdjustmentPolicyApplyFn,
-    free_user_data_fn: PitAccountAdjustmentPolicyFreeUserDataFn,
+pub unsafe extern "C" fn openpit_create_custom_account_adjustment_policy(
+    name: OpenPitStringView,
+    apply_fn: OpenPitAccountAdjustmentPolicyApplyFn,
+    free_user_data_fn: OpenPitAccountAdjustmentPolicyFreeUserDataFn,
     user_data: *mut c_void,
-    out_error: PitOutError,
-) -> *mut PitAccountAdjustmentPolicy {
+    out_error: OpenPitOutError,
+) -> *mut OpenPitAccountAdjustmentPolicy {
     let name = match unsafe { parse_policy_name(name, out_error) } {
         Some(v) => v,
         None => return std::ptr::null_mut(),
@@ -1892,12 +1899,12 @@ pub unsafe extern "C" fn pit_create_custom_account_adjustment_policy(
         user_data,
     };
 
-    PitAccountAdjustmentPolicy::new(Arc::new(policy))
+    OpenPitAccountAdjustmentPolicy::new(Arc::new(policy))
 }
 
 //--------------------------------------------------------------------------------------------------
 
-unsafe fn cstr_arg(ptr: PitStringView) -> Option<String> {
+unsafe fn cstr_arg(ptr: OpenPitStringView) -> Option<String> {
     if ptr.ptr.is_null() {
         return None;
     }
@@ -1915,23 +1922,23 @@ mod tests {
 
     use openpit::param::{AccountId, Asset, Quantity, Side, TradeAmount};
     use openpit::Instrument;
-    use pit_interop::{OrderOperationAccess, PopulatedOrderOperation};
+    use openpit_interop::{OrderOperationAccess, PopulatedOrderOperation};
 
     use super::*;
 
-    use crate::param::{PitParamDecimal, PitParamPnl};
-    use crate::reject::PitRejectList;
+    use crate::param::{OpenPitParamDecimal, OpenPitParamPnl};
+    use crate::reject::OpenPitRejectList;
 
     unsafe extern "C" fn custom_check_fn(
-        _ctx: *const PitPretradeContext,
-        _order: *const PitOrder,
+        _ctx: *const OpenPitPretradeContext,
+        _order: *const OpenPitOrder,
         _user_data: *mut c_void,
-    ) -> *mut PitRejectList {
+    ) -> *mut OpenPitRejectList {
         std::ptr::null_mut()
     }
 
     unsafe extern "C" fn custom_apply_report_fn(
-        _report: *const PitExecutionReport,
+        _report: *const OpenPitExecutionReport,
         _user_data: *mut c_void,
     ) -> bool {
         false
@@ -1939,40 +1946,40 @@ mod tests {
 
     unsafe extern "C" fn custom_free_user_data_fn(_user_data: *mut c_void) {}
     unsafe extern "C" fn custom_pre_trade_check_fn(
-        _ctx: *const PitPretradeContext,
-        _order: *const PitOrder,
-        _mutations: *mut PitMutations,
+        _ctx: *const OpenPitPretradeContext,
+        _order: *const OpenPitOrder,
+        _mutations: *mut OpenPitMutations,
         _user_data: *mut c_void,
-    ) -> *mut PitRejectList {
+    ) -> *mut OpenPitRejectList {
         std::ptr::null_mut()
     }
 
     unsafe extern "C" fn custom_account_adjustment_apply_fn(
-        _ctx: *const PitAccountAdjustmentContext,
-        _account_id: PitParamAccountId,
-        _adjustment: *const PitAccountAdjustment,
-        _mutations: *mut PitMutations,
+        _ctx: *const OpenPitAccountAdjustmentContext,
+        _account_id: OpenPitParamAccountId,
+        _adjustment: *const OpenPitAccountAdjustment,
+        _mutations: *mut OpenPitMutations,
         _user_data: *mut c_void,
-    ) -> *mut PitRejectList {
+    ) -> *mut OpenPitRejectList {
         std::ptr::null_mut()
     }
 
-    fn cstr_to_string(handle: *mut crate::string::PitSharedString) -> String {
+    fn cstr_to_string(handle: *mut crate::string::OpenPitSharedString) -> String {
         if handle.is_null() {
             return String::new();
         }
-        let view = crate::string::pit_shared_string_view(handle);
+        let view = crate::string::openpit_shared_string_view(handle);
         let result = if view.ptr.is_null() {
             String::new()
         } else {
             let bytes = unsafe { std::slice::from_raw_parts(view.ptr, view.len) };
             std::str::from_utf8(bytes).expect("utf8").to_string()
         };
-        crate::string::pit_destroy_shared_string(handle);
+        crate::string::openpit_destroy_shared_string(handle);
         result
     }
 
-    fn string_view_to_string(view: PitStringView) -> String {
+    fn string_view_to_string(view: OpenPitStringView) -> String {
         if view.ptr.is_null() {
             return String::new();
         }
@@ -1980,34 +1987,34 @@ mod tests {
         std::str::from_utf8(bytes).expect("utf8").to_string()
     }
 
-    fn pnl_param(mantissa: i128, scale: i32) -> PitParamPnl {
-        PitParamPnl(PitParamDecimal {
+    fn pnl_param(mantissa: i128, scale: i32) -> OpenPitParamPnl {
+        OpenPitParamPnl(OpenPitParamDecimal {
             mantissa_lo: mantissa as i64,
             mantissa_hi: (mantissa >> 64) as i64,
             scale,
         })
     }
 
-    fn pnl_optional(value: Option<PitParamPnl>) -> PitParamPnlOptional {
+    fn pnl_optional(value: Option<OpenPitParamPnl>) -> OpenPitParamPnlOptional {
         match value {
-            Some(v) => PitParamPnlOptional {
+            Some(v) => OpenPitParamPnlOptional {
                 is_set: true,
                 value: v,
             },
-            None => PitParamPnlOptional::default(),
+            None => OpenPitParamPnlOptional::default(),
         }
     }
 
-    fn quantity_param(mantissa: i128, scale: i32) -> PitParamQuantity {
-        PitParamQuantity(PitParamDecimal {
+    fn quantity_param(mantissa: i128, scale: i32) -> OpenPitParamQuantity {
+        OpenPitParamQuantity(OpenPitParamDecimal {
             mantissa_lo: mantissa as i64,
             mantissa_hi: (mantissa >> 64) as i64,
             scale,
         })
     }
 
-    fn volume_param(mantissa: i128, scale: i32) -> PitParamVolume {
-        PitParamVolume(PitParamDecimal {
+    fn volume_param(mantissa: i128, scale: i32) -> OpenPitParamVolume {
+        OpenPitParamVolume(OpenPitParamDecimal {
             mantissa_lo: mantissa as i64,
             mantissa_hi: (mantissa >> 64) as i64,
             scale,
@@ -2029,12 +2036,12 @@ mod tests {
 
     struct MutationPushContext {
         entries: Vec<*mut c_void>,
-        free_fn: Option<PitMutationFreeFn>,
+        free_fn: Option<OpenPitMutationFreeFn>,
     }
 
     fn sample_order() -> Order {
-        pit_interop::RequestWithPayload::new(
-            pit_interop::Order {
+        openpit_interop::RequestWithPayload::new(
+            openpit_interop::Order {
                 operation: OrderOperationAccess::Populated(PopulatedOrderOperation {
                     instrument: Some(Instrument::new(
                         Asset::new("AAPL").expect("asset code must be valid"),
@@ -2047,15 +2054,15 @@ mod tests {
                     )),
                     price: None,
                 }),
-                position: pit_interop::OrderPositionAccess::Absent,
-                margin: pit_interop::OrderMarginAccess::Absent,
+                position: openpit_interop::OrderPositionAccess::Absent,
+                margin: openpit_interop::OrderMarginAccess::Absent,
             },
             std::ptr::null_mut(),
         )
     }
 
     fn execute_with_custom_pre_trade_policy(
-        check_fn: PitPretradePreTradePolicyCheckFn,
+        check_fn: OpenPitPretradePreTradePolicyCheckFn,
         user_data: *mut c_void,
     ) -> openpit::pretrade::PreTradeReservation {
         let engine = openpit::Engine::<Order, ExecutionReport, AccountAdjustment>::builder()
@@ -2096,15 +2103,15 @@ mod tests {
     }
 
     unsafe extern "C" fn push_tracked_mutations_check_fn(
-        _ctx: *const PitPretradeContext,
-        _order: *const PitOrder,
-        mutations: *mut PitMutations,
+        _ctx: *const OpenPitPretradeContext,
+        _order: *const OpenPitOrder,
+        mutations: *mut OpenPitMutations,
         user_data: *mut c_void,
-    ) -> *mut PitRejectList {
+    ) -> *mut OpenPitRejectList {
         let ctx = unsafe { &*(user_data as *const MutationPushContext) };
         for entry in &ctx.entries {
             let ok = unsafe {
-                pit_mutations_push(
+                openpit_mutations_push(
                     mutations,
                     tracked_mutation_commit,
                     tracked_mutation_rollback,
@@ -2178,11 +2185,11 @@ mod tests {
         .cast();
 
         let mut mutations = Mutations::new();
-        let mut pointer = PitMutations {
+        let mut pointer = OpenPitMutations {
             mutations: &mut mutations as *mut Mutations,
         };
         let ok = unsafe {
-            pit_mutations_push(
+            openpit_mutations_push(
                 &mut pointer,
                 tracked_mutation_commit,
                 tracked_mutation_rollback,
@@ -2217,14 +2224,14 @@ mod tests {
         };
 
         unsafe extern "C" fn push_without_free_check_fn(
-            _ctx: *const PitPretradeContext,
-            _order: *const PitOrder,
-            mutations: *mut PitMutations,
+            _ctx: *const OpenPitPretradeContext,
+            _order: *const OpenPitOrder,
+            mutations: *mut OpenPitMutations,
             user_data: *mut c_void,
-        ) -> *mut PitRejectList {
+        ) -> *mut OpenPitRejectList {
             let ctx = unsafe { &*(user_data as *const MutationPushContext) };
             let ok = unsafe {
-                pit_mutations_push(
+                openpit_mutations_push(
                     mutations,
                     commit_without_free,
                     rollback_without_free,
@@ -2251,7 +2258,7 @@ mod tests {
         unsafe extern "C" fn noop(_user_data: *mut c_void) {}
 
         let ok = unsafe {
-            pit_mutations_push(
+            openpit_mutations_push(
                 std::ptr::null_mut(),
                 noop,
                 noop,
@@ -2348,9 +2355,9 @@ mod tests {
 
     #[test]
     fn add_policy_reports_null_builder() {
-        let name = PitStringView::from_utf8("null.builder.check");
+        let name = OpenPitStringView::from_utf8("null.builder.check");
         let policy = unsafe {
-            pit_create_pretrade_custom_check_pre_trade_start_policy(
+            openpit_create_pretrade_custom_check_pre_trade_start_policy(
                 name,
                 custom_check_fn,
                 custom_apply_report_fn,
@@ -2361,38 +2368,38 @@ mod tests {
         };
         assert!(!policy.is_null());
         let mut out_error = std::ptr::null_mut();
-        let ok = pit_engine_builder_add_check_pre_trade_start_policy(
+        let ok = openpit_engine_builder_add_check_pre_trade_start_policy(
             std::ptr::null_mut(),
             policy,
             &mut out_error,
         );
         assert!(!ok);
         assert_eq!(cstr_to_string(out_error), "engine builder is null");
-        pit_destroy_pretrade_check_pre_trade_start_policy(policy);
+        openpit_destroy_pretrade_check_pre_trade_start_policy(policy);
     }
 
     #[test]
     fn add_policy_reports_null_policy() {
-        let builder = crate::engine::pit_create_engine_builder(
-            crate::engine::PitSyncPolicy::Full as u8,
+        let builder = crate::engine::openpit_create_engine_builder(
+            crate::engine::OpenPitSyncPolicy::Full as u8,
             std::ptr::null_mut(),
         );
         let mut out_error = std::ptr::null_mut();
-        let ok = pit_engine_builder_add_check_pre_trade_start_policy(
+        let ok = openpit_engine_builder_add_check_pre_trade_start_policy(
             builder,
             std::ptr::null_mut(),
             &mut out_error,
         );
         assert!(!ok);
         assert_eq!(cstr_to_string(out_error), "policy is null");
-        crate::engine::pit_destroy_engine_builder(builder);
+        crate::engine::openpit_destroy_engine_builder(builder);
     }
 
     #[test]
     fn custom_check_policy_keeps_caller_name() {
-        let name = PitStringView::from_utf8("caller.check.start");
+        let name = OpenPitStringView::from_utf8("caller.check.start");
         let pointer = unsafe {
-            pit_create_pretrade_custom_check_pre_trade_start_policy(
+            openpit_create_pretrade_custom_check_pre_trade_start_policy(
                 name,
                 custom_check_fn,
                 custom_apply_report_fn,
@@ -2407,16 +2414,16 @@ mod tests {
             cstr_to_string(std::ptr::null_mut())
         );
 
-        let got = pit_pretrade_check_pre_trade_start_policy_get_name(pointer);
+        let got = openpit_pretrade_check_pre_trade_start_policy_get_name(pointer);
         assert_eq!(string_view_to_string(got), "caller.check.start");
-        pit_destroy_pretrade_check_pre_trade_start_policy(pointer);
+        openpit_destroy_pretrade_check_pre_trade_start_policy(pointer);
     }
 
     #[test]
     fn custom_pre_trade_policy_keeps_caller_name() {
-        let name = PitStringView::from_utf8("caller.pretrade");
+        let name = OpenPitStringView::from_utf8("caller.pretrade");
         let pointer = unsafe {
-            pit_create_pretrade_custom_pre_trade_policy(
+            openpit_create_pretrade_custom_pre_trade_policy(
                 name,
                 custom_pre_trade_check_fn,
                 custom_apply_report_fn,
@@ -2431,16 +2438,16 @@ mod tests {
             cstr_to_string(std::ptr::null_mut())
         );
 
-        let got = pit_pretrade_pre_trade_policy_get_name(pointer);
+        let got = openpit_pretrade_pre_trade_policy_get_name(pointer);
         assert_eq!(string_view_to_string(got), "caller.pretrade");
-        pit_destroy_pretrade_pre_trade_policy(pointer);
+        openpit_destroy_pretrade_pre_trade_policy(pointer);
     }
 
     #[test]
     fn custom_account_adjustment_policy_keeps_caller_name() {
-        let name = PitStringView::from_utf8("caller.account.adjustment");
+        let name = OpenPitStringView::from_utf8("caller.account.adjustment");
         let pointer = unsafe {
-            pit_create_custom_account_adjustment_policy(
+            openpit_create_custom_account_adjustment_policy(
                 name,
                 custom_account_adjustment_apply_fn,
                 custom_free_user_data_fn,
@@ -2454,17 +2461,17 @@ mod tests {
             cstr_to_string(std::ptr::null_mut())
         );
 
-        let got = pit_account_adjustment_policy_get_name(pointer);
+        let got = openpit_account_adjustment_policy_get_name(pointer);
         assert_eq!(string_view_to_string(got), "caller.account.adjustment");
-        pit_destroy_account_adjustment_policy(pointer);
+        openpit_destroy_account_adjustment_policy(pointer);
     }
 
     #[test]
     fn custom_policy_create_rejects_null_empty_and_invalid_name() {
         let mut out_error = std::ptr::null_mut();
         let null_name = unsafe {
-            pit_create_pretrade_custom_check_pre_trade_start_policy(
-                PitStringView::not_set(),
+            openpit_create_pretrade_custom_check_pre_trade_start_policy(
+                OpenPitStringView::not_set(),
                 custom_check_fn,
                 custom_apply_report_fn,
                 custom_free_user_data_fn,
@@ -2475,10 +2482,10 @@ mod tests {
         assert!(null_name.is_null());
         assert!(cstr_to_string(out_error).contains("policy name is null"));
 
-        let empty = PitStringView::from_utf8("");
+        let empty = OpenPitStringView::from_utf8("");
         let mut out_error = std::ptr::null_mut();
         let empty_name = unsafe {
-            pit_create_pretrade_custom_check_pre_trade_start_policy(
+            openpit_create_pretrade_custom_check_pre_trade_start_policy(
                 empty,
                 custom_check_fn,
                 custom_apply_report_fn,
@@ -2493,8 +2500,8 @@ mod tests {
         let invalid_utf8 = [0xff_u8, 0x00];
         let mut out_error = std::ptr::null_mut();
         let invalid_name = unsafe {
-            pit_create_pretrade_custom_check_pre_trade_start_policy(
-                PitStringView {
+            openpit_create_pretrade_custom_check_pre_trade_start_policy(
+                OpenPitStringView {
                     ptr: invalid_utf8.as_ptr(),
                     len: invalid_utf8.len(),
                 },
@@ -2511,10 +2518,10 @@ mod tests {
 
     #[test]
     fn different_custom_names_do_not_collapse() {
-        let name_a = PitStringView::from_utf8("custom.a");
-        let name_b = PitStringView::from_utf8("custom.b");
+        let name_a = OpenPitStringView::from_utf8("custom.a");
+        let name_b = OpenPitStringView::from_utf8("custom.b");
         let handle_a = unsafe {
-            pit_create_pretrade_custom_check_pre_trade_start_policy(
+            openpit_create_pretrade_custom_check_pre_trade_start_policy(
                 name_a,
                 custom_check_fn,
                 custom_apply_report_fn,
@@ -2524,7 +2531,7 @@ mod tests {
             )
         };
         let handle_b = unsafe {
-            pit_create_pretrade_custom_check_pre_trade_start_policy(
+            openpit_create_pretrade_custom_check_pre_trade_start_policy(
                 name_b,
                 custom_check_fn,
                 custom_apply_report_fn,
@@ -2536,24 +2543,24 @@ mod tests {
         assert!(!handle_a.is_null());
         assert!(!handle_b.is_null());
 
-        let got_a = pit_pretrade_check_pre_trade_start_policy_get_name(handle_a);
-        let got_b = pit_pretrade_check_pre_trade_start_policy_get_name(handle_b);
+        let got_a = openpit_pretrade_check_pre_trade_start_policy_get_name(handle_a);
+        let got_b = openpit_pretrade_check_pre_trade_start_policy_get_name(handle_b);
         assert_eq!(string_view_to_string(got_a), "custom.a");
         assert_eq!(string_view_to_string(got_b), "custom.b");
-        pit_destroy_pretrade_check_pre_trade_start_policy(handle_a);
-        pit_destroy_pretrade_check_pre_trade_start_policy(handle_b);
+        openpit_destroy_pretrade_check_pre_trade_start_policy(handle_a);
+        openpit_destroy_pretrade_check_pre_trade_start_policy(handle_b);
     }
 
     #[test]
     fn add_main_and_account_adjustment_policy_to_builder() {
-        let builder = crate::engine::pit_create_engine_builder(
-            crate::engine::PitSyncPolicy::Full as u8,
+        let builder = crate::engine::openpit_create_engine_builder(
+            crate::engine::OpenPitSyncPolicy::Full as u8,
             std::ptr::null_mut(),
         );
 
-        let pre_trade_name = PitStringView::from_utf8("caller.pretrade.add");
+        let pre_trade_name = OpenPitStringView::from_utf8("caller.pretrade.add");
         let pre_trade_policy = unsafe {
-            pit_create_pretrade_custom_pre_trade_policy(
+            openpit_create_pretrade_custom_pre_trade_policy(
                 pre_trade_name,
                 custom_pre_trade_check_fn,
                 custom_apply_report_fn,
@@ -2567,17 +2574,17 @@ mod tests {
             "{}",
             cstr_to_string(std::ptr::null_mut())
         );
-        let ok = pit_engine_builder_add_pre_trade_policy(
+        let ok = openpit_engine_builder_add_pre_trade_policy(
             builder,
             pre_trade_policy,
             std::ptr::null_mut(),
         );
         assert!(ok, "{}", cstr_to_string(std::ptr::null_mut()));
-        pit_destroy_pretrade_pre_trade_policy(pre_trade_policy);
+        openpit_destroy_pretrade_pre_trade_policy(pre_trade_policy);
 
-        let account_name = PitStringView::from_utf8("caller.adjustment.add");
+        let account_name = OpenPitStringView::from_utf8("caller.adjustment.add");
         let account_policy = unsafe {
-            pit_create_custom_account_adjustment_policy(
+            openpit_create_custom_account_adjustment_policy(
                 account_name,
                 custom_account_adjustment_apply_fn,
                 custom_free_user_data_fn,
@@ -2590,34 +2597,34 @@ mod tests {
             "{}",
             cstr_to_string(std::ptr::null_mut())
         );
-        let ok = pit_engine_builder_add_account_adjustment_policy(
+        let ok = openpit_engine_builder_add_account_adjustment_policy(
             builder,
             account_policy,
             std::ptr::null_mut(),
         );
         assert!(ok, "{}", cstr_to_string(std::ptr::null_mut()));
-        pit_destroy_account_adjustment_policy(account_policy);
+        openpit_destroy_account_adjustment_policy(account_policy);
 
-        let engine = crate::engine::pit_engine_builder_build(builder, std::ptr::null_mut());
+        let engine = crate::engine::openpit_engine_builder_build(builder, std::ptr::null_mut());
         assert!(
             !engine.is_null(),
             "{}",
             cstr_to_string(std::ptr::null_mut())
         );
-        crate::engine::pit_destroy_engine(engine);
-        crate::engine::pit_destroy_engine_builder(builder);
+        crate::engine::openpit_destroy_engine(engine);
+        crate::engine::openpit_destroy_engine_builder(builder);
     }
 
     #[test]
     fn add_check_start_policy_to_builder_and_execute_paths() {
-        let builder = crate::engine::pit_create_engine_builder(
-            crate::engine::PitSyncPolicy::Full as u8,
+        let builder = crate::engine::openpit_create_engine_builder(
+            crate::engine::OpenPitSyncPolicy::Full as u8,
             std::ptr::null_mut(),
         );
 
-        let check_name = PitStringView::from_utf8("caller.check.start.add");
+        let check_name = OpenPitStringView::from_utf8("caller.check.start.add");
         let check_policy = unsafe {
-            pit_create_pretrade_custom_check_pre_trade_start_policy(
+            openpit_create_pretrade_custom_check_pre_trade_start_policy(
                 check_name,
                 custom_check_fn,
                 custom_apply_report_fn,
@@ -2631,53 +2638,56 @@ mod tests {
             "{}",
             cstr_to_string(std::ptr::null_mut())
         );
-        let ok = pit_engine_builder_add_check_pre_trade_start_policy(
+        let ok = openpit_engine_builder_add_check_pre_trade_start_policy(
             builder,
             check_policy,
             std::ptr::null_mut(),
         );
         assert!(ok, "{}", cstr_to_string(std::ptr::null_mut()));
-        pit_destroy_pretrade_check_pre_trade_start_policy(check_policy);
+        openpit_destroy_pretrade_check_pre_trade_start_policy(check_policy);
 
-        let engine = crate::engine::pit_engine_builder_build(builder, std::ptr::null_mut());
+        let engine = crate::engine::openpit_engine_builder_build(builder, std::ptr::null_mut());
         assert!(
             !engine.is_null(),
             "{}",
             cstr_to_string(std::ptr::null_mut())
         );
 
-        let order = PitOrder::default();
+        let order = OpenPitOrder::default();
         let mut request = std::ptr::null_mut();
         let mut out_rejects = std::ptr::null_mut();
-        let status = crate::engine::pit_engine_start_pre_trade(
+        let status = crate::engine::openpit_engine_start_pre_trade(
             engine,
             &order,
             &mut request,
             &mut out_rejects,
             std::ptr::null_mut(),
         );
-        assert_eq!(status, crate::engine::PitPretradeStatus::Passed);
+        assert_eq!(status, crate::engine::OpenPitPretradeStatus::Passed);
         assert!(out_rejects.is_null());
-        crate::engine::pit_destroy_pretrade_pre_trade_request(request);
+        crate::engine::openpit_destroy_pretrade_pre_trade_request(request);
 
-        let report = crate::execution_report::PitExecutionReport::default();
-        let post =
-            crate::engine::pit_engine_apply_execution_report(engine, &report, std::ptr::null_mut());
+        let report = crate::execution_report::OpenPitExecutionReport::default();
+        let post = crate::engine::openpit_engine_apply_execution_report(
+            engine,
+            &report,
+            std::ptr::null_mut(),
+        );
         assert!(!post.is_error);
-        crate::engine::pit_destroy_engine(engine);
-        crate::engine::pit_destroy_engine_builder(builder);
+        crate::engine::openpit_destroy_engine(engine);
+        crate::engine::openpit_destroy_engine_builder(builder);
     }
 
     #[test]
     fn custom_pre_trade_and_account_adjustment_callbacks_are_invoked_via_engine() {
-        let builder = crate::engine::pit_create_engine_builder(
-            crate::engine::PitSyncPolicy::Full as u8,
+        let builder = crate::engine::openpit_create_engine_builder(
+            crate::engine::OpenPitSyncPolicy::Full as u8,
             std::ptr::null_mut(),
         );
 
-        let pre_trade_name = PitStringView::from_utf8("pretrade.invoke");
+        let pre_trade_name = OpenPitStringView::from_utf8("pretrade.invoke");
         let pre_trade_policy = unsafe {
-            pit_create_pretrade_custom_pre_trade_policy(
+            openpit_create_pretrade_custom_pre_trade_policy(
                 pre_trade_name,
                 custom_pre_trade_check_fn,
                 custom_apply_report_fn,
@@ -2691,16 +2701,16 @@ mod tests {
             "{}",
             cstr_to_string(std::ptr::null_mut())
         );
-        assert!(pit_engine_builder_add_pre_trade_policy(
+        assert!(openpit_engine_builder_add_pre_trade_policy(
             builder,
             pre_trade_policy,
             std::ptr::null_mut()
         ));
-        pit_destroy_pretrade_pre_trade_policy(pre_trade_policy);
+        openpit_destroy_pretrade_pre_trade_policy(pre_trade_policy);
 
-        let account_name = PitStringView::from_utf8("account.invoke");
+        let account_name = OpenPitStringView::from_utf8("account.invoke");
         let account_policy = unsafe {
-            pit_create_custom_account_adjustment_policy(
+            openpit_create_custom_account_adjustment_policy(
                 account_name,
                 custom_account_adjustment_apply_fn,
                 custom_free_user_data_fn,
@@ -2713,43 +2723,46 @@ mod tests {
             "{}",
             cstr_to_string(std::ptr::null_mut())
         );
-        assert!(pit_engine_builder_add_account_adjustment_policy(
+        assert!(openpit_engine_builder_add_account_adjustment_policy(
             builder,
             account_policy,
             std::ptr::null_mut()
         ));
-        pit_destroy_account_adjustment_policy(account_policy);
+        openpit_destroy_account_adjustment_policy(account_policy);
 
-        let engine = crate::engine::pit_engine_builder_build(builder, std::ptr::null_mut());
+        let engine = crate::engine::openpit_engine_builder_build(builder, std::ptr::null_mut());
         assert!(
             !engine.is_null(),
             "{}",
             cstr_to_string(std::ptr::null_mut())
         );
 
-        let order = PitOrder::default();
+        let order = OpenPitOrder::default();
         let mut out_reservation = std::ptr::null_mut();
         let mut out_rejects = std::ptr::null_mut();
-        let status = crate::engine::pit_engine_execute_pre_trade(
+        let status = crate::engine::openpit_engine_execute_pre_trade(
             engine,
             &order,
             &mut out_reservation,
             &mut out_rejects,
             std::ptr::null_mut(),
         );
-        assert_eq!(status, crate::engine::PitPretradeStatus::Passed);
+        assert_eq!(status, crate::engine::OpenPitPretradeStatus::Passed);
         assert!(out_rejects.is_null());
-        crate::engine::pit_destroy_pretrade_pre_trade_reservation(out_reservation);
+        crate::engine::openpit_destroy_pretrade_pre_trade_reservation(out_reservation);
 
-        let report = crate::execution_report::PitExecutionReport::default();
-        let post =
-            crate::engine::pit_engine_apply_execution_report(engine, &report, std::ptr::null_mut());
+        let report = crate::execution_report::OpenPitExecutionReport::default();
+        let post = crate::engine::openpit_engine_apply_execution_report(
+            engine,
+            &report,
+            std::ptr::null_mut(),
+        );
         assert!(!post.is_error);
 
-        let adjustment = crate::account_adjustment::PitAccountAdjustment::default();
+        let adjustment = crate::account_adjustment::OpenPitAccountAdjustment::default();
         let batch = [adjustment];
         let mut out_reject = std::ptr::null_mut();
-        let status = crate::engine::pit_engine_apply_account_adjustment(
+        let status = crate::engine::openpit_engine_apply_account_adjustment(
             engine,
             1,
             batch.as_ptr(),
@@ -2759,54 +2772,54 @@ mod tests {
         );
         assert_eq!(
             status,
-            crate::account_adjustment::PitAccountAdjustmentApplyStatus::Applied
+            crate::account_adjustment::OpenPitAccountAdjustmentApplyStatus::Applied
         );
         assert!(out_reject.is_null());
 
-        crate::engine::pit_destroy_engine(engine);
-        crate::engine::pit_destroy_engine_builder(builder);
+        crate::engine::openpit_destroy_engine(engine);
+        crate::engine::openpit_destroy_engine_builder(builder);
     }
 
     fn build_engine_with_builtin_start_policy(
-        add_fn: impl FnOnce(*mut crate::engine::PitEngineBuilder) -> bool,
-    ) -> *mut crate::engine::PitEngine {
-        let builder = crate::engine::pit_create_engine_builder(
-            crate::engine::PitSyncPolicy::Full as u8,
+        add_fn: impl FnOnce(*mut crate::engine::OpenPitEngineBuilder) -> bool,
+    ) -> *mut crate::engine::OpenPitEngine {
+        let builder = crate::engine::openpit_create_engine_builder(
+            crate::engine::OpenPitSyncPolicy::Full as u8,
             std::ptr::null_mut(),
         );
         assert!(add_fn(builder), "failed to add policy");
-        let engine = crate::engine::pit_engine_builder_build(builder, std::ptr::null_mut());
+        let engine = crate::engine::openpit_engine_builder_build(builder, std::ptr::null_mut());
         assert!(!engine.is_null(), "engine build failed");
         engine
     }
 
-    fn valid_pit_order() -> PitOrder {
-        use crate::instrument::PitInstrument;
-        use crate::order::{PitOrderOperation, PitOrderOperationOptional};
+    fn valid_pit_order() -> OpenPitOrder {
+        use crate::instrument::OpenPitInstrument;
+        use crate::order::{OpenPitOrderOperation, OpenPitOrderOperationOptional};
         use crate::param::{
-            PitParamAccountIdOptional, PitParamPrice, PitParamPriceOptional, PitParamSide,
-            PitParamTradeAmount, PitParamTradeAmountKind,
+            OpenPitParamAccountIdOptional, OpenPitParamPrice, OpenPitParamPriceOptional,
+            OpenPitParamSide, OpenPitParamTradeAmount, OpenPitParamTradeAmountKind,
         };
-        PitOrder {
-            operation: PitOrderOperationOptional {
+        OpenPitOrder {
+            operation: OpenPitOrderOperationOptional {
                 is_set: true,
-                value: PitOrderOperation {
-                    instrument: PitInstrument {
-                        underlying_asset: PitStringView::from_utf8("SPX"),
-                        settlement_asset: PitStringView::from_utf8("USD"),
+                value: OpenPitOrderOperation {
+                    instrument: OpenPitInstrument {
+                        underlying_asset: OpenPitStringView::from_utf8("SPX"),
+                        settlement_asset: OpenPitStringView::from_utf8("USD"),
                     },
-                    trade_amount: PitParamTradeAmount {
+                    trade_amount: OpenPitParamTradeAmount {
                         value: quantity_param(1, 0).0,
-                        kind: PitParamTradeAmountKind::Quantity,
+                        kind: OpenPitParamTradeAmountKind::Quantity,
                     },
-                    account_id: PitParamAccountIdOptional {
+                    account_id: OpenPitParamAccountIdOptional {
                         value: 7,
                         is_set: true,
                     },
-                    side: PitParamSide::Buy,
-                    price: PitParamPriceOptional {
+                    side: OpenPitParamSide::Buy,
+                    price: OpenPitParamPriceOptional {
                         is_set: true,
-                        value: PitParamPrice(PitParamDecimal {
+                        value: OpenPitParamPrice(OpenPitParamDecimal {
                             mantissa_lo: 100,
                             mantissa_hi: 0,
                             scale: 0,
@@ -2820,11 +2833,11 @@ mod tests {
         }
     }
 
-    fn run_start_pre_trade_passes(engine: *mut crate::engine::PitEngine) {
+    fn run_start_pre_trade_passes(engine: *mut crate::engine::OpenPitEngine) {
         let order = valid_pit_order();
         let mut request = std::ptr::null_mut();
         let mut out_rejects = std::ptr::null_mut();
-        let status = crate::engine::pit_engine_start_pre_trade(
+        let status = crate::engine::openpit_engine_start_pre_trade(
             engine,
             &order,
             &mut request,
@@ -2833,25 +2846,28 @@ mod tests {
         );
         assert_eq!(
             status,
-            crate::engine::PitPretradeStatus::Passed,
+            crate::engine::OpenPitPretradeStatus::Passed,
             "start_pre_trade should pass"
         );
-        crate::engine::pit_destroy_pretrade_pre_trade_request(request);
+        crate::engine::openpit_destroy_pretrade_pre_trade_request(request);
     }
 
     #[test]
     fn add_builtin_order_validation_policy_happy_path() {
         let engine = build_engine_with_builtin_start_policy(|builder| {
-            pit_engine_builder_add_builtin_order_validation_policy(builder, std::ptr::null_mut())
+            openpit_engine_builder_add_builtin_order_validation_policy(
+                builder,
+                std::ptr::null_mut(),
+            )
         });
         run_start_pre_trade_passes(engine);
-        crate::engine::pit_destroy_engine(engine);
+        crate::engine::openpit_destroy_engine(engine);
     }
 
     #[test]
     fn add_builtin_order_validation_policy_null_builder_reports_error() {
         let mut out_error = std::ptr::null_mut();
-        let ok = pit_engine_builder_add_builtin_order_validation_policy(
+        let ok = openpit_engine_builder_add_builtin_order_validation_policy(
             std::ptr::null_mut(),
             &mut out_error,
         );
@@ -2861,12 +2877,12 @@ mod tests {
 
     #[test]
     fn add_builtin_rate_limit_policy_happy_path() {
-        let broker = PitPretradePoliciesRateLimitBrokerBarrier {
+        let broker = OpenPitPretradePoliciesRateLimitBrokerBarrier {
             max_orders: 100,
             window_nanoseconds: 1_000_000_000,
         };
         let engine = build_engine_with_builtin_start_policy(|builder| unsafe {
-            pit_engine_builder_add_builtin_rate_limit_policy(
+            openpit_engine_builder_add_builtin_rate_limit_policy(
                 builder,
                 &broker,
                 std::ptr::null(),
@@ -2879,18 +2895,18 @@ mod tests {
             )
         });
         run_start_pre_trade_passes(engine);
-        crate::engine::pit_destroy_engine(engine);
+        crate::engine::openpit_destroy_engine(engine);
     }
 
     #[test]
     fn add_builtin_rate_limit_policy_empty_config_reports_error() {
-        let builder = crate::engine::pit_create_engine_builder(
-            crate::engine::PitSyncPolicy::Full as u8,
+        let builder = crate::engine::openpit_create_engine_builder(
+            crate::engine::OpenPitSyncPolicy::Full as u8,
             std::ptr::null_mut(),
         );
         let mut out_error = std::ptr::null_mut();
         let ok = unsafe {
-            pit_engine_builder_add_builtin_rate_limit_policy(
+            openpit_engine_builder_add_builtin_rate_limit_policy(
                 builder,
                 std::ptr::null(),
                 std::ptr::null(),
@@ -2909,21 +2925,21 @@ mod tests {
                 && message.contains("must be configured"),
             "expected SDK no-barrier error wrapped by FFI, got: {message}"
         );
-        crate::engine::pit_destroy_engine_builder(builder);
+        crate::engine::openpit_destroy_engine_builder(builder);
     }
 
     #[test]
     fn add_builtin_rate_limit_policy_local_sync_mode() {
-        let broker = PitPretradePoliciesRateLimitBrokerBarrier {
+        let broker = OpenPitPretradePoliciesRateLimitBrokerBarrier {
             max_orders: 50,
             window_nanoseconds: 10_000_000_000,
         };
-        let builder = crate::engine::pit_create_engine_builder(
-            crate::engine::PitSyncPolicy::Local as u8,
+        let builder = crate::engine::openpit_create_engine_builder(
+            crate::engine::OpenPitSyncPolicy::Local as u8,
             std::ptr::null_mut(),
         );
         let ok = unsafe {
-            pit_engine_builder_add_builtin_rate_limit_policy(
+            openpit_engine_builder_add_builtin_rate_limit_policy(
                 builder,
                 &broker,
                 std::ptr::null(),
@@ -2936,37 +2952,37 @@ mod tests {
             )
         };
         assert!(ok, "add should succeed for Local sync mode");
-        let engine = crate::engine::pit_engine_builder_build(builder, std::ptr::null_mut());
+        let engine = crate::engine::openpit_engine_builder_build(builder, std::ptr::null_mut());
         assert!(!engine.is_null());
         run_start_pre_trade_passes(engine);
-        crate::engine::pit_destroy_engine(engine);
+        crate::engine::openpit_destroy_engine(engine);
     }
 
     #[test]
     fn add_builtin_rate_limit_policy_cross_axis_all_configured() {
-        let usd = PitStringView::from_utf8("USD");
-        let broker = PitPretradePoliciesRateLimitBrokerBarrier {
+        let usd = OpenPitStringView::from_utf8("USD");
+        let broker = OpenPitPretradePoliciesRateLimitBrokerBarrier {
             max_orders: 1000,
             window_nanoseconds: 60_000_000_000,
         };
-        let asset = [PitPretradePoliciesRateLimitAssetBarrier {
+        let asset = [OpenPitPretradePoliciesRateLimitAssetBarrier {
             settlement_asset: usd,
             max_orders: 500,
             window_nanoseconds: 60_000_000_000,
         }];
-        let account = [PitPretradePoliciesRateLimitAccountBarrier {
+        let account = [OpenPitPretradePoliciesRateLimitAccountBarrier {
             account_id: 42,
             max_orders: 200,
             window_nanoseconds: 60_000_000_000,
         }];
-        let account_asset = [PitPretradePoliciesRateLimitAccountAssetBarrier {
+        let account_asset = [OpenPitPretradePoliciesRateLimitAccountAssetBarrier {
             account_id: 42,
             settlement_asset: usd,
             max_orders: 100,
             window_nanoseconds: 60_000_000_000,
         }];
         let engine = build_engine_with_builtin_start_policy(|builder| unsafe {
-            pit_engine_builder_add_builtin_rate_limit_policy(
+            openpit_engine_builder_add_builtin_rate_limit_policy(
                 builder,
                 &broker,
                 asset.as_ptr(),
@@ -2979,21 +2995,21 @@ mod tests {
             )
         });
         run_start_pre_trade_passes(engine);
-        crate::engine::pit_destroy_engine(engine);
+        crate::engine::openpit_destroy_engine(engine);
     }
 
     #[test]
     fn add_builtin_order_size_limit_policy_happy_path() {
-        let usd = PitStringView::from_utf8("USD");
-        let asset = [PitPretradePoliciesOrderSizeAssetBarrier {
-            limit: PitPretradePoliciesOrderSizeLimit {
+        let usd = OpenPitStringView::from_utf8("USD");
+        let asset = [OpenPitPretradePoliciesOrderSizeAssetBarrier {
+            limit: OpenPitPretradePoliciesOrderSizeLimit {
                 max_quantity: quantity_param(100, 0),
                 max_notional: volume_param(10000, 0),
             },
             settlement_asset: usd,
         }];
         let engine = build_engine_with_builtin_start_policy(|builder| unsafe {
-            pit_engine_builder_add_builtin_order_size_limit_policy(
+            openpit_engine_builder_add_builtin_order_size_limit_policy(
                 builder,
                 std::ptr::null(),
                 asset.as_ptr(),
@@ -3004,18 +3020,18 @@ mod tests {
             )
         });
         run_start_pre_trade_passes(engine);
-        crate::engine::pit_destroy_engine(engine);
+        crate::engine::openpit_destroy_engine(engine);
     }
 
     #[test]
     fn add_builtin_order_size_limit_policy_empty_config_reports_error() {
-        let builder = crate::engine::pit_create_engine_builder(
-            crate::engine::PitSyncPolicy::Full as u8,
+        let builder = crate::engine::openpit_create_engine_builder(
+            crate::engine::OpenPitSyncPolicy::Full as u8,
             std::ptr::null_mut(),
         );
         let mut out_error = std::ptr::null_mut();
         let ok = unsafe {
-            pit_engine_builder_add_builtin_order_size_limit_policy(
+            openpit_engine_builder_add_builtin_order_size_limit_policy(
                 builder,
                 std::ptr::null(),
                 std::ptr::null(),
@@ -3032,19 +3048,19 @@ mod tests {
                 && message.contains("must be configured"),
             "expected SDK no-barrier error wrapped by FFI, got: {message}"
         );
-        crate::engine::pit_destroy_engine_builder(builder);
+        crate::engine::openpit_destroy_engine_builder(builder);
     }
 
     #[test]
     fn add_builtin_pnl_bounds_killswitch_policy_happy_path() {
-        let usd = PitStringView::from_utf8("USD");
-        let broker = [PitPretradePoliciesPnlBoundsBarrier {
+        let usd = OpenPitStringView::from_utf8("USD");
+        let broker = [OpenPitPretradePoliciesPnlBoundsBarrier {
             settlement_asset: usd,
             lower_bound: pnl_optional(Some(pnl_param(-10000, 0))),
             upper_bound: pnl_optional(None),
         }];
         let engine = build_engine_with_builtin_start_policy(|builder| unsafe {
-            pit_engine_builder_add_builtin_pnl_bounds_killswitch_policy(
+            openpit_engine_builder_add_builtin_pnl_bounds_killswitch_policy(
                 builder,
                 broker.as_ptr(),
                 broker.len(),
@@ -3054,18 +3070,18 @@ mod tests {
             )
         });
         run_start_pre_trade_passes(engine);
-        crate::engine::pit_destroy_engine(engine);
+        crate::engine::openpit_destroy_engine(engine);
     }
 
     #[test]
     fn add_builtin_pnl_bounds_killswitch_policy_empty_config_reports_error() {
-        let builder = crate::engine::pit_create_engine_builder(
-            crate::engine::PitSyncPolicy::Full as u8,
+        let builder = crate::engine::openpit_create_engine_builder(
+            crate::engine::OpenPitSyncPolicy::Full as u8,
             std::ptr::null_mut(),
         );
         let mut out_error = std::ptr::null_mut();
         let ok = unsafe {
-            pit_engine_builder_add_builtin_pnl_bounds_killswitch_policy(
+            openpit_engine_builder_add_builtin_pnl_bounds_killswitch_policy(
                 builder,
                 std::ptr::null(),
                 0,
@@ -3081,18 +3097,18 @@ mod tests {
                 && message.contains("must be configured"),
             "expected SDK no-barrier error wrapped by FFI, got: {message}"
         );
-        crate::engine::pit_destroy_engine_builder(builder);
+        crate::engine::openpit_destroy_engine_builder(builder);
     }
 
     #[test]
     fn add_builtin_pnl_bounds_killswitch_null_broker_with_positive_len_reports_error() {
-        let builder = crate::engine::pit_create_engine_builder(
-            crate::engine::PitSyncPolicy::Full as u8,
+        let builder = crate::engine::openpit_create_engine_builder(
+            crate::engine::OpenPitSyncPolicy::Full as u8,
             std::ptr::null_mut(),
         );
         let mut out_error = std::ptr::null_mut();
         let ok = unsafe {
-            pit_engine_builder_add_builtin_pnl_bounds_killswitch_policy(
+            openpit_engine_builder_add_builtin_pnl_bounds_killswitch_policy(
                 builder,
                 std::ptr::null(),
                 1,
@@ -3106,18 +3122,18 @@ mod tests {
             cstr_to_string(out_error),
             "pnl_bounds_killswitch_policy broker is null"
         );
-        crate::engine::pit_destroy_engine_builder(builder);
+        crate::engine::openpit_destroy_engine_builder(builder);
     }
 
     #[test]
     fn add_builtin_pnl_bounds_killswitch_null_account_with_positive_len_reports_error() {
-        let builder = crate::engine::pit_create_engine_builder(
-            crate::engine::PitSyncPolicy::Full as u8,
+        let builder = crate::engine::openpit_create_engine_builder(
+            crate::engine::OpenPitSyncPolicy::Full as u8,
             std::ptr::null_mut(),
         );
         let mut out_error = std::ptr::null_mut();
         let ok = unsafe {
-            pit_engine_builder_add_builtin_pnl_bounds_killswitch_policy(
+            openpit_engine_builder_add_builtin_pnl_bounds_killswitch_policy(
                 builder,
                 std::ptr::null(),
                 0,
@@ -3131,6 +3147,6 @@ mod tests {
             cstr_to_string(out_error),
             "pnl_bounds_killswitch_policy account is null"
         );
-        crate::engine::pit_destroy_engine_builder(builder);
+        crate::engine::openpit_destroy_engine_builder(builder);
     }
 }

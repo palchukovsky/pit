@@ -21,112 +21,116 @@ use std::ffi::c_void;
 
 use openpit::param::{AccountId, Trade};
 use openpit::pretrade::PreTradeLock;
-use pit_interop::{
+use openpit_interop::{
     ExecutionReportFillAccess, ExecutionReportOperationAccess, ExecutionReportPositionImpactAccess,
     FinancialImpactAccess, PopulatedExecutionReportFill, PopulatedExecutionReportOperation,
     PopulatedExecutionReportPositionImpact, PopulatedFinancialImpact, RequestWithPayload,
 };
 
 use crate::define_optional;
-use crate::instrument::{import_instrument, PitInstrument};
+use crate::instrument::{import_instrument, OpenPitInstrument};
 use crate::param::{
     export_position_effect, export_position_side, export_side, import_position_effect,
-    import_position_side, import_side, PitParamAccountIdOptional, PitParamFee, PitParamFeeOptional,
-    PitParamPnl, PitParamPnlOptional, PitParamPositionEffect, PitParamPositionSide, PitParamPrice,
-    PitParamPriceOptional, PitParamQuantity, PitParamQuantityOptional, PitParamSide,
+    import_position_side, import_side, OpenPitParamAccountIdOptional, OpenPitParamFee,
+    OpenPitParamFeeOptional, OpenPitParamPnl, OpenPitParamPnlOptional, OpenPitParamPositionEffect,
+    OpenPitParamPositionSide, OpenPitParamPrice, OpenPitParamPriceOptional, OpenPitParamQuantity,
+    OpenPitParamQuantityOptional, OpenPitParamSide,
 };
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 /// Populated operation-identification group for an execution report.
-pub struct PitExecutionReportOperation {
+pub struct OpenPitExecutionReportOperation {
     /// Trading instrument (`underlying + settlement` asset pair).
-    pub instrument: PitInstrument,
+    pub instrument: OpenPitInstrument,
     /// Account identifier associated with the report.
-    pub account_id: PitParamAccountIdOptional,
+    pub account_id: OpenPitParamAccountIdOptional,
     /// Buy or sell direction of the affected order or trade.
-    pub side: PitParamSide,
+    pub side: OpenPitParamSide,
 }
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 /// Populated financial-impact group for an execution report.
-pub struct PitFinancialImpact {
+pub struct OpenPitFinancialImpact {
     /// Profit-and-loss contribution carried by this report.
-    pub pnl: PitParamPnlOptional,
+    pub pnl: OpenPitParamPnlOptional,
     /// Fee or rebate contribution carried by this report.
-    pub fee: PitParamFeeOptional,
+    pub fee: OpenPitParamFeeOptional,
 }
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 /// Fill trade payload (`price + quantity`) for execution reports.
-pub struct PitExecutionReportTrade {
+pub struct OpenPitExecutionReportTrade {
     /// Trade price.
-    pub price: PitParamPrice,
+    pub price: OpenPitParamPrice,
     /// Trade quantity.
-    pub quantity: PitParamQuantity,
+    pub quantity: OpenPitParamQuantity,
 }
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 /// Populated fill-details group for an execution report.
-pub struct PitExecutionReportFill {
+pub struct OpenPitExecutionReportFill {
     /// Optional latest trade payload.
-    pub last_trade: PitExecutionReportTradeOptional,
+    pub last_trade: OpenPitExecutionReportTradeOptional,
     /// Remaining quantity after applying this report.
-    pub leaves_quantity: PitParamQuantityOptional,
+    pub leaves_quantity: OpenPitParamQuantityOptional,
     /// Optional lock price associated with the report.
-    pub lock_price: PitParamPriceOptional,
+    pub lock_price: OpenPitParamPriceOptional,
     /// Whether this report closes the order's report stream.
     /// The order is filled, cancelled, or rejected.
-    pub is_final: PitExecutionReportIsFinalOptional,
+    pub is_final: OpenPitExecutionReportIsFinalOptional,
 }
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 /// Populated position-impact group for an execution report.
-pub struct PitExecutionReportPositionImpact {
+pub struct OpenPitExecutionReportPositionImpact {
     /// Whether exposure is opened or closed.
-    pub position_effect: PitParamPositionEffect,
+    pub position_effect: OpenPitParamPositionEffect,
     /// Impacted side (long or short).
-    pub position_side: PitParamPositionSide,
+    pub position_side: OpenPitParamPositionSide,
 }
 
 define_optional!(
-    optional = PitExecutionReportOperationOptional,
-    value = PitExecutionReportOperation
+    optional = OpenPitExecutionReportOperationOptional,
+    value = OpenPitExecutionReportOperation
 );
 define_optional!(
-    optional = PitFinancialImpactOptional,
-    value = PitFinancialImpact
+    optional = OpenPitFinancialImpactOptional,
+    value = OpenPitFinancialImpact
 );
 define_optional!(
-    optional = PitExecutionReportTradeOptional,
-    value = PitExecutionReportTrade
-);
-define_optional!(optional = PitExecutionReportIsFinalOptional, value = bool);
-define_optional!(
-    optional = PitExecutionReportFillOptional,
-    value = PitExecutionReportFill
+    optional = OpenPitExecutionReportTradeOptional,
+    value = OpenPitExecutionReportTrade
 );
 define_optional!(
-    optional = PitExecutionReportPositionImpactOptional,
-    value = PitExecutionReportPositionImpact
+    optional = OpenPitExecutionReportIsFinalOptional,
+    value = bool
+);
+define_optional!(
+    optional = OpenPitExecutionReportFillOptional,
+    value = OpenPitExecutionReportFill
+);
+define_optional!(
+    optional = OpenPitExecutionReportPositionImpactOptional,
+    value = OpenPitExecutionReportPositionImpact
 );
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 /// Full caller-owned execution-report payload.
-pub struct PitExecutionReport {
+pub struct OpenPitExecutionReport {
     /// Optional operation-identification group.
-    pub operation: PitExecutionReportOperationOptional,
+    pub operation: OpenPitExecutionReportOperationOptional,
     /// Optional financial-impact group.
-    pub financial_impact: PitFinancialImpactOptional,
+    pub financial_impact: OpenPitFinancialImpactOptional,
     /// Optional fill-details group.
-    pub fill: PitExecutionReportFillOptional,
+    pub fill: OpenPitExecutionReportFillOptional,
     /// Optional position-impact group.
-    pub position_impact: PitExecutionReportPositionImpactOptional,
+    pub position_impact: OpenPitExecutionReportPositionImpactOptional,
     /// Opaque caller-defined token.
     ///
     /// The SDK never inspects, dereferences, or frees this value. Its meaning,
@@ -143,13 +147,13 @@ pub struct PitExecutionReport {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 /// Aggregated post-trade processing result.
-pub struct PitPretradePostTradeResult {
+pub struct OpenPitPretradePostTradeResult {
     /// Whether the report triggered some kill-switch policy.
     pub kill_switch_triggered: bool,
 }
 
 fn import_operation(
-    value: PitExecutionReportOperationOptional,
+    value: OpenPitExecutionReportOperationOptional,
 ) -> Result<ExecutionReportOperationAccess, String> {
     if !value.is_set {
         return Ok(ExecutionReportOperationAccess::Absent);
@@ -169,7 +173,7 @@ fn import_operation(
 }
 
 fn import_financial_impact(
-    value: PitFinancialImpactOptional,
+    value: OpenPitFinancialImpactOptional,
 ) -> Result<FinancialImpactAccess, String> {
     if !value.is_set {
         return Ok(FinancialImpactAccess::Absent);
@@ -189,7 +193,7 @@ fn import_financial_impact(
     }))
 }
 
-fn import_last_trade(value: PitExecutionReportTradeOptional) -> Result<Option<Trade>, String> {
+fn import_last_trade(value: OpenPitExecutionReportTradeOptional) -> Result<Option<Trade>, String> {
     if !value.is_set {
         return Ok(None);
     }
@@ -200,7 +204,9 @@ fn import_last_trade(value: PitExecutionReportTradeOptional) -> Result<Option<Tr
     }))
 }
 
-fn import_fill(value: PitExecutionReportFillOptional) -> Result<ExecutionReportFillAccess, String> {
+fn import_fill(
+    value: OpenPitExecutionReportFillOptional,
+) -> Result<ExecutionReportFillAccess, String> {
     if !value.is_set {
         return Ok(ExecutionReportFillAccess::Absent);
     }
@@ -232,7 +238,7 @@ fn import_fill(value: PitExecutionReportFillOptional) -> Result<ExecutionReportF
 }
 
 fn import_position_impact(
-    value: PitExecutionReportPositionImpactOptional,
+    value: OpenPitExecutionReportPositionImpactOptional,
 ) -> ExecutionReportPositionImpactAccess {
     if !value.is_set {
         return ExecutionReportPositionImpactAccess::Absent;
@@ -244,120 +250,124 @@ fn import_position_impact(
     })
 }
 
-fn export_operation(value: &ExecutionReportOperationAccess) -> PitExecutionReportOperationOptional {
+fn export_operation(
+    value: &ExecutionReportOperationAccess,
+) -> OpenPitExecutionReportOperationOptional {
     match value {
         ExecutionReportOperationAccess::Populated(operation) => {
             let instrument = if let Some(instrument) = &operation.instrument {
-                PitInstrument {
-                    underlying_asset: crate::PitStringView::from_utf8(
+                OpenPitInstrument {
+                    underlying_asset: crate::OpenPitStringView::from_utf8(
                         instrument.underlying_asset().as_ref(),
                     ),
-                    settlement_asset: crate::PitStringView::from_utf8(
+                    settlement_asset: crate::OpenPitStringView::from_utf8(
                         instrument.settlement_asset().as_ref(),
                     ),
                 }
             } else {
-                PitInstrument::default()
+                OpenPitInstrument::default()
             };
 
-            PitExecutionReportOperationOptional {
+            OpenPitExecutionReportOperationOptional {
                 is_set: true,
-                value: PitExecutionReportOperation {
+                value: OpenPitExecutionReportOperation {
                     instrument,
                     account_id: match operation.account_id {
-                        Some(account_id) => PitParamAccountIdOptional {
+                        Some(account_id) => OpenPitParamAccountIdOptional {
                             is_set: true,
                             value: account_id.as_u64(),
                         },
-                        None => PitParamAccountIdOptional::default(),
+                        None => OpenPitParamAccountIdOptional::default(),
                     },
                     side: operation.side.map(export_side).unwrap_or_default(),
                 },
             }
         }
-        ExecutionReportOperationAccess::Absent => PitExecutionReportOperationOptional::default(),
+        ExecutionReportOperationAccess::Absent => {
+            OpenPitExecutionReportOperationOptional::default()
+        }
     }
 }
 
-fn export_financial_impact(value: &FinancialImpactAccess) -> PitFinancialImpactOptional {
+fn export_financial_impact(value: &FinancialImpactAccess) -> OpenPitFinancialImpactOptional {
     match value {
-        FinancialImpactAccess::Populated(financial_impact) => PitFinancialImpactOptional {
+        FinancialImpactAccess::Populated(financial_impact) => OpenPitFinancialImpactOptional {
             is_set: true,
-            value: PitFinancialImpact {
+            value: OpenPitFinancialImpact {
                 pnl: match financial_impact.pnl {
-                    Some(v) => PitParamPnlOptional {
+                    Some(v) => OpenPitParamPnlOptional {
                         is_set: true,
-                        value: PitParamPnl(v.to_decimal().into()),
+                        value: OpenPitParamPnl(v.to_decimal().into()),
                     },
-                    None => PitParamPnlOptional::default(),
+                    None => OpenPitParamPnlOptional::default(),
                 },
                 fee: match financial_impact.fee {
-                    Some(v) => PitParamFeeOptional {
+                    Some(v) => OpenPitParamFeeOptional {
                         is_set: true,
-                        value: PitParamFee(v.to_decimal().into()),
+                        value: OpenPitParamFee(v.to_decimal().into()),
                     },
-                    None => PitParamFeeOptional::default(),
+                    None => OpenPitParamFeeOptional::default(),
                 },
             },
         },
-        FinancialImpactAccess::Absent => PitFinancialImpactOptional::default(),
+        FinancialImpactAccess::Absent => OpenPitFinancialImpactOptional::default(),
     }
 }
 
-fn export_last_trade(value: Option<Trade>) -> PitExecutionReportTradeOptional {
+fn export_last_trade(value: Option<Trade>) -> OpenPitExecutionReportTradeOptional {
     match value {
-        Some(trade) => PitExecutionReportTradeOptional {
+        Some(trade) => OpenPitExecutionReportTradeOptional {
             is_set: true,
-            value: PitExecutionReportTrade {
-                price: PitParamPrice(trade.price.to_decimal().into()),
-                quantity: PitParamQuantity(trade.quantity.to_decimal().into()),
+            value: OpenPitExecutionReportTrade {
+                price: OpenPitParamPrice(trade.price.to_decimal().into()),
+                quantity: OpenPitParamQuantity(trade.quantity.to_decimal().into()),
             },
         },
-        None => PitExecutionReportTradeOptional::default(),
+        None => OpenPitExecutionReportTradeOptional::default(),
     }
 }
 
-fn export_fill(value: &ExecutionReportFillAccess) -> PitExecutionReportFillOptional {
+fn export_fill(value: &ExecutionReportFillAccess) -> OpenPitExecutionReportFillOptional {
     match value {
-        ExecutionReportFillAccess::Populated(fill) => PitExecutionReportFillOptional {
+        ExecutionReportFillAccess::Populated(fill) => OpenPitExecutionReportFillOptional {
             is_set: true,
-            value: PitExecutionReportFill {
+            value: OpenPitExecutionReportFill {
                 last_trade: export_last_trade(fill.last_trade),
                 leaves_quantity: match fill.leaves_quantity {
-                    Some(leaves_quantity) => PitParamQuantityOptional {
+                    Some(leaves_quantity) => OpenPitParamQuantityOptional {
                         is_set: true,
-                        value: PitParamQuantity(leaves_quantity.to_decimal().into()),
+                        value: OpenPitParamQuantity(leaves_quantity.to_decimal().into()),
                     },
-                    None => PitParamQuantityOptional::default(),
+                    None => OpenPitParamQuantityOptional::default(),
                 },
                 lock_price: match fill.lock.price() {
-                    Some(price) => PitParamPriceOptional {
+                    Some(price) => OpenPitParamPriceOptional {
                         is_set: true,
-                        value: PitParamPrice(price.to_decimal().into()),
+                        value: OpenPitParamPrice(price.to_decimal().into()),
                     },
-                    None => PitParamPriceOptional::default(),
+                    None => OpenPitParamPriceOptional::default(),
                 },
                 is_final: match fill.is_final {
-                    Some(value) => PitExecutionReportIsFinalOptional {
+                    Some(value) => OpenPitExecutionReportIsFinalOptional {
                         value,
                         is_set: true,
                     },
-                    None => PitExecutionReportIsFinalOptional::default(),
+                    None => OpenPitExecutionReportIsFinalOptional::default(),
                 },
             },
         },
-        ExecutionReportFillAccess::Absent => PitExecutionReportFillOptional::default(),
+        ExecutionReportFillAccess::Absent => OpenPitExecutionReportFillOptional::default(),
     }
 }
 
 fn export_position_impact(
     value: &ExecutionReportPositionImpactAccess,
-) -> PitExecutionReportPositionImpactOptional {
+) -> OpenPitExecutionReportPositionImpactOptional {
     match value {
         ExecutionReportPositionImpactAccess::Populated(position_impact) => {
-            PitExecutionReportPositionImpactOptional {
+            OpenPitExecutionReportPositionImpactOptional {
                 is_set: true,
-                value: PitExecutionReportPositionImpact {
+                value: OpenPitExecutionReportPositionImpact {
                     position_effect: position_impact
                         .position_effect
                         .map(export_position_effect)
@@ -370,18 +380,18 @@ fn export_position_impact(
             }
         }
         ExecutionReportPositionImpactAccess::Absent => {
-            PitExecutionReportPositionImpactOptional::default()
+            OpenPitExecutionReportPositionImpactOptional::default()
         }
     }
 }
 
 pub(crate) fn import_execution_report(
-    value: &PitExecutionReport,
+    value: &OpenPitExecutionReport,
 ) -> Result<ExecutionReport, String> {
     // The engine applies reports as owned domain values, so decoding a
     // borrowed report view necessarily builds owned data here.
     Ok(RequestWithPayload::new(
-        pit_interop::ExecutionReport {
+        openpit_interop::ExecutionReport {
             operation: import_operation(value.operation)?,
             financial_impact: import_financial_impact(value.financial_impact)?,
             fill: import_fill(value.fill)?,
@@ -391,8 +401,8 @@ pub(crate) fn import_execution_report(
     ))
 }
 
-pub(crate) fn export_execution_report(value: &ExecutionReport) -> PitExecutionReport {
-    PitExecutionReport {
+pub(crate) fn export_execution_report(value: &ExecutionReport) -> OpenPitExecutionReport {
+    OpenPitExecutionReport {
         operation: export_operation(&value.request.operation),
         financial_impact: export_financial_impact(&value.request.financial_impact),
         fill: export_fill(&value.request.fill),
@@ -411,25 +421,27 @@ pub(crate) fn export_execution_report(value: &ExecutionReport) -> PitExecutionRe
 /// The token is preserved unchanged across every engine callback that
 /// receives the carrying value, including policy callbacks and adjustment
 /// callbacks.
-pub type ExecutionReport = RequestWithPayload<pit_interop::ExecutionReport, *mut c_void>;
+pub type ExecutionReport = RequestWithPayload<openpit_interop::ExecutionReport, *mut c_void>;
 
 #[cfg(test)]
 mod tests {
     use super::{
-        export_execution_report, import_execution_report, PitExecutionReport,
-        PitExecutionReportFill, PitExecutionReportFillOptional, PitExecutionReportIsFinalOptional,
-        PitExecutionReportOperation, PitExecutionReportOperationOptional,
-        PitExecutionReportPositionImpact, PitExecutionReportPositionImpactOptional,
-        PitExecutionReportTrade, PitExecutionReportTradeOptional, PitFinancialImpact,
-        PitFinancialImpactOptional,
+        export_execution_report, import_execution_report, OpenPitExecutionReport,
+        OpenPitExecutionReportFill, OpenPitExecutionReportFillOptional,
+        OpenPitExecutionReportIsFinalOptional, OpenPitExecutionReportOperation,
+        OpenPitExecutionReportOperationOptional, OpenPitExecutionReportPositionImpact,
+        OpenPitExecutionReportPositionImpactOptional, OpenPitExecutionReportTrade,
+        OpenPitExecutionReportTradeOptional, OpenPitFinancialImpact,
+        OpenPitFinancialImpactOptional,
     };
-    use crate::instrument::PitInstrument;
+    use crate::instrument::OpenPitInstrument;
     use crate::param::{
-        PitParamAccountIdOptional, PitParamFee, PitParamFeeOptional, PitParamPnl,
-        PitParamPnlOptional, PitParamPositionEffect, PitParamPositionSide, PitParamPrice,
-        PitParamPriceOptional, PitParamQuantity, PitParamQuantityOptional, PitParamSide,
+        OpenPitParamAccountIdOptional, OpenPitParamFee, OpenPitParamFeeOptional, OpenPitParamPnl,
+        OpenPitParamPnlOptional, OpenPitParamPositionEffect, OpenPitParamPositionSide,
+        OpenPitParamPrice, OpenPitParamPriceOptional, OpenPitParamQuantity,
+        OpenPitParamQuantityOptional, OpenPitParamSide,
     };
-    use crate::PitStringView;
+    use crate::OpenPitStringView;
     use openpit::param::{
         AccountId, Asset, Fee, Pnl, PositionEffect, PositionSide, Price, Quantity, Side, Trade,
     };
@@ -438,20 +450,20 @@ mod tests {
     use openpit::{
         HasExecutionReportIsFinal, HasExecutionReportPositionEffect, HasFee, HasInstrument, HasPnl,
     };
-    use pit_interop::{
+    use openpit_interop::{
         ExecutionReportFillAccess, ExecutionReportOperationAccess,
         ExecutionReportPositionImpactAccess, FinancialImpactAccess, PopulatedExecutionReportFill,
         PopulatedExecutionReportOperation, PopulatedExecutionReportPositionImpact,
         PopulatedFinancialImpact, RequestWithPayload,
     };
 
-    fn instrument_view(underlying: &'static [u8], settlement: &'static [u8]) -> PitInstrument {
-        PitInstrument {
-            underlying_asset: PitStringView {
+    fn instrument_view(underlying: &'static [u8], settlement: &'static [u8]) -> OpenPitInstrument {
+        OpenPitInstrument {
+            underlying_asset: OpenPitStringView {
                 ptr: underlying.as_ptr(),
                 len: underlying.len(),
             },
-            settlement_asset: PitStringView {
+            settlement_asset: OpenPitStringView {
                 ptr: settlement.as_ptr(),
                 len: settlement.len(),
             },
@@ -479,7 +491,7 @@ mod tests {
     #[test]
     fn execution_report_exposes_all_groups() {
         let report = RequestWithPayload::new(
-            pit_interop::ExecutionReport {
+            openpit_interop::ExecutionReport {
                 operation: populated_operation(),
                 financial_impact: populated_financial_impact(),
                 fill: ExecutionReportFillAccess::Populated(PopulatedExecutionReportFill {
@@ -527,7 +539,7 @@ mod tests {
     #[test]
     fn execution_report_returns_absent_for_missing_groups() {
         let report = RequestWithPayload::new(
-            pit_interop::ExecutionReport {
+            openpit_interop::ExecutionReport {
                 operation: ExecutionReportOperationAccess::Absent,
                 financial_impact: FinancialImpactAccess::Absent,
                 fill: ExecutionReportFillAccess::Absent,
@@ -556,19 +568,19 @@ mod tests {
 
     #[test]
     fn import_execution_report_preserves_unset_leaves_quantity() {
-        let report = PitExecutionReport {
-            operation: PitExecutionReportOperationOptional::default(),
-            financial_impact: PitFinancialImpactOptional::default(),
-            fill: PitExecutionReportFillOptional {
+        let report = OpenPitExecutionReport {
+            operation: OpenPitExecutionReportOperationOptional::default(),
+            financial_impact: OpenPitFinancialImpactOptional::default(),
+            fill: OpenPitExecutionReportFillOptional {
                 is_set: true,
-                value: PitExecutionReportFill {
-                    last_trade: PitExecutionReportTradeOptional::default(),
-                    leaves_quantity: PitParamQuantityOptional::default(),
-                    lock_price: PitParamPriceOptional::default(),
-                    is_final: PitExecutionReportIsFinalOptional::default(),
+                value: OpenPitExecutionReportFill {
+                    last_trade: OpenPitExecutionReportTradeOptional::default(),
+                    leaves_quantity: OpenPitParamQuantityOptional::default(),
+                    lock_price: OpenPitParamPriceOptional::default(),
+                    is_final: OpenPitExecutionReportIsFinalOptional::default(),
                 },
             },
-            position_impact: PitExecutionReportPositionImpactOptional::default(),
+            position_impact: OpenPitExecutionReportPositionImpactOptional::default(),
             user_data: std::ptr::null_mut(),
         };
 
@@ -583,27 +595,27 @@ mod tests {
 
     #[test]
     fn import_execution_report_preserves_unset_is_final() {
-        let report = PitExecutionReport {
-            operation: PitExecutionReportOperationOptional::default(),
-            financial_impact: PitFinancialImpactOptional::default(),
-            fill: PitExecutionReportFillOptional {
+        let report = OpenPitExecutionReport {
+            operation: OpenPitExecutionReportOperationOptional::default(),
+            financial_impact: OpenPitFinancialImpactOptional::default(),
+            fill: OpenPitExecutionReportFillOptional {
                 is_set: true,
-                value: PitExecutionReportFill {
-                    last_trade: PitExecutionReportTradeOptional::default(),
-                    leaves_quantity: PitParamQuantityOptional {
+                value: OpenPitExecutionReportFill {
+                    last_trade: OpenPitExecutionReportTradeOptional::default(),
+                    leaves_quantity: OpenPitParamQuantityOptional {
                         is_set: true,
-                        value: PitParamQuantity(
+                        value: OpenPitParamQuantity(
                             Quantity::from_str("1")
                                 .expect("quantity")
                                 .to_decimal()
                                 .into(),
                         ),
                     },
-                    lock_price: PitParamPriceOptional::default(),
-                    is_final: PitExecutionReportIsFinalOptional::default(),
+                    lock_price: OpenPitParamPriceOptional::default(),
+                    is_final: OpenPitExecutionReportIsFinalOptional::default(),
                 },
             },
-            position_impact: PitExecutionReportPositionImpactOptional::default(),
+            position_impact: OpenPitExecutionReportPositionImpactOptional::default(),
             user_data: std::ptr::null_mut(),
         };
 
@@ -619,7 +631,7 @@ mod tests {
     #[test]
     fn import_export_execution_report_roundtrip_exposes_trait_fields() {
         let report = RequestWithPayload::new(
-            pit_interop::ExecutionReport {
+            openpit_interop::ExecutionReport {
                 operation: populated_operation(),
                 financial_impact: populated_financial_impact(),
                 fill: ExecutionReportFillAccess::Absent,
@@ -644,41 +656,45 @@ mod tests {
 
     #[test]
     fn ffi_execution_report_by_value_roundtrip() {
-        let report = PitExecutionReport {
-            operation: PitExecutionReportOperationOptional {
+        let report = OpenPitExecutionReport {
+            operation: OpenPitExecutionReportOperationOptional {
                 is_set: true,
-                value: PitExecutionReportOperation {
+                value: OpenPitExecutionReportOperation {
                     instrument: instrument_view(b"AAPL", b"USD"),
-                    account_id: PitParamAccountIdOptional {
+                    account_id: OpenPitParamAccountIdOptional {
                         value: 42,
                         is_set: true,
                     },
-                    side: PitParamSide::Buy,
+                    side: OpenPitParamSide::Buy,
                 },
             },
-            financial_impact: PitFinancialImpactOptional {
+            financial_impact: OpenPitFinancialImpactOptional {
                 is_set: true,
-                value: PitFinancialImpact {
-                    pnl: PitParamPnlOptional {
-                        value: PitParamPnl(Pnl::from_str("10").expect("pnl").to_decimal().into()),
+                value: OpenPitFinancialImpact {
+                    pnl: OpenPitParamPnlOptional {
+                        value: OpenPitParamPnl(
+                            Pnl::from_str("10").expect("pnl").to_decimal().into(),
+                        ),
                         is_set: true,
                     },
-                    fee: PitParamFeeOptional {
-                        value: PitParamFee(Fee::from_str("1").expect("fee").to_decimal().into()),
+                    fee: OpenPitParamFeeOptional {
+                        value: OpenPitParamFee(
+                            Fee::from_str("1").expect("fee").to_decimal().into(),
+                        ),
                         is_set: true,
                     },
                 },
             },
-            fill: PitExecutionReportFillOptional {
+            fill: OpenPitExecutionReportFillOptional {
                 is_set: true,
-                value: PitExecutionReportFill {
-                    last_trade: PitExecutionReportTradeOptional {
+                value: OpenPitExecutionReportFill {
+                    last_trade: OpenPitExecutionReportTradeOptional {
                         is_set: true,
-                        value: PitExecutionReportTrade {
-                            price: PitParamPrice(
+                        value: OpenPitExecutionReportTrade {
+                            price: OpenPitParamPrice(
                                 Price::from_str("100").expect("price").to_decimal().into(),
                             ),
-                            quantity: PitParamQuantity(
+                            quantity: OpenPitParamQuantity(
                                 Quantity::from_str("2")
                                     .expect("quantity")
                                     .to_decimal()
@@ -686,32 +702,32 @@ mod tests {
                             ),
                         },
                     },
-                    leaves_quantity: PitParamQuantityOptional {
+                    leaves_quantity: OpenPitParamQuantityOptional {
                         is_set: true,
-                        value: PitParamQuantity(
+                        value: OpenPitParamQuantity(
                             Quantity::from_str("1")
                                 .expect("quantity")
                                 .to_decimal()
                                 .into(),
                         ),
                     },
-                    lock_price: PitParamPriceOptional {
+                    lock_price: OpenPitParamPriceOptional {
                         is_set: true,
-                        value: PitParamPrice(
+                        value: OpenPitParamPrice(
                             Price::from_str("101").expect("price").to_decimal().into(),
                         ),
                     },
-                    is_final: PitExecutionReportIsFinalOptional {
+                    is_final: OpenPitExecutionReportIsFinalOptional {
                         value: true,
                         is_set: true,
                     },
                 },
             },
-            position_impact: PitExecutionReportPositionImpactOptional {
+            position_impact: OpenPitExecutionReportPositionImpactOptional {
                 is_set: true,
-                value: PitExecutionReportPositionImpact {
-                    position_effect: PitParamPositionEffect::Open,
-                    position_side: PitParamPositionSide::Long,
+                value: OpenPitExecutionReportPositionImpact {
+                    position_effect: OpenPitParamPositionEffect::Open,
+                    position_side: OpenPitParamPositionSide::Long,
                 },
             },
             user_data: std::ptr::null_mut(),

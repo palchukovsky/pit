@@ -18,9 +18,9 @@
 package native
 
 /*
-#include "pit.h"
+#include "openpit.h"
 
-// pit.h pulls in the system size_t definition, so malloc and free can be
+// openpit.h pulls in the system size_t definition, so malloc and free can be
 // forward-declared here without a separate system header include.
 extern void *malloc(size_t n);
 extern void  free(void *ptr);
@@ -43,21 +43,21 @@ var (
 //
 // - safe: original string is owned and retained
 // - unsafe: string aliases external memory
-type StringView struct{ value C.PitStringView }
+type StringView struct{ value C.OpenPitStringView }
 
 func NewStringView(value string) StringView {
 	return StringView{value: importString(value)}
 }
 
-func newStringView(v C.PitStringView) StringView {
+func newStringView(v C.OpenPitStringView) StringView {
 	return StringView{value: v}
 }
 
-func importString(source string) C.PitStringView {
+func importString(source string) C.OpenPitStringView {
 	if len(source) == 0 {
-		return C.PitStringView{}
+		return C.OpenPitStringView{}
 	}
-	return C.PitStringView{
+	return C.OpenPitStringView{
 		ptr: (*C.uint8_t)(unsafe.Pointer(unsafe.StringData(source))),
 		len: C.size_t(len(source)),
 	}
@@ -93,13 +93,13 @@ func consumeSharedString(handle SharedString) string {
 	if handle == nil {
 		panic("shared string is not provided")
 	}
-	msg := newStringView(C.pit_shared_string_view(handle)).Safe()
+	msg := newStringView(C.openpit_shared_string_view(handle)).Safe()
 	DestroySharedString(handle)
 	return msg
 }
 
 func DestroySharedString(handle SharedString) {
-	C.pit_destroy_shared_string(handle)
+	C.openpit_destroy_shared_string(handle)
 }
 
 //------------------------------------------------------------------------------
@@ -109,7 +109,7 @@ func DestroySharedString(handle SharedString) {
 //
 // # Why C heap?
 //
-// Every C struct that carries a string field (PitStringView) stores a raw
+// Every C struct that carries a string field (OpenPitStringView) stores a raw
 // pointer into the string's backing bytes.  When such a struct lives in
 // Go-allocated memory and is passed to a C function via a Go pointer, the CGo
 // checker enforces the rule:
@@ -117,11 +117,11 @@ func DestroySharedString(handle SharedString) {
 //	"Go memory passed to C must not contain Go pointers."
 //
 // If the string bytes were on the Go heap, their address stored in
-// PitStringView.ptr would be a Go pointer, triggering a panic:
+// OpenPitStringView.ptr would be a Go pointer, triggering a panic:
 //
 //	"argument of cgo function has Go pointer to unpinned Go pointer"
 //
-// Allocating the bytes on the C heap makes PitStringView.ptr a C pointer.
+// Allocating the bytes on the C heap makes OpenPitStringView.ptr a C pointer.
 // The CGo checker does not flag C pointers, so the panic never occurs.
 //
 // # Lifetime and cleanup

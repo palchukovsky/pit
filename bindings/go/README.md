@@ -1,4 +1,4 @@
-# Pit (Pre-trade Integrity Toolkit) for Go
+# OpenPit (Pre-trade Integrity Toolkit) for Go
 
 <!-- markdownlint-disable MD013 -->
 [![Verify](https://github.com/openpitkit/pit/actions/workflows/verify.yml/badge.svg)](https://github.com/openpitkit/pit/actions/workflows/verify.yml) [![Release](https://github.com/openpitkit/pit/actions/workflows/release.yml/badge.svg)](https://github.com/openpitkit/pit/actions/workflows/release.yml) [![Go version](https://img.shields.io/badge/go-1.22%2B-00ADD8)](https://go.dev/) [![Module](https://img.shields.io/badge/module-go.openpit.dev%2Fopenpit-00ADD8)](https://go.openpit.dev/openpit) [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
@@ -18,7 +18,7 @@ For the public Go module source, see [go.openpit.dev/openpit](https://go.openpit
 
 ## Versioning Policy (Pre‑1.0)
 
-Until Pit reaches a stable `1.0` release, the project follows a relaxed
+Until OpenPit reaches a stable `1.0` release, the project follows a relaxed
 interpretation of Semantic Versioning.
 
 During this phase:

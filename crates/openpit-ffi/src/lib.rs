@@ -31,28 +31,28 @@ pub mod string;
 pub use account_adjustment::AccountAdjustment;
 pub use execution_report::ExecutionReport;
 pub use order::Order;
-pub use policy::{PitAccountAdjustmentPolicy, PitAccountAdjustmentPolicyApplyFn};
+pub use policy::{OpenPitAccountAdjustmentPolicy, OpenPitAccountAdjustmentPolicyApplyFn};
 
-use string::PitStringView;
+use string::OpenPitStringView;
 
 #[no_mangle]
-/// Returns the Pit runtime version string.
+/// Returns the OpenPit runtime version string.
 ///
 /// This function never fails.
 ///
 /// The returned view is read-only, never null, and remains valid for the
 /// entire process lifetime. The caller must not release it.
-pub extern "C" fn pit_get_runtime_version() -> PitStringView {
-    PitStringView::from_utf8(env!("CARGO_PKG_VERSION"))
+pub extern "C" fn openpit_get_runtime_version() -> OpenPitStringView {
+    OpenPitStringView::from_utf8(env!("CARGO_PKG_VERSION"))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::pit_get_runtime_version;
+    use super::openpit_get_runtime_version;
 
     #[test]
     fn runtime_version_is_non_empty_string_view() {
-        let view = pit_get_runtime_version();
+        let view = openpit_get_runtime_version();
         assert!(!view.ptr.is_null());
         let bytes = unsafe { std::slice::from_raw_parts(view.ptr, view.len) };
         let version = std::str::from_utf8(bytes)

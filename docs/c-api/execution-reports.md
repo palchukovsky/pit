@@ -4,138 +4,138 @@
 
 [Back to index](index.md)
 
-## `PitExecutionReportOperation`
+## `OpenPitExecutionReportOperation`
 
 Populated operation-identification group for an execution report.
 
 ```c
-typedef struct PitExecutionReportOperation {
-    PitInstrument instrument;
-    PitParamAccountIdOptional account_id;
-    PitParamSide side;
-} PitExecutionReportOperation;
+typedef struct OpenPitExecutionReportOperation {
+    OpenPitInstrument instrument;
+    OpenPitParamAccountIdOptional account_id;
+    OpenPitParamSide side;
+} OpenPitExecutionReportOperation;
 ```
 
-## `PitFinancialImpact`
+## `OpenPitFinancialImpact`
 
 Populated financial-impact group for an execution report.
 
 ```c
-typedef struct PitFinancialImpact {
-    PitParamPnlOptional pnl;
-    PitParamFeeOptional fee;
-} PitFinancialImpact;
+typedef struct OpenPitFinancialImpact {
+    OpenPitParamPnlOptional pnl;
+    OpenPitParamFeeOptional fee;
+} OpenPitFinancialImpact;
 ```
 
-## `PitExecutionReportTrade`
+## `OpenPitExecutionReportTrade`
 
 Fill trade payload (`price + quantity`) for execution reports.
 
 ```c
-typedef struct PitExecutionReportTrade {
-    PitParamPrice price;
-    PitParamQuantity quantity;
-} PitExecutionReportTrade;
+typedef struct OpenPitExecutionReportTrade {
+    OpenPitParamPrice price;
+    OpenPitParamQuantity quantity;
+} OpenPitExecutionReportTrade;
 ```
 
-## `PitExecutionReportFill`
+## `OpenPitExecutionReportFill`
 
 Populated fill-details group for an execution report.
 
 ```c
-typedef struct PitExecutionReportFill {
-    PitExecutionReportTradeOptional last_trade;
-    PitParamQuantityOptional leaves_quantity;
-    PitParamPriceOptional lock_price;
-    PitExecutionReportIsFinalOptional is_final;
-} PitExecutionReportFill;
+typedef struct OpenPitExecutionReportFill {
+    OpenPitExecutionReportTradeOptional last_trade;
+    OpenPitParamQuantityOptional leaves_quantity;
+    OpenPitParamPriceOptional lock_price;
+    OpenPitExecutionReportIsFinalOptional is_final;
+} OpenPitExecutionReportFill;
 ```
 
-## `PitExecutionReportPositionImpact`
+## `OpenPitExecutionReportPositionImpact`
 
 Populated position-impact group for an execution report.
 
 ```c
-typedef struct PitExecutionReportPositionImpact {
-    PitParamPositionEffect position_effect;
-    PitParamPositionSide position_side;
-} PitExecutionReportPositionImpact;
+typedef struct OpenPitExecutionReportPositionImpact {
+    OpenPitParamPositionEffect position_effect;
+    OpenPitParamPositionSide position_side;
+} OpenPitExecutionReportPositionImpact;
 ```
 
-## `PitExecutionReportOperationOptional`
+## `OpenPitExecutionReportOperationOptional`
 
 ```c
-typedef struct PitExecutionReportOperationOptional {
-    PitExecutionReportOperation value;
+typedef struct OpenPitExecutionReportOperationOptional {
+    OpenPitExecutionReportOperation value;
     bool is_set;
-} PitExecutionReportOperationOptional;
+} OpenPitExecutionReportOperationOptional;
 ```
 
-## `PitFinancialImpactOptional`
+## `OpenPitFinancialImpactOptional`
 
 ```c
-typedef struct PitFinancialImpactOptional {
-    PitFinancialImpact value;
+typedef struct OpenPitFinancialImpactOptional {
+    OpenPitFinancialImpact value;
     bool is_set;
-} PitFinancialImpactOptional;
+} OpenPitFinancialImpactOptional;
 ```
 
-## `PitExecutionReportTradeOptional`
+## `OpenPitExecutionReportTradeOptional`
 
 ```c
-typedef struct PitExecutionReportTradeOptional {
-    PitExecutionReportTrade value;
+typedef struct OpenPitExecutionReportTradeOptional {
+    OpenPitExecutionReportTrade value;
     bool is_set;
-} PitExecutionReportTradeOptional;
+} OpenPitExecutionReportTradeOptional;
 ```
 
-## `PitExecutionReportIsFinalOptional`
+## `OpenPitExecutionReportIsFinalOptional`
 
 ```c
-typedef struct PitExecutionReportIsFinalOptional {
+typedef struct OpenPitExecutionReportIsFinalOptional {
     bool value;
     bool is_set;
-} PitExecutionReportIsFinalOptional;
+} OpenPitExecutionReportIsFinalOptional;
 ```
 
-## `PitExecutionReportFillOptional`
+## `OpenPitExecutionReportFillOptional`
 
 ```c
-typedef struct PitExecutionReportFillOptional {
-    PitExecutionReportFill value;
+typedef struct OpenPitExecutionReportFillOptional {
+    OpenPitExecutionReportFill value;
     bool is_set;
-} PitExecutionReportFillOptional;
+} OpenPitExecutionReportFillOptional;
 ```
 
-## `PitExecutionReportPositionImpactOptional`
+## `OpenPitExecutionReportPositionImpactOptional`
 
 ```c
-typedef struct PitExecutionReportPositionImpactOptional {
-    PitExecutionReportPositionImpact value;
+typedef struct OpenPitExecutionReportPositionImpactOptional {
+    OpenPitExecutionReportPositionImpact value;
     bool is_set;
-} PitExecutionReportPositionImpactOptional;
+} OpenPitExecutionReportPositionImpactOptional;
 ```
 
-## `PitExecutionReport`
+## `OpenPitExecutionReport`
 
 Full caller-owned execution-report payload.
 
 ```c
-typedef struct PitExecutionReport {
-    PitExecutionReportOperationOptional operation;
-    PitFinancialImpactOptional financial_impact;
-    PitExecutionReportFillOptional fill;
-    PitExecutionReportPositionImpactOptional position_impact;
+typedef struct OpenPitExecutionReport {
+    OpenPitExecutionReportOperationOptional operation;
+    OpenPitFinancialImpactOptional financial_impact;
+    OpenPitExecutionReportFillOptional fill;
+    OpenPitExecutionReportPositionImpactOptional position_impact;
     void * user_data;
-} PitExecutionReport;
+} OpenPitExecutionReport;
 ```
 
-## `PitPretradePostTradeResult`
+## `OpenPitPretradePostTradeResult`
 
 Aggregated post-trade processing result.
 
 ```c
-typedef struct PitPretradePostTradeResult {
+typedef struct OpenPitPretradePostTradeResult {
     bool kill_switch_triggered;
-} PitPretradePostTradeResult;
+} OpenPitPretradePostTradeResult;
 ```

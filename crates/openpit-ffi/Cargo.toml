@@ -1,16 +1,16 @@
 [package]
-name = "pit-ffi"
+name = "openpit-ffi"
 version = "0.3.0"
 edition = "2021"
 publish = false
 license = "Apache-2.0"
 repository = "https://github.com/openpitkit/pit"
-description = "Pit FFI bindings"
+description = "OpenPit FFI bindings"
 
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
 openpit = { version = "0.3.0", path = "../openpit" }
-pit-interop = { version = "0.3.0", path = "../pit-interop" }
+openpit-interop = { version = "0.3.0", path = "../openpit-interop" }
 rust_decimal = "1"

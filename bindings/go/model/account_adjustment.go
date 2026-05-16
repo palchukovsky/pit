@@ -34,7 +34,7 @@ type AccountAdjustment struct {
 }
 
 // retainAccountAdjustment keeps value objects alive while the C struct's like
-// PitStringView fields point to their C-heap buffers. For example, see
+// OpenPitStringView fields point to their C-heap buffers. For example, see
 // param/asset.go and internal/native/string.go for the full explanation.
 type retainAccountAdjustment struct {
 	// Balance-operation asset.
@@ -279,7 +279,7 @@ func (a AccountAdjustment) Handle() native.AccountAdjustment {
 type AccountAdjustmentBalanceOperation struct {
 	value native.AccountAdjustmentBalanceOperation
 
-	// retainAsset keeps the Asset alive while the C struct's PitStringView
+	// retainAsset keeps the Asset alive while the C struct's OpenPitStringView
 	// points to its C-heap buffer.  See AccountAdjustment for the full
 	// explanation of the retain pattern.
 	retainAsset param.Asset
@@ -422,7 +422,7 @@ type AccountAdjustmentPositionOperation struct {
 	value native.AccountAdjustmentPositionOperation
 
 	// retainInstrument and retainCollateralAsset keep the Assets alive while
-	// the C struct's PitStringView fields point to their C-heap buffers.
+	// the C struct's OpenPitStringView fields point to their C-heap buffers.
 	// See AccountAdjustment for the full explanation of the retain pattern.
 	retainInstrument      param.Instrument
 	retainCollateralAsset param.Asset

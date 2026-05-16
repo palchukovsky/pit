@@ -18,7 +18,7 @@
 package native
 
 /*
-#include "pit.h"
+#include "openpit.h"
 */
 import "C"
 

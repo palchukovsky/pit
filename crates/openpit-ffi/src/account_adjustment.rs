@@ -24,19 +24,20 @@ use openpit::{
     AccountAdjustmentAmount, AccountAdjustmentBalanceOperation, AccountAdjustmentBounds,
     AccountAdjustmentPositionOperation,
 };
-use pit_interop::{
+use openpit_interop::{
     AccountAdjustmentAmountAccess, AccountAdjustmentBoundsAccess, AccountAdjustmentOperationAccess,
     PopulatedAccountAdjustmentOperation, RequestWithPayload,
 };
 
 use crate::define_optional;
-use crate::instrument::{import_instrument, parse_asset_view, PitInstrument};
+use crate::instrument::{import_instrument, parse_asset_view, OpenPitInstrument};
 use crate::param::{
     export_leverage, export_position_mode, import_leverage, import_position_mode,
-    PitParamAdjustmentAmountKind, PitParamLeverage, PitParamPositionMode, PitParamPositionSize,
-    PitParamPositionSizeOptional, PitParamPrice, PitParamPriceOptional,
+    OpenPitParamAdjustmentAmountKind, OpenPitParamLeverage, OpenPitParamPositionMode,
+    OpenPitParamPositionSize, OpenPitParamPositionSizeOptional, OpenPitParamPrice,
+    OpenPitParamPriceOptional,
 };
-use crate::PitStringView;
+use crate::OpenPitStringView;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -45,46 +46,46 @@ use crate::PitStringView;
 /// The numeric value is interpreted according to `kind`:
 /// - `Delta` means "change current state by this signed amount";
 /// - `Absolute` means "set current state to this signed amount".
-pub struct PitParamAdjustmentAmount {
+pub struct OpenPitParamAdjustmentAmount {
     /// Signed numeric value of the adjustment.
-    pub value: PitParamPositionSize,
+    pub value: OpenPitParamPositionSize,
     /// Interpretation mode for `value`.
-    pub kind: PitParamAdjustmentAmountKind,
+    pub kind: OpenPitParamAdjustmentAmountKind,
 }
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 /// Balance-operation payload for account adjustment.
-pub struct PitAccountAdjustmentBalanceOperation {
+pub struct OpenPitAccountAdjustmentBalanceOperation {
     /// Balance asset code.
-    pub asset: PitStringView,
+    pub asset: OpenPitStringView,
     /// Optional average entry price.
-    pub average_entry_price: PitParamPriceOptional,
+    pub average_entry_price: OpenPitParamPriceOptional,
 }
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 /// Position-operation payload for account adjustment.
-pub struct PitAccountAdjustmentPositionOperation {
+pub struct OpenPitAccountAdjustmentPositionOperation {
     /// Position instrument.
-    pub instrument: PitInstrument,
+    pub instrument: OpenPitInstrument,
     /// Position collateral asset.
-    pub collateral_asset: PitStringView,
+    pub collateral_asset: OpenPitStringView,
     /// Position average entry price.
-    pub average_entry_price: PitParamPriceOptional,
+    pub average_entry_price: OpenPitParamPriceOptional,
     /// Optional leverage.
-    pub leverage: PitParamLeverage,
+    pub leverage: OpenPitParamLeverage,
     /// Position mode.
-    pub mode: PitParamPositionMode,
+    pub mode: OpenPitParamPositionMode,
 }
 
 define_optional!(
-    optional = PitAccountAdjustmentBalanceOperationOptional,
-    value = PitAccountAdjustmentBalanceOperation
+    optional = OpenPitAccountAdjustmentBalanceOperationOptional,
+    value = OpenPitAccountAdjustmentBalanceOperation
 );
 define_optional!(
-    optional = PitAccountAdjustmentPositionOperationOptional,
-    value = PitAccountAdjustmentPositionOperation
+    optional = OpenPitAccountAdjustmentPositionOperationOptional,
+    value = OpenPitAccountAdjustmentPositionOperation
 );
 
 #[repr(C)]
@@ -92,13 +93,13 @@ define_optional!(
 /// Optional amount-change group for account adjustment.
 ///
 /// The group is absent when every field is absent.
-pub struct PitAccountAdjustmentAmount {
+pub struct OpenPitAccountAdjustmentAmount {
     /// Requested total-balance change.
-    pub total: PitParamAdjustmentAmount,
+    pub total: OpenPitParamAdjustmentAmount,
     /// Requested reserved-balance change.
-    pub reserved: PitParamAdjustmentAmount,
+    pub reserved: OpenPitParamAdjustmentAmount,
     /// Requested pending-balance change.
-    pub pending: PitParamAdjustmentAmount,
+    pub pending: OpenPitParamAdjustmentAmount,
 }
 
 #[repr(C)]
@@ -106,33 +107,33 @@ pub struct PitAccountAdjustmentAmount {
 /// Optional bounds group for account adjustment.
 ///
 /// The group is absent when every bound is absent.
-pub struct PitAccountAdjustmentBounds {
+pub struct OpenPitAccountAdjustmentBounds {
     /// Optional upper bound for total balance.
-    pub total_upper: PitParamPositionSizeOptional,
+    pub total_upper: OpenPitParamPositionSizeOptional,
     /// Optional lower bound for total balance.
-    pub total_lower: PitParamPositionSizeOptional,
+    pub total_lower: OpenPitParamPositionSizeOptional,
     /// Optional upper bound for reserved balance.
-    pub reserved_upper: PitParamPositionSizeOptional,
+    pub reserved_upper: OpenPitParamPositionSizeOptional,
     /// Optional lower bound for reserved balance.
-    pub reserved_lower: PitParamPositionSizeOptional,
+    pub reserved_lower: OpenPitParamPositionSizeOptional,
     /// Optional upper bound for pending balance.
-    pub pending_upper: PitParamPositionSizeOptional,
+    pub pending_upper: OpenPitParamPositionSizeOptional,
     /// Optional lower bound for pending balance.
-    pub pending_lower: PitParamPositionSizeOptional,
+    pub pending_lower: OpenPitParamPositionSizeOptional,
 }
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 /// Full caller-owned account-adjustment payload.
-pub struct PitAccountAdjustment {
+pub struct OpenPitAccountAdjustment {
     /// Optional balance-operation group.
-    pub balance_operation: PitAccountAdjustmentBalanceOperationOptional,
+    pub balance_operation: OpenPitAccountAdjustmentBalanceOperationOptional,
     /// Optional position-operation group.
-    pub position_operation: PitAccountAdjustmentPositionOperationOptional,
+    pub position_operation: OpenPitAccountAdjustmentPositionOperationOptional,
     /// Optional amount-change group.
-    pub amount: PitAccountAdjustmentAmountOptional,
+    pub amount: OpenPitAccountAdjustmentAmountOptional,
     /// Optional bounds group.
-    pub bounds: PitAccountAdjustmentBoundsOptional,
+    pub bounds: OpenPitAccountAdjustmentBoundsOptional,
     /// Opaque caller-defined token.
     ///
     /// The SDK never inspects, dereferences, or frees this value. Its meaning,
@@ -148,8 +149,8 @@ pub struct PitAccountAdjustment {
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-/// Result of `pit_engine_apply_account_adjustment`.
-pub enum PitAccountAdjustmentApplyStatus {
+/// Result of `openpit_engine_apply_account_adjustment`.
+pub enum OpenPitAccountAdjustmentApplyStatus {
     /// The call failed before the batch could be evaluated.
     #[default]
     Error = 0,
@@ -160,44 +161,44 @@ pub enum PitAccountAdjustmentApplyStatus {
 }
 
 define_optional!(
-    optional = PitAccountAdjustmentAmountOptional,
-    value = PitAccountAdjustmentAmount
+    optional = OpenPitAccountAdjustmentAmountOptional,
+    value = OpenPitAccountAdjustmentAmount
 );
 define_optional!(
-    optional = PitAccountAdjustmentBoundsOptional,
-    value = PitAccountAdjustmentBounds
+    optional = OpenPitAccountAdjustmentBoundsOptional,
+    value = OpenPitAccountAdjustmentBounds
 );
 
 fn import_adjustment_amount(
-    value: PitParamAdjustmentAmount,
+    value: OpenPitParamAdjustmentAmount,
 ) -> Result<Option<AdjustmentAmount>, String> {
     match value.kind {
-        PitParamAdjustmentAmountKind::NotSet => Ok(None),
-        PitParamAdjustmentAmountKind::Delta => {
+        OpenPitParamAdjustmentAmountKind::NotSet => Ok(None),
+        OpenPitParamAdjustmentAmountKind::Delta => {
             Ok(Some(AdjustmentAmount::Delta(value.value.to_param()?)))
         }
-        PitParamAdjustmentAmountKind::Absolute => {
+        OpenPitParamAdjustmentAmountKind::Absolute => {
             Ok(Some(AdjustmentAmount::Absolute(value.value.to_param()?)))
         }
     }
 }
 
-fn export_adjustment_amount(value: Option<AdjustmentAmount>) -> PitParamAdjustmentAmount {
+fn export_adjustment_amount(value: Option<AdjustmentAmount>) -> OpenPitParamAdjustmentAmount {
     match value {
-        Some(AdjustmentAmount::Delta(v)) => PitParamAdjustmentAmount {
-            kind: PitParamAdjustmentAmountKind::Delta,
-            value: PitParamPositionSize(v.to_decimal().into()),
+        Some(AdjustmentAmount::Delta(v)) => OpenPitParamAdjustmentAmount {
+            kind: OpenPitParamAdjustmentAmountKind::Delta,
+            value: OpenPitParamPositionSize(v.to_decimal().into()),
         },
-        Some(AdjustmentAmount::Absolute(v)) => PitParamAdjustmentAmount {
-            kind: PitParamAdjustmentAmountKind::Absolute,
-            value: PitParamPositionSize(v.to_decimal().into()),
+        Some(AdjustmentAmount::Absolute(v)) => OpenPitParamAdjustmentAmount {
+            kind: OpenPitParamAdjustmentAmountKind::Absolute,
+            value: OpenPitParamPositionSize(v.to_decimal().into()),
         },
-        _ => PitParamAdjustmentAmount::default(),
+        _ => OpenPitParamAdjustmentAmount::default(),
     }
 }
 
 fn import_balance_operation(
-    value: PitAccountAdjustmentBalanceOperationOptional,
+    value: OpenPitAccountAdjustmentBalanceOperationOptional,
 ) -> Result<Option<AccountAdjustmentBalanceOperation>, String> {
     if !value.is_set {
         return Ok(None);
@@ -219,7 +220,7 @@ fn import_balance_operation(
 }
 
 fn import_position_operation(
-    value: PitAccountAdjustmentPositionOperationOptional,
+    value: OpenPitAccountAdjustmentPositionOperationOptional,
 ) -> Result<Option<AccountAdjustmentPositionOperation>, String> {
     if !value.is_set {
         return Ok(None);
@@ -250,7 +251,7 @@ fn import_position_operation(
 }
 
 fn import_amount(
-    value: PitAccountAdjustmentAmountOptional,
+    value: OpenPitAccountAdjustmentAmountOptional,
 ) -> Result<AccountAdjustmentAmountAccess, String> {
     if !value.is_set {
         return Ok(AccountAdjustmentAmountAccess::Absent);
@@ -265,7 +266,7 @@ fn import_amount(
     ))
 }
 
-fn import_bound(value: PitParamPositionSizeOptional) -> Result<Option<PositionSize>, String> {
+fn import_bound(value: OpenPitParamPositionSizeOptional) -> Result<Option<PositionSize>, String> {
     if !value.is_set {
         return Ok(None);
     }
@@ -273,7 +274,7 @@ fn import_bound(value: PitParamPositionSizeOptional) -> Result<Option<PositionSi
 }
 
 fn import_bounds(
-    value: PitAccountAdjustmentBoundsOptional,
+    value: OpenPitAccountAdjustmentBoundsOptional,
 ) -> Result<AccountAdjustmentBoundsAccess, String> {
     if !value.is_set {
         return Ok(AccountAdjustmentBoundsAccess::Absent);
@@ -293,61 +294,61 @@ fn import_bounds(
 
 fn export_balance_operation(
     value: &AccountAdjustmentBalanceOperation,
-) -> PitAccountAdjustmentBalanceOperation {
-    PitAccountAdjustmentBalanceOperation {
-        asset: PitStringView::from_utf8(value.asset.as_ref()),
+) -> OpenPitAccountAdjustmentBalanceOperation {
+    OpenPitAccountAdjustmentBalanceOperation {
+        asset: OpenPitStringView::from_utf8(value.asset.as_ref()),
         average_entry_price: match value.average_entry_price {
-            Some(v) => PitParamPriceOptional {
+            Some(v) => OpenPitParamPriceOptional {
                 is_set: true,
-                value: PitParamPrice(v.to_decimal().into()),
+                value: OpenPitParamPrice(v.to_decimal().into()),
             },
-            None => PitParamPriceOptional::default(),
+            None => OpenPitParamPriceOptional::default(),
         },
     }
 }
 
 fn export_position_operation(
     value: &AccountAdjustmentPositionOperation,
-) -> PitAccountAdjustmentPositionOperation {
-    PitAccountAdjustmentPositionOperation {
-        instrument: PitInstrument {
-            underlying_asset: PitStringView::from_utf8(
+) -> OpenPitAccountAdjustmentPositionOperation {
+    OpenPitAccountAdjustmentPositionOperation {
+        instrument: OpenPitInstrument {
+            underlying_asset: OpenPitStringView::from_utf8(
                 value.instrument.underlying_asset().as_ref(),
             ),
-            settlement_asset: PitStringView::from_utf8(
+            settlement_asset: OpenPitStringView::from_utf8(
                 value.instrument.settlement_asset().as_ref(),
             ),
         },
-        collateral_asset: PitStringView::from_utf8(value.collateral_asset.as_ref()),
-        average_entry_price: PitParamPriceOptional {
+        collateral_asset: OpenPitStringView::from_utf8(value.collateral_asset.as_ref()),
+        average_entry_price: OpenPitParamPriceOptional {
             is_set: true,
-            value: PitParamPrice(value.average_entry_price.to_decimal().into()),
+            value: OpenPitParamPrice(value.average_entry_price.to_decimal().into()),
         },
         leverage: export_leverage(value.leverage),
         mode: export_position_mode(value.mode),
     }
 }
 
-fn export_amount(value: &AccountAdjustmentAmount) -> PitAccountAdjustmentAmount {
-    PitAccountAdjustmentAmount {
+fn export_amount(value: &AccountAdjustmentAmount) -> OpenPitAccountAdjustmentAmount {
+    OpenPitAccountAdjustmentAmount {
         total: export_adjustment_amount(value.total),
         reserved: export_adjustment_amount(value.reserved),
         pending: export_adjustment_amount(value.pending),
     }
 }
 
-fn export_bound(value: Option<PositionSize>) -> PitParamPositionSizeOptional {
+fn export_bound(value: Option<PositionSize>) -> OpenPitParamPositionSizeOptional {
     match value {
-        Some(v) => PitParamPositionSizeOptional {
+        Some(v) => OpenPitParamPositionSizeOptional {
             is_set: true,
-            value: PitParamPositionSize(v.to_decimal().into()),
+            value: OpenPitParamPositionSize(v.to_decimal().into()),
         },
-        None => PitParamPositionSizeOptional::default(),
+        None => OpenPitParamPositionSizeOptional::default(),
     }
 }
 
-fn export_bounds(value: &AccountAdjustmentBounds) -> PitAccountAdjustmentBounds {
-    PitAccountAdjustmentBounds {
+fn export_bounds(value: &AccountAdjustmentBounds) -> OpenPitAccountAdjustmentBounds {
+    OpenPitAccountAdjustmentBounds {
         total_upper: export_bound(value.total_upper),
         total_lower: export_bound(value.total_lower),
         reserved_upper: export_bound(value.reserved_upper),
@@ -358,7 +359,7 @@ fn export_bounds(value: &AccountAdjustmentBounds) -> PitAccountAdjustmentBounds 
 }
 
 pub(crate) fn import_account_adjustment(
-    value: &PitAccountAdjustment,
+    value: &OpenPitAccountAdjustment,
 ) -> Result<AccountAdjustment, String> {
     // The engine applies adjustments as owned domain values, so decoding a
     // borrowed adjustment view necessarily builds owned data here.
@@ -379,7 +380,7 @@ pub(crate) fn import_account_adjustment(
     };
 
     Ok(RequestWithPayload::new(
-        pit_interop::AccountAdjustment {
+        openpit_interop::AccountAdjustment {
             operation,
             amount: import_amount(value.amount)?,
             bounds: import_bounds(value.bounds)?,
@@ -388,48 +389,52 @@ pub(crate) fn import_account_adjustment(
     ))
 }
 
-pub(crate) fn export_account_adjustment(value: &AccountAdjustment) -> PitAccountAdjustment {
+pub(crate) fn export_account_adjustment(value: &AccountAdjustment) -> OpenPitAccountAdjustment {
     let (balance_operation, position_operation) = match &value.request.operation {
         AccountAdjustmentOperationAccess::Populated(
             PopulatedAccountAdjustmentOperation::Balance(v),
         ) => (
-            PitAccountAdjustmentBalanceOperationOptional {
+            OpenPitAccountAdjustmentBalanceOperationOptional {
                 value: export_balance_operation(v),
                 is_set: true,
             },
-            PitAccountAdjustmentPositionOperationOptional::default(),
+            OpenPitAccountAdjustmentPositionOperationOptional::default(),
         ),
         AccountAdjustmentOperationAccess::Populated(
             PopulatedAccountAdjustmentOperation::Position(v),
         ) => (
-            PitAccountAdjustmentBalanceOperationOptional::default(),
-            PitAccountAdjustmentPositionOperationOptional {
+            OpenPitAccountAdjustmentBalanceOperationOptional::default(),
+            OpenPitAccountAdjustmentPositionOperationOptional {
                 value: export_position_operation(v),
                 is_set: true,
             },
         ),
         AccountAdjustmentOperationAccess::Absent => (
-            PitAccountAdjustmentBalanceOperationOptional::default(),
-            PitAccountAdjustmentPositionOperationOptional::default(),
+            OpenPitAccountAdjustmentBalanceOperationOptional::default(),
+            OpenPitAccountAdjustmentPositionOperationOptional::default(),
         ),
     };
 
-    PitAccountAdjustment {
+    OpenPitAccountAdjustment {
         balance_operation,
         position_operation,
         amount: match &value.request.amount {
-            AccountAdjustmentAmountAccess::Populated(v) => PitAccountAdjustmentAmountOptional {
+            AccountAdjustmentAmountAccess::Populated(v) => OpenPitAccountAdjustmentAmountOptional {
                 value: export_amount(v),
                 is_set: true,
             },
-            AccountAdjustmentAmountAccess::Absent => PitAccountAdjustmentAmountOptional::default(),
+            AccountAdjustmentAmountAccess::Absent => {
+                OpenPitAccountAdjustmentAmountOptional::default()
+            }
         },
         bounds: match &value.request.bounds {
-            AccountAdjustmentBoundsAccess::Populated(v) => PitAccountAdjustmentBoundsOptional {
+            AccountAdjustmentBoundsAccess::Populated(v) => OpenPitAccountAdjustmentBoundsOptional {
                 value: export_bounds(v),
                 is_set: true,
             },
-            AccountAdjustmentBoundsAccess::Absent => PitAccountAdjustmentBoundsOptional::default(),
+            AccountAdjustmentBoundsAccess::Absent => {
+                OpenPitAccountAdjustmentBoundsOptional::default()
+            }
         },
         user_data: value.payload,
     }
@@ -445,45 +450,45 @@ pub(crate) fn export_account_adjustment(value: &AccountAdjustment) -> PitAccount
 /// The token is preserved unchanged across every engine callback that
 /// receives the carrying value, including policy callbacks and adjustment
 /// callbacks.
-pub type AccountAdjustment = RequestWithPayload<pit_interop::AccountAdjustment, *mut c_void>;
+pub type AccountAdjustment = RequestWithPayload<openpit_interop::AccountAdjustment, *mut c_void>;
 
 #[cfg(test)]
 mod tests {
-    use crate::PitStringView;
+    use crate::OpenPitStringView;
 
     use super::{
-        export_account_adjustment, import_account_adjustment, PitAccountAdjustment,
-        PitAccountAdjustmentAmount, PitAccountAdjustmentAmountOptional,
-        PitAccountAdjustmentBalanceOperation, PitAccountAdjustmentBalanceOperationOptional,
-        PitAccountAdjustmentBounds, PitAccountAdjustmentBoundsOptional,
-        PitAccountAdjustmentPositionOperation, PitAccountAdjustmentPositionOperationOptional,
-        PitParamAdjustmentAmount,
+        export_account_adjustment, import_account_adjustment, OpenPitAccountAdjustment,
+        OpenPitAccountAdjustmentAmount, OpenPitAccountAdjustmentAmountOptional,
+        OpenPitAccountAdjustmentBalanceOperation, OpenPitAccountAdjustmentBalanceOperationOptional,
+        OpenPitAccountAdjustmentBounds, OpenPitAccountAdjustmentBoundsOptional,
+        OpenPitAccountAdjustmentPositionOperation,
+        OpenPitAccountAdjustmentPositionOperationOptional, OpenPitParamAdjustmentAmount,
     };
-    use crate::instrument::PitInstrument;
+    use crate::instrument::OpenPitInstrument;
     use crate::param::{
-        PitParamAdjustmentAmountKind, PitParamPositionMode, PitParamPositionSize,
-        PitParamPositionSizeOptional, PitParamPrice,
+        OpenPitParamAdjustmentAmountKind, OpenPitParamPositionMode, OpenPitParamPositionSize,
+        OpenPitParamPositionSizeOptional, OpenPitParamPrice,
     };
     use openpit::param::{AdjustmentAmount, Asset, PositionMode, PositionSize, Price};
     use openpit::{
         AccountAdjustmentAmount, AccountAdjustmentBalanceOperation, AccountAdjustmentBounds,
         AccountAdjustmentPositionOperation, Instrument,
     };
-    use pit_interop::{
+    use openpit_interop::{
         AccountAdjustmentAmountAccess, AccountAdjustmentBoundsAccess,
         AccountAdjustmentOperationAccess, PopulatedAccountAdjustmentOperation, RequestWithPayload,
     };
 
-    fn sample_balance_adjustment() -> PitAccountAdjustment {
-        PitAccountAdjustment {
-            balance_operation: PitAccountAdjustmentBalanceOperationOptional {
-                value: PitAccountAdjustmentBalanceOperation {
-                    asset: PitStringView {
+    fn sample_balance_adjustment() -> OpenPitAccountAdjustment {
+        OpenPitAccountAdjustment {
+            balance_operation: OpenPitAccountAdjustmentBalanceOperationOptional {
+                value: OpenPitAccountAdjustmentBalanceOperation {
+                    asset: OpenPitStringView {
                         ptr: b"USD".as_ptr(),
                         len: 3,
                     },
-                    average_entry_price: crate::param::PitParamPriceOptional {
-                        value: PitParamPrice(
+                    average_entry_price: crate::param::OpenPitParamPriceOptional {
+                        value: OpenPitParamPrice(
                             Price::from_str("10").expect("price").to_decimal().into(),
                         ),
                         is_set: true,
@@ -491,48 +496,48 @@ mod tests {
                 },
                 is_set: true,
             },
-            position_operation: PitAccountAdjustmentPositionOperationOptional::default(),
-            amount: PitAccountAdjustmentAmountOptional {
+            position_operation: OpenPitAccountAdjustmentPositionOperationOptional::default(),
+            amount: OpenPitAccountAdjustmentAmountOptional {
                 is_set: true,
-                value: PitAccountAdjustmentAmount {
-                    total: PitParamAdjustmentAmount {
-                        value: PitParamPositionSize(
+                value: OpenPitAccountAdjustmentAmount {
+                    total: OpenPitParamAdjustmentAmount {
+                        value: OpenPitParamPositionSize(
                             PositionSize::from_str("1")
                                 .expect("size")
                                 .to_decimal()
                                 .into(),
                         ),
-                        kind: PitParamAdjustmentAmountKind::Delta,
+                        kind: OpenPitParamAdjustmentAmountKind::Delta,
                     },
-                    reserved: PitParamAdjustmentAmount {
-                        value: PitParamPositionSize(
+                    reserved: OpenPitParamAdjustmentAmount {
+                        value: OpenPitParamPositionSize(
                             PositionSize::from_str("2")
                                 .expect("size")
                                 .to_decimal()
                                 .into(),
                         ),
-                        kind: PitParamAdjustmentAmountKind::Absolute,
+                        kind: OpenPitParamAdjustmentAmountKind::Absolute,
                     },
-                    pending: PitParamAdjustmentAmount::default(),
+                    pending: OpenPitParamAdjustmentAmount::default(),
                 },
             },
-            bounds: PitAccountAdjustmentBoundsOptional {
+            bounds: OpenPitAccountAdjustmentBoundsOptional {
                 is_set: true,
-                value: PitAccountAdjustmentBounds {
-                    total_upper: PitParamPositionSizeOptional {
+                value: OpenPitAccountAdjustmentBounds {
+                    total_upper: OpenPitParamPositionSizeOptional {
                         is_set: true,
-                        value: PitParamPositionSize(
+                        value: OpenPitParamPositionSize(
                             PositionSize::from_str("100")
                                 .expect("size")
                                 .to_decimal()
                                 .into(),
                         ),
                     },
-                    total_lower: PitParamPositionSizeOptional::default(),
-                    reserved_upper: PitParamPositionSizeOptional::default(),
-                    reserved_lower: PitParamPositionSizeOptional::default(),
-                    pending_upper: PitParamPositionSizeOptional::default(),
-                    pending_lower: PitParamPositionSizeOptional::default(),
+                    total_lower: OpenPitParamPositionSizeOptional::default(),
+                    reserved_upper: OpenPitParamPositionSizeOptional::default(),
+                    reserved_lower: OpenPitParamPositionSizeOptional::default(),
+                    pending_upper: OpenPitParamPositionSizeOptional::default(),
+                    pending_lower: OpenPitParamPositionSizeOptional::default(),
                 },
             },
             user_data: std::ptr::null_mut(),
@@ -596,28 +601,30 @@ mod tests {
     #[test]
     fn import_account_adjustment_rejects_both_operations() {
         let mut input = sample_balance_adjustment();
-        input.position_operation = PitAccountAdjustmentPositionOperationOptional {
-            value: PitAccountAdjustmentPositionOperation {
-                instrument: PitInstrument {
-                    underlying_asset: PitStringView {
+        input.position_operation = OpenPitAccountAdjustmentPositionOperationOptional {
+            value: OpenPitAccountAdjustmentPositionOperation {
+                instrument: OpenPitInstrument {
+                    underlying_asset: OpenPitStringView {
                         ptr: b"AAPL".as_ptr(),
                         len: 4,
                     },
-                    settlement_asset: PitStringView {
+                    settlement_asset: OpenPitStringView {
                         ptr: b"USD".as_ptr(),
                         len: 3,
                     },
                 },
-                collateral_asset: PitStringView {
+                collateral_asset: OpenPitStringView {
                     ptr: b"USD".as_ptr(),
                     len: 3,
                 },
-                average_entry_price: crate::param::PitParamPriceOptional {
+                average_entry_price: crate::param::OpenPitParamPriceOptional {
                     is_set: true,
-                    value: PitParamPrice(Price::from_str("1").expect("price").to_decimal().into()),
+                    value: OpenPitParamPrice(
+                        Price::from_str("1").expect("price").to_decimal().into(),
+                    ),
                 },
                 leverage: 10,
-                mode: PitParamPositionMode::Netting,
+                mode: OpenPitParamPositionMode::Netting,
             },
             is_set: true,
         };
@@ -628,20 +635,20 @@ mod tests {
 
     #[test]
     fn import_account_adjustment_rejects_incomplete_position_payload() {
-        let input = PitAccountAdjustment {
-            balance_operation: PitAccountAdjustmentBalanceOperationOptional::default(),
-            position_operation: PitAccountAdjustmentPositionOperationOptional {
-                value: PitAccountAdjustmentPositionOperation {
-                    instrument: PitInstrument::default(),
-                    collateral_asset: PitStringView::not_set(),
-                    average_entry_price: crate::param::PitParamPriceOptional::default(),
+        let input = OpenPitAccountAdjustment {
+            balance_operation: OpenPitAccountAdjustmentBalanceOperationOptional::default(),
+            position_operation: OpenPitAccountAdjustmentPositionOperationOptional {
+                value: OpenPitAccountAdjustmentPositionOperation {
+                    instrument: OpenPitInstrument::default(),
+                    collateral_asset: OpenPitStringView::not_set(),
+                    average_entry_price: crate::param::OpenPitParamPriceOptional::default(),
                     leverage: 10,
-                    mode: PitParamPositionMode::Hedged,
+                    mode: OpenPitParamPositionMode::Hedged,
                 },
                 is_set: true,
             },
-            amount: PitAccountAdjustmentAmountOptional::default(),
-            bounds: PitAccountAdjustmentBoundsOptional::default(),
+            amount: OpenPitAccountAdjustmentAmountOptional::default(),
+            bounds: OpenPitAccountAdjustmentBoundsOptional::default(),
             user_data: std::ptr::null_mut(),
         };
 
@@ -652,7 +659,7 @@ mod tests {
     #[test]
     fn export_account_adjustment_produces_operation_specific_group() {
         let domain = RequestWithPayload::new(
-            pit_interop::AccountAdjustment {
+            openpit_interop::AccountAdjustment {
                 operation: AccountAdjustmentOperationAccess::Populated(
                     PopulatedAccountAdjustmentOperation::Position(
                         AccountAdjustmentPositionOperation {
@@ -676,7 +683,7 @@ mod tests {
         let exported = export_account_adjustment(&domain);
         assert_eq!(
             exported.balance_operation,
-            PitAccountAdjustmentBalanceOperationOptional::default()
+            OpenPitAccountAdjustmentBalanceOperationOptional::default()
         );
         assert!(exported.position_operation.is_set);
         assert_eq!(
@@ -701,14 +708,14 @@ mod tests {
         assert!(exported.position_operation.value.average_entry_price.is_set);
         assert_eq!(
             exported.position_operation.value.mode,
-            PitParamPositionMode::Hedged
+            OpenPitParamPositionMode::Hedged
         );
     }
 
     #[test]
     fn import_export_account_adjustment_roundtrip() {
         let domain = RequestWithPayload::new(
-            pit_interop::AccountAdjustment {
+            openpit_interop::AccountAdjustment {
                 operation: AccountAdjustmentOperationAccess::Absent,
                 amount: AccountAdjustmentAmountAccess::Populated(AccountAdjustmentAmount {
                     total: Some(AdjustmentAmount::Absolute(

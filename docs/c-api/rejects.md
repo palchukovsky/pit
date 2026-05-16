@@ -4,7 +4,7 @@
 
 [Back to index](index.md)
 
-## `PitRejectScope`
+## `OpenPitRejectScope`
 
 Broad area to which a reject applies.
 
@@ -12,185 +12,185 @@ Valid values: `Order` (1), `Account` (2). Zero is not a valid scope value; the
 caller must always set this field explicitly.
 
 ```c
-typedef uint8_t PitRejectScope;
+typedef uint8_t OpenPitRejectScope;
 /**
  * The reject applies to one order or order-like request.
  */
-#define PitRejectScope_Order ((PitRejectScope) 1)
+#define OpenPitRejectScope_Order ((OpenPitRejectScope) 1)
 /**
  * The reject applies to account state rather than to one order only.
  */
-#define PitRejectScope_Account ((PitRejectScope) 2)
+#define OpenPitRejectScope_Account ((OpenPitRejectScope) 2)
 ```
 
-## `PitRejectCode`
+## `OpenPitRejectCode`
 
 Stable classification code for a reject.
 
 Read this first when you need machine-readable handling. The textual fields in
-[`PitReject`] provide operator-facing explanation and extra context.
+[`OpenPitReject`] provide operator-facing explanation and extra context.
 
 Valid codes are `1..=39` and `255` (`Other`). Unknown incoming codes are mapped
 to `Other` (`255`).
 
 ```c
-typedef uint16_t PitRejectCode;
+typedef uint16_t OpenPitRejectCode;
 /**
  * A required field is absent.
  */
-#define PitRejectCode_MissingRequiredField ((PitRejectCode) 1)
+#define OpenPitRejectCode_MissingRequiredField ((OpenPitRejectCode) 1)
 /**
  * A field cannot be parsed from the supplied wire value.
  */
-#define PitRejectCode_InvalidFieldFormat ((PitRejectCode) 2)
+#define OpenPitRejectCode_InvalidFieldFormat ((OpenPitRejectCode) 2)
 /**
  * A field is syntactically valid but semantically unacceptable.
  */
-#define PitRejectCode_InvalidFieldValue ((PitRejectCode) 3)
+#define OpenPitRejectCode_InvalidFieldValue ((OpenPitRejectCode) 3)
 /**
  * The requested order type is not supported.
  */
-#define PitRejectCode_UnsupportedOrderType ((PitRejectCode) 4)
+#define OpenPitRejectCode_UnsupportedOrderType ((OpenPitRejectCode) 4)
 /**
  * The requested time-in-force is not supported.
  */
-#define PitRejectCode_UnsupportedTimeInForce ((PitRejectCode) 5)
+#define OpenPitRejectCode_UnsupportedTimeInForce ((OpenPitRejectCode) 5)
 /**
  * Another order attribute is unsupported.
  */
-#define PitRejectCode_UnsupportedOrderAttribute ((PitRejectCode) 6)
+#define OpenPitRejectCode_UnsupportedOrderAttribute ((OpenPitRejectCode) 6)
 /**
  * The client order identifier duplicates an active order.
  */
-#define PitRejectCode_DuplicateClientOrderId ((PitRejectCode) 7)
+#define OpenPitRejectCode_DuplicateClientOrderId ((OpenPitRejectCode) 7)
 /**
  * The order arrived after the allowed entry deadline.
  */
-#define PitRejectCode_TooLateToEnter ((PitRejectCode) 8)
+#define OpenPitRejectCode_TooLateToEnter ((OpenPitRejectCode) 8)
 /**
  * Trading is closed for the relevant venue or session.
  */
-#define PitRejectCode_ExchangeClosed ((PitRejectCode) 9)
+#define OpenPitRejectCode_ExchangeClosed ((OpenPitRejectCode) 9)
 /**
  * The instrument cannot be resolved.
  */
-#define PitRejectCode_UnknownInstrument ((PitRejectCode) 10)
+#define OpenPitRejectCode_UnknownInstrument ((OpenPitRejectCode) 10)
 /**
  * The account cannot be resolved.
  */
-#define PitRejectCode_UnknownAccount ((PitRejectCode) 11)
+#define OpenPitRejectCode_UnknownAccount ((OpenPitRejectCode) 11)
 /**
  * The venue cannot be resolved.
  */
-#define PitRejectCode_UnknownVenue ((PitRejectCode) 12)
+#define OpenPitRejectCode_UnknownVenue ((OpenPitRejectCode) 12)
 /**
  * The clearing account cannot be resolved.
  */
-#define PitRejectCode_UnknownClearingAccount ((PitRejectCode) 13)
+#define OpenPitRejectCode_UnknownClearingAccount ((OpenPitRejectCode) 13)
 /**
  * The collateral asset cannot be resolved.
  */
-#define PitRejectCode_UnknownCollateralAsset ((PitRejectCode) 14)
+#define OpenPitRejectCode_UnknownCollateralAsset ((OpenPitRejectCode) 14)
 /**
  * Available balance is insufficient.
  */
-#define PitRejectCode_InsufficientFunds ((PitRejectCode) 15)
+#define OpenPitRejectCode_InsufficientFunds ((OpenPitRejectCode) 15)
 /**
  * Available margin is insufficient.
  */
-#define PitRejectCode_InsufficientMargin ((PitRejectCode) 16)
+#define OpenPitRejectCode_InsufficientMargin ((OpenPitRejectCode) 16)
 /**
  * Available position is insufficient.
  */
-#define PitRejectCode_InsufficientPosition ((PitRejectCode) 17)
+#define OpenPitRejectCode_InsufficientPosition ((OpenPitRejectCode) 17)
 /**
  * A credit limit was exceeded.
  */
-#define PitRejectCode_CreditLimitExceeded ((PitRejectCode) 18)
+#define OpenPitRejectCode_CreditLimitExceeded ((OpenPitRejectCode) 18)
 /**
  * A risk limit was exceeded.
  */
-#define PitRejectCode_RiskLimitExceeded ((PitRejectCode) 19)
+#define OpenPitRejectCode_RiskLimitExceeded ((OpenPitRejectCode) 19)
 /**
  * The order exceeds a generic configured limit.
  */
-#define PitRejectCode_OrderExceedsLimit ((PitRejectCode) 20)
+#define OpenPitRejectCode_OrderExceedsLimit ((OpenPitRejectCode) 20)
 /**
  * The order quantity exceeds a configured limit.
  */
-#define PitRejectCode_OrderQtyExceedsLimit ((PitRejectCode) 21)
+#define OpenPitRejectCode_OrderQtyExceedsLimit ((OpenPitRejectCode) 21)
 /**
  * The order notional exceeds a configured limit.
  */
-#define PitRejectCode_OrderNotionalExceedsLimit ((PitRejectCode) 22)
+#define OpenPitRejectCode_OrderNotionalExceedsLimit ((OpenPitRejectCode) 22)
 /**
  * The resulting position exceeds a configured limit.
  */
-#define PitRejectCode_PositionLimitExceeded ((PitRejectCode) 23)
+#define OpenPitRejectCode_PositionLimitExceeded ((OpenPitRejectCode) 23)
 /**
  * Concentration constraints were violated.
  */
-#define PitRejectCode_ConcentrationLimitExceeded ((PitRejectCode) 24)
+#define OpenPitRejectCode_ConcentrationLimitExceeded ((OpenPitRejectCode) 24)
 /**
  * Leverage constraints were violated.
  */
-#define PitRejectCode_LeverageLimitExceeded ((PitRejectCode) 25)
+#define OpenPitRejectCode_LeverageLimitExceeded ((OpenPitRejectCode) 25)
 /**
  * The request rate exceeded a configured limit.
  */
-#define PitRejectCode_RateLimitExceeded ((PitRejectCode) 26)
+#define OpenPitRejectCode_RateLimitExceeded ((OpenPitRejectCode) 26)
 /**
  * A loss barrier has blocked further risk-taking.
  */
-#define PitRejectCode_PnlKillSwitchTriggered ((PitRejectCode) 27)
+#define OpenPitRejectCode_PnlKillSwitchTriggered ((OpenPitRejectCode) 27)
 /**
  * The account is blocked.
  */
-#define PitRejectCode_AccountBlocked ((PitRejectCode) 28)
+#define OpenPitRejectCode_AccountBlocked ((OpenPitRejectCode) 28)
 /**
  * The account is not authorized for this action.
  */
-#define PitRejectCode_AccountNotAuthorized ((PitRejectCode) 29)
+#define OpenPitRejectCode_AccountNotAuthorized ((OpenPitRejectCode) 29)
 /**
  * A compliance restriction blocked the action.
  */
-#define PitRejectCode_ComplianceRestriction ((PitRejectCode) 30)
+#define OpenPitRejectCode_ComplianceRestriction ((OpenPitRejectCode) 30)
 /**
  * The instrument is restricted.
  */
-#define PitRejectCode_InstrumentRestricted ((PitRejectCode) 31)
+#define OpenPitRejectCode_InstrumentRestricted ((OpenPitRejectCode) 31)
 /**
  * A jurisdiction restriction blocked the action.
  */
-#define PitRejectCode_JurisdictionRestriction ((PitRejectCode) 32)
+#define OpenPitRejectCode_JurisdictionRestriction ((OpenPitRejectCode) 32)
 /**
  * The action would violate wash-trade prevention.
  */
-#define PitRejectCode_WashTradePrevention ((PitRejectCode) 33)
+#define OpenPitRejectCode_WashTradePrevention ((OpenPitRejectCode) 33)
 /**
  * The action would violate self-match prevention.
  */
-#define PitRejectCode_SelfMatchPrevention ((PitRejectCode) 34)
+#define OpenPitRejectCode_SelfMatchPrevention ((OpenPitRejectCode) 34)
 /**
  * Short-sale restriction blocked the action.
  */
-#define PitRejectCode_ShortSaleRestriction ((PitRejectCode) 35)
+#define OpenPitRejectCode_ShortSaleRestriction ((OpenPitRejectCode) 35)
 /**
  * Required risk configuration is missing.
  */
-#define PitRejectCode_RiskConfigurationMissing ((PitRejectCode) 36)
+#define OpenPitRejectCode_RiskConfigurationMissing ((OpenPitRejectCode) 36)
 /**
  * Required reference data is unavailable.
  */
-#define PitRejectCode_ReferenceDataUnavailable ((PitRejectCode) 37)
+#define OpenPitRejectCode_ReferenceDataUnavailable ((OpenPitRejectCode) 37)
 /**
  * The system could not compute an order value needed for validation.
  */
-#define PitRejectCode_OrderValueCalculationFailed ((PitRejectCode) 38)
+#define OpenPitRejectCode_OrderValueCalculationFailed ((OpenPitRejectCode) 38)
 /**
  * A required service or subsystem is unavailable.
  */
-#define PitRejectCode_SystemUnavailable ((PitRejectCode) 39)
+#define OpenPitRejectCode_SystemUnavailable ((OpenPitRejectCode) 39)
 /**
  * Reserved discriminant for caller-defined reject classes.
  *
@@ -198,37 +198,37 @@ typedef uint16_t PitRejectCode;
  * payload that the receiving code can decode. The SDK does not interpret this
  * code beyond mapping it to FFI value 254.
  */
-#define PitRejectCode_Custom ((PitRejectCode) 254)
+#define OpenPitRejectCode_Custom ((OpenPitRejectCode) 254)
 /**
  * A catch-all code for rejects that do not fit a more specific class.
  */
-#define PitRejectCode_Other ((PitRejectCode) 255)
+#define OpenPitRejectCode_Other ((OpenPitRejectCode) 255)
 ```
 
-## `PitReject`
+## `OpenPitReject`
 
 Single rejection record returned by checks.
 
 ```c
-typedef struct PitReject {
-    PitStringView policy;
-    PitStringView reason;
-    PitStringView details;
+typedef struct OpenPitReject {
+    OpenPitStringView policy;
+    OpenPitStringView reason;
+    OpenPitStringView details;
     void * user_data;
-    PitRejectCode code;
-    PitRejectScope scope;
-} PitReject;
+    OpenPitRejectCode code;
+    OpenPitRejectScope scope;
+} OpenPitReject;
 ```
 
-## `PitRejectList`
+## `OpenPitRejectList`
 
 Caller-owned list of rejects.
 
 ```c
-typedef struct PitRejectList PitRejectList;
+typedef struct OpenPitRejectList OpenPitRejectList;
 ```
 
-## `pit_create_reject_list`
+## `openpit_create_reject_list`
 
 Creates a caller-owned reject list with preallocated capacity.
 
@@ -237,16 +237,16 @@ Creates a caller-owned reject list with preallocated capacity.
 Contract:
 
 - returns a new caller-owned list;
-- release it with `pit_destroy_reject_list`;
+- release it with `openpit_destroy_reject_list`;
 - this function always succeeds.
 
 ```c
-PitRejectList * pit_create_reject_list(
+OpenPitRejectList * openpit_create_reject_list(
     size_t reserve
 );
 ```
 
-## `pit_destroy_reject_list`
+## `openpit_destroy_reject_list`
 
 Releases a caller-owned reject list.
 
@@ -256,12 +256,12 @@ Contract:
 - this function always succeeds.
 
 ```c
-void pit_destroy_reject_list(
-    PitRejectList * rejects
+void openpit_destroy_reject_list(
+    OpenPitRejectList * rejects
 );
 ```
 
-## `pit_reject_list_push`
+## `openpit_reject_list_push`
 
 Appends one reject to the list by copying its payload.
 
@@ -273,13 +273,13 @@ Contract:
 - violating the pointer contract aborts the call.
 
 ```c
-void pit_reject_list_push(
-    PitRejectList * list,
-    PitReject reject
+void openpit_reject_list_push(
+    OpenPitRejectList * list,
+    OpenPitReject reject
 );
 ```
 
-## `pit_reject_list_len`
+## `openpit_reject_list_len`
 
 Returns the number of rejects in the list.
 
@@ -290,12 +290,12 @@ Contract:
 - violating the pointer contract aborts the call.
 
 ```c
-size_t pit_reject_list_len(
-    const PitRejectList * list
+size_t openpit_reject_list_len(
+    const OpenPitRejectList * list
 );
 ```
 
-## `pit_reject_list_get`
+## `openpit_reject_list_get`
 
 Copies a non-owning reject view at `index` into `out_reject`.
 
@@ -313,9 +313,9 @@ Contract:
 - violating the pointer contract aborts the call.
 
 ```c
-bool pit_reject_list_get(
-    const PitRejectList * list,
+bool openpit_reject_list_get(
+    const OpenPitRejectList * list,
     size_t index,
-    PitReject * out_reject
+    OpenPitReject * out_reject
 );
 ```

@@ -20,22 +20,22 @@
 use std::ffi::c_void;
 
 use openpit::param::AccountId;
-use pit_interop::{
+use openpit_interop::{
     OrderMarginAccess, OrderOperationAccess, OrderPositionAccess, PopulatedOrderMargin,
     PopulatedOrderOperation, PopulatedOrderPosition, RequestWithPayload,
 };
 
-use crate::instrument::{import_instrument, parse_asset_view, PitInstrument};
+use crate::instrument::{import_instrument, parse_asset_view, OpenPitInstrument};
 use crate::param::{
     export_bool, export_leverage, export_position_side, export_side, export_trade_amount,
     import_bool, import_leverage, import_position_side, import_side, import_trade_amount,
-    PitParamAccountIdOptional, PitParamLeverage, PitParamPositionSide, PitParamPriceOptional,
-    PitParamSide, PitParamTradeAmount, PitTriBool,
+    OpenPitParamAccountIdOptional, OpenPitParamLeverage, OpenPitParamPositionSide,
+    OpenPitParamPriceOptional, OpenPitParamSide, OpenPitParamTradeAmount, OpenPitTriBool,
 };
-use crate::PitStringView;
+use crate::OpenPitStringView;
 
 fn import_operation(
-    value: PitOrderOperationOptional,
+    value: OpenPitOrderOperationOptional,
 ) -> Result<Option<PopulatedOrderOperation>, String> {
     if !value.is_set {
         return Ok(None);
@@ -58,7 +58,7 @@ fn import_operation(
     }))
 }
 
-fn import_position(value: PitOrderPositionOptional) -> OrderPositionAccess {
+fn import_position(value: OpenPitOrderPositionOptional) -> OrderPositionAccess {
     if !value.is_set {
         return OrderPositionAccess::Absent;
     }
@@ -70,7 +70,7 @@ fn import_position(value: PitOrderPositionOptional) -> OrderPositionAccess {
     })
 }
 
-fn import_margin(value: PitOrderMarginOptional) -> Result<OrderMarginAccess, String> {
+fn import_margin(value: OpenPitOrderMarginOptional) -> Result<OrderMarginAccess, String> {
     if !value.is_set {
         return Ok(OrderMarginAccess::Absent);
     }
@@ -90,17 +90,17 @@ fn import_margin(value: PitOrderMarginOptional) -> Result<OrderMarginAccess, Str
 /// Optional operation group for an order.
 ///
 /// The group is absent when all fields are absent.
-pub struct PitOrderOperation {
+pub struct OpenPitOrderOperation {
     /// Optional trade amount payload.
-    pub trade_amount: PitParamTradeAmount,
+    pub trade_amount: OpenPitParamTradeAmount,
     /// Trading instrument.
-    pub instrument: PitInstrument,
+    pub instrument: OpenPitInstrument,
     /// Optional limit price.
-    pub price: PitParamPriceOptional,
+    pub price: OpenPitParamPriceOptional,
     /// Optional account identifier.
-    pub account_id: PitParamAccountIdOptional,
+    pub account_id: OpenPitParamAccountIdOptional,
     /// Optional buy/sell direction.
-    pub side: PitParamSide,
+    pub side: OpenPitParamSide,
 }
 
 #[repr(C)]
@@ -108,13 +108,13 @@ pub struct PitOrderOperation {
 /// Optional position-management group for an order.
 ///
 /// The group is absent when every field is `NotSet`.
-pub struct PitOrderPosition {
+pub struct OpenPitOrderPosition {
     /// Optional long/short side.
-    pub position_side: PitParamPositionSide,
+    pub position_side: OpenPitParamPositionSide,
     /// Reduce-only flag.
-    pub reduce_only: PitTriBool,
+    pub reduce_only: OpenPitTriBool,
     /// Close-position flag.
-    pub close_position: PitTriBool,
+    pub close_position: OpenPitTriBool,
 }
 
 #[repr(C)]
@@ -122,25 +122,25 @@ pub struct PitOrderPosition {
 /// Optional margin group for an order.
 ///
 /// The group is absent when every field is `NotSet`.
-pub struct PitOrderMargin {
+pub struct OpenPitOrderMargin {
     /// Optional collateral asset.
-    pub collateral_asset: PitStringView,
+    pub collateral_asset: OpenPitStringView,
     /// Auto-borrow flag.
-    pub auto_borrow: PitTriBool,
+    pub auto_borrow: OpenPitTriBool,
     /// Optional leverage value.
-    pub leverage: PitParamLeverage,
+    pub leverage: OpenPitParamLeverage,
 }
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 /// Full caller-owned order payload.
-pub struct PitOrder {
+pub struct OpenPitOrder {
     /// Optional main operation group.
-    pub operation: PitOrderOperationOptional,
+    pub operation: OpenPitOrderOperationOptional,
     /// Optional margin group.
-    pub margin: PitOrderMarginOptional,
+    pub margin: OpenPitOrderMarginOptional,
     /// Optional position-management group.
-    pub position: PitOrderPositionOptional,
+    pub position: OpenPitOrderPositionOptional,
     /// Opaque caller-defined token.
     ///
     /// The SDK never inspects, dereferences, or frees this value. Its meaning,
@@ -155,20 +155,23 @@ pub struct PitOrder {
 }
 
 define_optional!(
-    optional = PitOrderOperationOptional,
-    value = PitOrderOperation
+    optional = OpenPitOrderOperationOptional,
+    value = OpenPitOrderOperation
 );
-define_optional!(optional = PitOrderMarginOptional, value = PitOrderMargin);
 define_optional!(
-    optional = PitOrderPositionOptional,
-    value = PitOrderPosition
+    optional = OpenPitOrderMarginOptional,
+    value = OpenPitOrderMargin
+);
+define_optional!(
+    optional = OpenPitOrderPositionOptional,
+    value = OpenPitOrderPosition
 );
 
-pub(crate) fn import_order(value: &PitOrder) -> Result<Order, String> {
+pub(crate) fn import_order(value: &OpenPitOrder) -> Result<Order, String> {
     // The engine works with owned domain objects, so decoding a borrowed order
     // view necessarily builds owned values here.
     Ok(RequestWithPayload::new(
-        pit_interop::Order {
+        openpit_interop::Order {
             operation: match import_operation(value.operation)? {
                 Some(v) => OrderOperationAccess::Populated(v),
                 None => OrderOperationAccess::Absent,
@@ -180,52 +183,52 @@ pub(crate) fn import_order(value: &PitOrder) -> Result<Order, String> {
     ))
 }
 
-pub(crate) fn export_order(value: &Order) -> PitOrder {
+pub(crate) fn export_order(value: &Order) -> OpenPitOrder {
     let operation = match &value.request.operation {
         OrderOperationAccess::Populated(v) => {
             let instrument = if let Some(instrument) = &v.instrument {
-                PitInstrument {
-                    underlying_asset: PitStringView::from_utf8(
+                OpenPitInstrument {
+                    underlying_asset: OpenPitStringView::from_utf8(
                         instrument.underlying_asset().as_ref(),
                     ),
-                    settlement_asset: PitStringView::from_utf8(
+                    settlement_asset: OpenPitStringView::from_utf8(
                         instrument.settlement_asset().as_ref(),
                     ),
                 }
             } else {
-                PitInstrument::default()
+                OpenPitInstrument::default()
             };
 
-            PitOrderOperationOptional {
+            OpenPitOrderOperationOptional {
                 is_set: true,
-                value: PitOrderOperation {
+                value: OpenPitOrderOperation {
                     instrument,
                     price: match v.price {
-                        Some(price) => PitParamPriceOptional {
-                            value: crate::param::PitParamPrice(price.to_decimal().into()),
+                        Some(price) => OpenPitParamPriceOptional {
+                            value: crate::param::OpenPitParamPrice(price.to_decimal().into()),
                             is_set: true,
                         },
-                        None => PitParamPriceOptional::default(),
+                        None => OpenPitParamPriceOptional::default(),
                     },
                     trade_amount: export_trade_amount(v.trade_amount),
                     account_id: match v.account_id {
-                        Some(account_id) => PitParamAccountIdOptional {
+                        Some(account_id) => OpenPitParamAccountIdOptional {
                             value: account_id.as_u64(),
                             is_set: true,
                         },
-                        None => PitParamAccountIdOptional::default(),
+                        None => OpenPitParamAccountIdOptional::default(),
                     },
                     side: v.side.map(export_side).unwrap_or_default(),
                 },
             }
         }
-        OrderOperationAccess::Absent => PitOrderOperationOptional::default(),
+        OrderOperationAccess::Absent => OpenPitOrderOperationOptional::default(),
     };
 
     let position = match &value.request.position {
-        OrderPositionAccess::Populated(position) => PitOrderPositionOptional {
+        OrderPositionAccess::Populated(position) => OpenPitOrderPositionOptional {
             is_set: true,
-            value: PitOrderPosition {
+            value: OpenPitOrderPosition {
                 position_side: position
                     .position_side
                     .map(export_position_side)
@@ -234,29 +237,29 @@ pub(crate) fn export_order(value: &Order) -> PitOrder {
                 close_position: export_bool(position.close_position),
             },
         },
-        OrderPositionAccess::Absent => PitOrderPositionOptional::default(),
+        OrderPositionAccess::Absent => OpenPitOrderPositionOptional::default(),
     };
 
     let margin = match &value.request.margin {
         OrderMarginAccess::Populated(margin) => {
             let collateral_asset = if let Some(asset) = margin.collateral_asset.as_ref() {
-                PitStringView::from_utf8(asset.as_ref())
+                OpenPitStringView::from_utf8(asset.as_ref())
             } else {
-                PitStringView::not_set()
+                OpenPitStringView::not_set()
             };
-            PitOrderMarginOptional {
+            OpenPitOrderMarginOptional {
                 is_set: true,
-                value: PitOrderMargin {
+                value: OpenPitOrderMargin {
                     collateral_asset,
                     leverage: export_leverage(margin.leverage),
                     auto_borrow: export_bool(margin.auto_borrow),
                 },
             }
         }
-        OrderMarginAccess::Absent => PitOrderMarginOptional::default(),
+        OrderMarginAccess::Absent => OpenPitOrderMarginOptional::default(),
     };
 
-    PitOrder {
+    OpenPitOrder {
         operation,
         margin,
         position,
@@ -274,45 +277,46 @@ pub(crate) fn export_order(value: &Order) -> PitOrder {
 /// The token is preserved unchanged across every engine callback that
 /// receives the carrying value, including policy callbacks and adjustment
 /// callbacks.
-pub type Order = RequestWithPayload<pit_interop::Order, *mut c_void>;
+pub type Order = RequestWithPayload<openpit_interop::Order, *mut c_void>;
 
 #[cfg(test)]
 mod tests {
     use openpit::param::{Asset, Price, Quantity, Side, Volume};
     use openpit::{HasInstrument, HasOrderPrice, HasTradeAmount};
-    use pit_interop::{
+    use openpit_interop::{
         OrderMarginAccess, OrderOperationAccess, OrderPositionAccess, PopulatedOrderMargin,
         PopulatedOrderOperation, PopulatedOrderPosition, RequestWithPayload,
     };
 
     use super::{
-        export_order, import_order, PitOrder, PitOrderMargin, PitOrderMarginOptional,
-        PitOrderOperation, PitOrderOperationOptional, PitOrderPosition, PitOrderPositionOptional,
+        export_order, import_order, OpenPitOrder, OpenPitOrderMargin, OpenPitOrderMarginOptional,
+        OpenPitOrderOperation, OpenPitOrderOperationOptional, OpenPitOrderPosition,
+        OpenPitOrderPositionOptional,
     };
     use crate::param::{
-        PitParamAccountIdOptional, PitParamLeverage, PitParamPositionSide, PitParamPrice,
-        PitParamPriceOptional, PitParamQuantity, PitParamSide, PitParamTradeAmount,
-        PitParamTradeAmountKind, PitTriBool,
+        OpenPitParamAccountIdOptional, OpenPitParamLeverage, OpenPitParamPositionSide,
+        OpenPitParamPrice, OpenPitParamPriceOptional, OpenPitParamQuantity, OpenPitParamSide,
+        OpenPitParamTradeAmount, OpenPitParamTradeAmountKind, OpenPitTriBool,
     };
-    use crate::{instrument::PitInstrument, PitStringView};
+    use crate::{instrument::OpenPitInstrument, OpenPitStringView};
 
-    fn sample_order() -> PitOrder {
-        PitOrder {
-            operation: PitOrderOperationOptional {
+    fn sample_order() -> OpenPitOrder {
+        OpenPitOrder {
+            operation: OpenPitOrderOperationOptional {
                 is_set: true,
-                value: PitOrderOperation {
-                    instrument: PitInstrument {
-                        underlying_asset: PitStringView {
+                value: OpenPitOrderOperation {
+                    instrument: OpenPitInstrument {
+                        underlying_asset: OpenPitStringView {
                             ptr: b"SPX".as_ptr(),
                             len: 3,
                         },
-                        settlement_asset: PitStringView {
+                        settlement_asset: OpenPitStringView {
                             ptr: b"USD".as_ptr(),
                             len: 3,
                         },
                     },
-                    price: PitParamPriceOptional {
-                        value: PitParamPrice(
+                    price: OpenPitParamPriceOptional {
+                        value: OpenPitParamPrice(
                             openpit::param::Price::from_str("100")
                                 .expect("valid")
                                 .to_decimal()
@@ -320,40 +324,40 @@ mod tests {
                         ),
                         is_set: true,
                     },
-                    trade_amount: PitParamTradeAmount {
-                        value: PitParamQuantity(
+                    trade_amount: OpenPitParamTradeAmount {
+                        value: OpenPitParamQuantity(
                             openpit::param::Quantity::from_str("2")
                                 .expect("valid")
                                 .to_decimal()
                                 .into(),
                         )
                         .0,
-                        kind: PitParamTradeAmountKind::Quantity,
+                        kind: OpenPitParamTradeAmountKind::Quantity,
                     },
-                    account_id: PitParamAccountIdOptional {
+                    account_id: OpenPitParamAccountIdOptional {
                         value: 7,
                         is_set: true,
                     },
-                    side: PitParamSide::Buy,
+                    side: OpenPitParamSide::Buy,
                 },
             },
-            position: PitOrderPositionOptional {
+            position: OpenPitOrderPositionOptional {
                 is_set: true,
-                value: PitOrderPosition {
-                    position_side: PitParamPositionSide::Long,
-                    reduce_only: PitTriBool::True,
-                    close_position: PitTriBool::False,
+                value: OpenPitOrderPosition {
+                    position_side: OpenPitParamPositionSide::Long,
+                    reduce_only: OpenPitTriBool::True,
+                    close_position: OpenPitTriBool::False,
                 },
             },
-            margin: PitOrderMarginOptional {
+            margin: OpenPitOrderMarginOptional {
                 is_set: true,
-                value: PitOrderMargin {
-                    collateral_asset: PitStringView {
+                value: OpenPitOrderMargin {
+                    collateral_asset: OpenPitStringView {
                         ptr: b"USD".as_ptr(),
                         len: 3,
                     },
-                    leverage: 200 as PitParamLeverage,
-                    auto_borrow: PitTriBool::True,
+                    leverage: 200 as OpenPitParamLeverage,
+                    auto_borrow: OpenPitTriBool::True,
                 },
             },
             user_data: std::ptr::null_mut(),
@@ -408,7 +412,7 @@ mod tests {
     #[test]
     fn import_order_rejects_partial_instrument() {
         let mut order = sample_order();
-        order.operation.value.instrument.settlement_asset = PitStringView::not_set();
+        order.operation.value.instrument.settlement_asset = OpenPitStringView::not_set();
         let err = import_order(&order).expect_err("partial instrument must fail");
         assert!(err.contains("both underlying_asset and settlement_asset"));
     }
@@ -416,7 +420,7 @@ mod tests {
     #[test]
     fn export_order_produces_readable_views() {
         let order = RequestWithPayload::new(
-            pit_interop::Order {
+            openpit_interop::Order {
                 operation: OrderOperationAccess::Populated(PopulatedOrderOperation {
                     instrument: Some(openpit::Instrument::new(
                         Asset::new("AAPL").expect("valid"),
@@ -441,37 +445,37 @@ mod tests {
 
         let exported = export_order(&order);
         assert!(exported.operation.is_set);
-        assert_eq!(exported.operation.value.side, PitParamSide::Sell);
+        assert_eq!(exported.operation.value.side, OpenPitParamSide::Sell);
         assert_eq!(
             exported.operation.value.trade_amount,
-            PitParamTradeAmount {
+            OpenPitParamTradeAmount {
                 value: Volume::from_str("1500").expect("valid").to_decimal().into(),
-                kind: PitParamTradeAmountKind::Volume
+                kind: OpenPitParamTradeAmountKind::Volume
             }
         );
         assert_eq!(exported.operation.value.instrument.underlying_asset.len, 4);
         assert_eq!(exported.margin.value.collateral_asset.len, 3);
-        assert_eq!(exported.margin.value.auto_borrow, PitTriBool::False);
+        assert_eq!(exported.margin.value.auto_borrow, OpenPitTriBool::False);
     }
 
     #[test]
     fn import_order_preserves_present_false_boolean_groups() {
-        let order = PitOrder {
-            operation: PitOrderOperationOptional::default(),
-            margin: PitOrderMarginOptional {
+        let order = OpenPitOrder {
+            operation: OpenPitOrderOperationOptional::default(),
+            margin: OpenPitOrderMarginOptional {
                 is_set: true,
-                value: PitOrderMargin {
-                    collateral_asset: PitStringView::not_set(),
-                    leverage: PitParamLeverage::default(),
-                    auto_borrow: PitTriBool::False,
+                value: OpenPitOrderMargin {
+                    collateral_asset: OpenPitStringView::not_set(),
+                    leverage: OpenPitParamLeverage::default(),
+                    auto_borrow: OpenPitTriBool::False,
                 },
             },
-            position: PitOrderPositionOptional {
+            position: OpenPitOrderPositionOptional {
                 is_set: true,
-                value: PitOrderPosition {
-                    position_side: PitParamPositionSide::NotSet,
-                    reduce_only: PitTriBool::False,
-                    close_position: PitTriBool::False,
+                value: OpenPitOrderPosition {
+                    position_side: OpenPitParamPositionSide::NotSet,
+                    reduce_only: OpenPitTriBool::False,
+                    close_position: OpenPitTriBool::False,
                 },
             },
             user_data: std::ptr::null_mut(),

@@ -19,39 +19,39 @@ package mutation
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../internal/native
-#include "pit.h"
+#include "openpit.h"
 
 extern void pitMutationCommit(void* user_data);
 extern void pitMutationRollback(void* user_data);
 extern void pitMutationFree(void* user_data);
 
-static PitMutationFn pit_mutation_commit_fn = pitMutationCommit;
-static PitMutationFn pit_mutation_rollback_fn = pitMutationRollback;
-static PitMutationFreeFn pit_mutation_free_fn = pitMutationFree;
+static OpenPitMutationFn openpit_mutation_commit_fn = pitMutationCommit;
+static OpenPitMutationFn openpit_mutation_rollback_fn = pitMutationRollback;
+static OpenPitMutationFreeFn openpit_mutation_free_fn = pitMutationFree;
 
-static inline PitMutationFn* pit_mutation_commit_fn_addr(void) {
-	return &pit_mutation_commit_fn;
+static inline OpenPitMutationFn* openpit_mutation_commit_fn_addr(void) {
+	return &openpit_mutation_commit_fn;
 }
 
-static inline PitMutationFn* pit_mutation_rollback_fn_addr(void) {
-	return &pit_mutation_rollback_fn;
+static inline OpenPitMutationFn* openpit_mutation_rollback_fn_addr(void) {
+	return &openpit_mutation_rollback_fn;
 }
 
-static inline PitMutationFreeFn* pit_mutation_free_fn_addr(void) {
-	return &pit_mutation_free_fn;
+static inline OpenPitMutationFreeFn* openpit_mutation_free_fn_addr(void) {
+	return &openpit_mutation_free_fn;
 }
 */
 import "C"
 import "unsafe"
 
 func GetCommitFnAddr() unsafe.Pointer {
-	return unsafe.Pointer(C.pit_mutation_commit_fn_addr())
+	return unsafe.Pointer(C.openpit_mutation_commit_fn_addr())
 }
 
 func GetRollbackFnAddr() unsafe.Pointer {
-	return unsafe.Pointer(C.pit_mutation_rollback_fn_addr())
+	return unsafe.Pointer(C.openpit_mutation_rollback_fn_addr())
 }
 
 func GetFreeFnAddr() unsafe.Pointer {
-	return unsafe.Pointer(C.pit_mutation_free_fn_addr())
+	return unsafe.Pointer(C.openpit_mutation_free_fn_addr())
 }

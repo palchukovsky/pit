@@ -4,7 +4,7 @@
 
 [Back to index](index.md)
 
-## `PitInstrument`
+## `OpenPitInstrument`
 
 Trading instrument view.
 
@@ -17,8 +17,8 @@ Semantics:
 - only one string view set: invalid payload.
 
 ```c
-typedef struct PitInstrument {
-    PitStringView underlying_asset;
-    PitStringView settlement_asset;
-} PitInstrument;
+typedef struct OpenPitInstrument {
+    OpenPitStringView underlying_asset;
+    OpenPitStringView settlement_asset;
+} OpenPitInstrument;
 ```

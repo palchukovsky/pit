@@ -33,7 +33,7 @@ type Order struct {
 }
 
 // orderFieldsRetain keeps value objects alive while the C struct's like
-// PitStringView fields point to their C-heap buffers. For example, see
+// OpenPitStringView fields point to their C-heap buffers. For example, see
 // param/asset.go and internal/native/string.go for the full explanation.
 type orderFieldsRetain struct {
 	// Instrument from the order operation (holds underlying + settlement assets).
@@ -190,7 +190,7 @@ type OrderOperation struct {
 	value native.OrderOperation
 
 	// retainInstrument keeps the Instrument (and its two constituent Assets)
-	// alive while the C struct's PitStringView fields point to their C-heap
+	// alive while the C struct's OpenPitStringView fields point to their C-heap
 	// buffers.  See param/asset.go for the full explanation of the retain
 	// pattern.
 	retainInstrument param.Instrument
@@ -543,7 +543,7 @@ type OrderMargin struct {
 	value native.OrderMargin
 
 	// retainCollateralAsset keeps the Asset alive while the C struct's
-	// PitStringView points to its C-heap buffer.  See param/asset.go for the
+	// OpenPitStringView points to its C-heap buffer.  See param/asset.go for the
 	// full explanation of the retain pattern.
 	retainCollateralAsset param.Asset
 }

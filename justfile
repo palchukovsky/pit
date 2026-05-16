@@ -124,21 +124,21 @@ gen-api-c:
 
 # Build FFI.
 _build-ffi:
-    cargo build -p pit-ffi --release --locked
+    cargo build -p openpit-ffi --release --locked
 
 # Run a Go command with FFI runtime/linker environment configured.
 _go args: _build-ffi
     OPENPIT_RUNTIME_LIBRARY_PATH="$(if [ "$(uname -s)" = "Darwin" ]; then \
-      echo "$(pwd)/target/release/libpit_ffi.dylib"; \
+      echo "$(pwd)/target/release/libopenpit_ffi.dylib"; \
     elif [ "$(uname -s)" = "Linux" ]; then \
-      echo "$(pwd)/target/release/libpit_ffi.so"; \
+      echo "$(pwd)/target/release/libopenpit_ffi.so"; \
     else \
       echo "unsupported OS for pit-ffi runtime lookup" >&2; \
       exit 1; \
     fi)" && CGO_LDFLAGS="$(if [ "$(uname -s)" = "Darwin" ]; then \
-      echo "-Wl,-no_warn_duplicate_libraries -L$(pwd)/target/release -lpit_ffi"; \
+      echo "-Wl,-no_warn_duplicate_libraries -L$(pwd)/target/release -lopenpit_ffi"; \
     elif [ "$(uname -s)" = "Linux" ]; then \
-      echo "-L$(pwd)/target/release -lpit_ffi"; \
+      echo "-L$(pwd)/target/release -lopenpit_ffi"; \
     else \
       echo "unsupported OS for pit-ffi linker flags" >&2; \
       exit 1; \

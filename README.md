@@ -1,4 +1,4 @@
-# Pit: Pre-trade Integrity Toolkit
+# OpenPit: Pre-trade Integrity Toolkit
 
 [![Pit](docs/assets/pit-readme-banner.png)](https://openpit.dev/)
 <!-- markdownlint-disable MD013 -->
@@ -9,7 +9,7 @@
 [![C API](https://img.shields.io/badge/C%20API-header%20%2B%20docs-4b5563)](docs/c-api/index.md)
 <!-- markdownlint-enable MD013 -->
 
-Pit is a workspace for embeddable pre-trade risk components.
+OpenPit is a workspace for embeddable pre-trade risk components.
 
 The project is built around a simple idea: before an order reaches a venue, it
 should pass through a deterministic risk pipeline that can reject, reserve
@@ -61,7 +61,7 @@ policy APIs, see the wiki:
 
 ## Versioning Policy (Pre‑1.0)
 
-Until Pit reaches a stable `1.0` release, the project follows a relaxed
+Until OpenPit reaches a stable `1.0` release, the project follows a relaxed
 interpretation of Semantic Versioning.
 
 During this phase:
@@ -80,15 +80,15 @@ evolution during the pre‑stable phase.
 The project website [openpit.dev](https://openpit.dev/) for an overview
 and links to all documentation.
 
-[The Go SDK README](bindings/go/README.md) if you want to integrate Pit from Go.
+[The Go SDK README](bindings/go/README.md) if you want to integrate OpenPit from Go.
 
 [The Python SDK README](bindings/python/README.md) if you want to work
-with Pit from Python via the `openpit` package.
+with OpenPit from Python via the `openpit` package.
 
 [The `openpit` crate README](crates/openpit/README.md) if you want to start
 with the Rust interface and a runnable example.
 
-[The C SDK README](bindings/c/README.md) if you want to integrate Pit
+[The C SDK README](bindings/c/README.md) if you want to integrate OpenPit
 from C or from environments that integrate through a C ABI.
 
 [Conceptual pages and longer architecture notes wiki](https://github.com/openpitkit/pit/wiki).
@@ -158,11 +158,11 @@ just test-go-race
 Manual:
 
 ```bash
-cargo build -p pit-ffi --release --locked
+cargo build -p openpit-ffi --release --locked
 cd bindings/go
-export OPENPIT_RUNTIME_LIBRARY_PATH="$(pwd)/../../target/release/libpit_ffi.so"
+export OPENPIT_RUNTIME_LIBRARY_PATH="$(pwd)/../../target/release/libopenpit_ffi.so"
 export LD_LIBRARY_PATH="$(pwd)/../../target/release${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
-export CGO_LDFLAGS="-L$(pwd)/../../target/release -lpit_ffi"
+export CGO_LDFLAGS="-L$(pwd)/../../target/release -lopenpit_ffi"
 go test ./...
 go test -race ./...
 ```
@@ -206,11 +206,11 @@ python -m pytest bindings/python/tests/unit
 python -m pytest bindings/python/tests/integration
 
 # Go:
-cargo build -p pit-ffi --release --locked
+cargo build -p openpit-ffi --release --locked
 cd bindings/go
-export OPENPIT_RUNTIME_LIBRARY_PATH="$(pwd)/../../target/release/libpit_ffi.so"
+export OPENPIT_RUNTIME_LIBRARY_PATH="$(pwd)/../../target/release/libopenpit_ffi.so"
 export LD_LIBRARY_PATH="$(pwd)/../../target/release${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
-export CGO_LDFLAGS="-L$(pwd)/../../target/release -lpit_ffi"
+export CGO_LDFLAGS="-L$(pwd)/../../target/release -lopenpit_ffi"
 go test ./...
 go test -race ./...
 ```

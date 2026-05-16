@@ -34,10 +34,10 @@ goos="$(go env GOOS)"
 goarch="$(go env GOARCH)"
 case "${goos}" in
   linux)
-    runtime_lib="libpit_ffi.so"
+    runtime_lib="libopenpit_ffi.so"
     ;;
   darwin)
-    runtime_lib="libpit_ffi.dylib"
+    runtime_lib="libopenpit_ffi.dylib"
     ;;
   *)
     echo "unsupported Go release e2e platform: ${goos}/${goarch}" >&2
@@ -51,7 +51,7 @@ if [[ ! -f "${runtime_path}" ]]; then
   exit 1
 fi
 
-export CGO_LDFLAGS="-L${runtime_dir} -lpit_ffi -Wl,-rpath,${runtime_dir}"
+export CGO_LDFLAGS="-L${runtime_dir} -lopenpit_ffi -Wl,-rpath,${runtime_dir}"
 export OPENPIT_RUNTIME_LIBRARY_PATH="${runtime_path}"
 
 go mod tidy

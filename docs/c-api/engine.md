@@ -4,128 +4,130 @@
 
 [Back to index](index.md)
 
-## `PitSyncPolicy`
+## `OpenPitSyncPolicy`
 
 Runtime selector for the engine's storage synchronization policy.
 
 ```c
-typedef uint8_t PitSyncPolicy;
+typedef uint8_t OpenPitSyncPolicy;
 /**
  * Concurrent invocation of public methods on the same handle is safe.
  * Sequential cross-thread access is also safe. Use this when the engine is
  * shared across threads.
  */
-#define PitSyncPolicy_Full ((PitSyncPolicy) 0)
+#define OpenPitSyncPolicy_Full ((OpenPitSyncPolicy) 0)
 /**
  * The handle stays on the OS thread that created it. Use this for
  * single-threaded embeddings where synchronization overhead must be zero.
  */
-#define PitSyncPolicy_Local ((PitSyncPolicy) 1)
+#define OpenPitSyncPolicy_Local ((OpenPitSyncPolicy) 1)
 /**
  * Sequential cross-thread access on the same handle is safe; the caller pins
  * each account to a single processing chain (one queue or one worker at a
  * time). Concurrent invocation on the same handle is not supported in this
  * mode.
  */
-#define PitSyncPolicy_Account ((PitSyncPolicy) 2)
+#define OpenPitSyncPolicy_Account ((OpenPitSyncPolicy) 2)
 ```
 
-## `PitEngineBuilder`
+## `OpenPitEngineBuilder`
 
 Opaque builder pointer used to assemble an engine instance.
 
 Ownership:
 
-- returned by `pit_create_engine_builder`;
-- owned by the caller until passed to `pit_destroy_engine_builder`;
-- consumed by `pit_engine_builder_build`.
+- returned by `openpit_create_engine_builder`;
+- owned by the caller until passed to `openpit_destroy_engine_builder`;
+- consumed by `openpit_engine_builder_build`.
 
 ```c
-typedef struct PitEngineBuilder PitEngineBuilder;
+typedef struct OpenPitEngineBuilder OpenPitEngineBuilder;
 ```
 
-## `PitEngine`
+## `OpenPitEngine`
 
 Opaque engine pointer.
 
 The engine stores policies and mutable risk state. The caller owns the pointer
-until `pit_destroy_engine`.
+until `openpit_destroy_engine`.
 
 ```c
-typedef struct PitEngine PitEngine;
+typedef struct OpenPitEngine OpenPitEngine;
 ```
 
-## `PitPretradePreTradeRequest`
+## `OpenPitPretradePreTradeRequest`
 
 Opaque pointer for a deferred pre-trade request.
 
-This is returned by `pit_engine_start_pre_trade`. It can be executed once with
-`pit_pretrade_pre_trade_request_execute` or discarded with
-`pit_destroy_pretrade_pre_trade_request`.
+This is returned by `openpit_engine_start_pre_trade`. It can be executed once
+with `openpit_pretrade_pre_trade_request_execute` or discarded with
+`openpit_destroy_pretrade_pre_trade_request`.
 
 ```c
-typedef struct PitPretradePreTradeRequest PitPretradePreTradeRequest;
+typedef struct OpenPitPretradePreTradeRequest OpenPitPretradePreTradeRequest;
 ```
 
-## `PitPretradePreTradeReservation`
+## `OpenPitPretradePreTradeReservation`
 
 Opaque reservation pointer returned by a successful pre-trade check.
 
 A reservation represents resources that have been tentatively locked. The caller
 must resolve it exactly once by calling
-`pit_pretrade_pre_trade_reservation_commit`,
-`pit_pretrade_pre_trade_reservation_rollback`, or
-`pit_destroy_pretrade_pre_trade_reservation`.
+`openpit_pretrade_pre_trade_reservation_commit`,
+`openpit_pretrade_pre_trade_reservation_rollback`, or
+`openpit_destroy_pretrade_pre_trade_reservation`.
 
 ```c
-typedef struct PitPretradePreTradeReservation PitPretradePreTradeReservation;
+typedef struct OpenPitPretradePreTradeReservation
+    OpenPitPretradePreTradeReservation;
 ```
 
-## `PitPretradePreTradeLock`
+## `OpenPitPretradePreTradeLock`
 
 Price-lock snapshot returned from a reservation.
 
 ```c
-typedef struct PitPretradePreTradeLock {
-    PitParamPriceOptional price;
-} PitPretradePreTradeLock;
+typedef struct OpenPitPretradePreTradeLock {
+    OpenPitParamPriceOptional price;
+} OpenPitPretradePreTradeLock;
 ```
 
-## `PitPretradeStatus`
+## `OpenPitPretradeStatus`
 
 Result status for pre-trade operations.
 
 ```c
-typedef uint8_t PitPretradeStatus;
+typedef uint8_t OpenPitPretradeStatus;
 /**
  * Order/request passed this stage; read the success out-pointer.
  */
-#define PitPretradeStatus_Passed ((PitPretradeStatus) 0)
+#define OpenPitPretradeStatus_Passed ((OpenPitPretradeStatus) 0)
 /**
  * Order/request was rejected; read the reject out-pointer.
  */
-#define PitPretradeStatus_Rejected ((PitPretradeStatus) 1)
+#define OpenPitPretradeStatus_Rejected ((OpenPitPretradeStatus) 1)
 /**
  * Call failed due to invalid input; read the error out-pointer.
  */
-#define PitPretradeStatus_Error ((PitPretradeStatus) 2)
+#define OpenPitPretradeStatus_Error ((OpenPitPretradeStatus) 2)
 ```
 
-## `PitAccountAdjustmentBatchError`
+## `OpenPitAccountAdjustmentBatchError`
 
 Batch rejection details returned by account-adjustment apply API.
 
 Ownership:
 
-- created by `pit_engine_apply_account_adjustment` on `Rejected`;
+- created by `openpit_engine_apply_account_adjustment` on `Rejected`;
 - owned by the caller;
-- released with `pit_destroy_account_adjustment_batch_error`.
+- released with `openpit_destroy_account_adjustment_batch_error`.
 
 ```c
-typedef struct PitAccountAdjustmentBatchError PitAccountAdjustmentBatchError;
+typedef struct OpenPitAccountAdjustmentBatchError
+    OpenPitAccountAdjustmentBatchError;
 ```
 
-## `pit_create_engine_builder`
+## `openpit_create_engine_builder`
 
 Creates a new engine builder with the chosen synchronization policy.
 
@@ -135,26 +137,26 @@ Success:
 
 Error:
 
-- returns null when `sync_policy` is not one of `PitSyncPolicy_Full` (0),
-  `PitSyncPolicy_Local` (1), or `PitSyncPolicy_Account` (2);
-- if `out_error` is not null, writes a caller-owned `PitSharedString` error
-  handle that MUST be released with `pit_destroy_shared_string`.
+- returns null when `sync_policy` is not one of `OpenPitSyncPolicy_Full` (0),
+  `OpenPitSyncPolicy_Local` (1), or `OpenPitSyncPolicy_Account` (2);
+- if `out_error` is not null, writes a caller-owned `OpenPitSharedString`
+  error handle that MUST be released with `openpit_destroy_shared_string`.
 
 Cleanup:
 
-- release the pointer with `pit_destroy_engine_builder` if you stop before
+- release the pointer with `openpit_destroy_engine_builder` if you stop before
   building;
 - after a successful build the builder is consumed and must still be released
-  with `pit_destroy_engine_builder`.
+  with `openpit_destroy_engine_builder`.
 
 ```c
-PitEngineBuilder * pit_create_engine_builder(
+OpenPitEngineBuilder * openpit_create_engine_builder(
     uint8_t sync_policy,
-    PitOutError out_error
+    OpenPitOutError out_error
 );
 ```
 
-## `pit_destroy_engine_builder`
+## `openpit_destroy_engine_builder`
 
 Releases a builder pointer owned by the caller.
 
@@ -165,12 +167,12 @@ Contract:
 - this function always succeeds.
 
 ```c
-void pit_destroy_engine_builder(
-    PitEngineBuilder * builder
+void openpit_destroy_engine_builder(
+    OpenPitEngineBuilder * builder
 );
 ```
 
-## `pit_engine_builder_build`
+## `openpit_engine_builder_build`
 
 Finalizes a builder and creates an engine.
 
@@ -182,23 +184,23 @@ Error:
 
 - returns null when `builder` is null, the builder was already consumed, or
   configuration is invalid;
-- if `out_error` is not null, writes a caller-owned `PitSharedString` error
-  handle that MUST be released with `pit_destroy_shared_string`.
+- if `out_error` is not null, writes a caller-owned `OpenPitSharedString`
+  error handle that MUST be released with `openpit_destroy_shared_string`.
 
 Ownership:
 
 - on success the returned engine pointer is owned by the caller and must be
-  released with `pit_destroy_engine`;
+  released with `openpit_destroy_engine`;
 - the builder becomes consumed regardless of success and must not be reused.
 
 ```c
-PitEngine * pit_engine_builder_build(
-    PitEngineBuilder * builder,
-    PitOutError out_error
+OpenPitEngine * openpit_engine_builder_build(
+    OpenPitEngineBuilder * builder,
+    OpenPitOutError out_error
 );
 ```
 
-## `pit_destroy_engine`
+## `openpit_destroy_engine`
 
 Releases an engine pointer owned by the caller.
 
@@ -210,12 +212,12 @@ Contract:
 - this function always succeeds.
 
 ```c
-void pit_destroy_engine(
-    PitEngine * engine
+void openpit_destroy_engine(
+    OpenPitEngine * engine
 );
 ```
 
-## `pit_engine_start_pre_trade`
+## `openpit_engine_start_pre_trade`
 
 Starts pre-trade processing and returns a deferred request pointer.
 
@@ -232,20 +234,21 @@ Error:
 - returns `Error` when input pointers are invalid or the order payload cannot
   be decoded;
 - on `Error`, if `out_error` is not null, it is filled with a caller-owned
-  `PitSharedString` that MUST be destroyed by the caller.
+  `OpenPitSharedString` that MUST be destroyed by the caller.
 
 Cleanup:
 
-- release a successful request with `pit_pretrade_pre_trade_request_execute`
-  or `pit_destroy_pretrade_pre_trade_request`.
+- release a successful request with
+  `openpit_pretrade_pre_trade_request_execute` or
+  `openpit_destroy_pretrade_pre_trade_request`.
 
 Reject ownership contract:
 
-- on `Rejected`, a non-null `PitRejectList` pointer is written to
+- on `Rejected`, a non-null `OpenPitRejectList` pointer is written to
   `out_rejects` if it is not null;
 - the caller takes ownership and MUST release it with
-  `pit_destroy_reject_list`; failing to do so leaks the heap allocation made
-  inside this call;
+  `openpit_destroy_reject_list`; failing to do so leaks the heap allocation
+  made inside this call;
 - no thread-local state is involved, and the returned pointer is safe to read
   on any thread;
 - on `Passed` and `Error`, null is written to `out_rejects`, and the caller
@@ -258,16 +261,16 @@ Order lifetime contract:
   request may outlive the source buffers.
 
 ```c
-PitPretradeStatus pit_engine_start_pre_trade(
-    PitEngine * engine,
-    const PitOrder * order,
-    PitPretradePreTradeRequest ** out_request,
-    PitRejectList ** out_rejects,
-    PitOutError out_error
+OpenPitPretradeStatus openpit_engine_start_pre_trade(
+    OpenPitEngine * engine,
+    const OpenPitOrder * order,
+    OpenPitPretradePreTradeRequest ** out_request,
+    OpenPitRejectList ** out_rejects,
+    OpenPitOutError out_error
 );
 ```
 
-## `pit_engine_execute_pre_trade`
+## `openpit_engine_execute_pre_trade`
 
 Runs the complete pre-trade check in one call.
 
@@ -282,22 +285,22 @@ Error:
 - returns `Error` when input pointers are invalid or the order payload cannot
   be decoded;
 - on `Error`, if `out_error` is not null, it is filled with a caller-owned
-  `PitSharedString` that MUST be destroyed by the caller.
+  `OpenPitSharedString` that MUST be destroyed by the caller.
 
 Cleanup:
 
 - release a successful reservation with
-  `pit_pretrade_pre_trade_reservation_commit`,
-  `pit_pretrade_pre_trade_reservation_rollback`, or
-  `pit_destroy_pretrade_pre_trade_reservation`.
+  `openpit_pretrade_pre_trade_reservation_commit`,
+  `openpit_pretrade_pre_trade_reservation_rollback`, or
+  `openpit_destroy_pretrade_pre_trade_reservation`.
 
 Reject ownership contract:
 
-- on `Rejected`, a non-null `PitRejectList` pointer is written to
+- on `Rejected`, a non-null `OpenPitRejectList` pointer is written to
   `out_rejects` if it is not null;
 - the caller takes ownership and MUST release it with
-  `pit_destroy_reject_list`; failing to do so leaks the heap allocation made
-  inside this call;
+  `openpit_destroy_reject_list`; failing to do so leaks the heap allocation
+  made inside this call;
 - no thread-local state is involved, and the returned pointer is safe to read
   on any thread;
 - on `Passed` and `Error`, null is written to `out_rejects`, and the caller
@@ -310,18 +313,18 @@ Order lifetime contract:
   function returns.
 
 ```c
-PitPretradeStatus pit_engine_execute_pre_trade(
-    PitEngine * engine,
-    const PitOrder * order,
-    PitPretradePreTradeReservation ** out_reservation,
-    PitRejectList ** out_rejects,
-    PitOutError out_error
+OpenPitPretradeStatus openpit_engine_execute_pre_trade(
+    OpenPitEngine * engine,
+    const OpenPitOrder * order,
+    OpenPitPretradePreTradeReservation ** out_reservation,
+    OpenPitRejectList ** out_rejects,
+    OpenPitOutError out_error
 );
 ```
 
-## `pit_pretrade_pre_trade_request_execute`
+## `openpit_pretrade_pre_trade_request_execute`
 
-Executes a deferred request returned by `pit_engine_start_pre_trade`.
+Executes a deferred request returned by `openpit_engine_start_pre_trade`.
 
 Success:
 
@@ -334,37 +337,37 @@ Error:
 - returns `Error` when input pointers are invalid or the order payload cannot
   be decoded;
 - on `Error`, if `out_error` is not null, it is filled with a caller-owned
-  `PitSharedString` that MUST be destroyed by the caller.
+  `OpenPitSharedString` that MUST be destroyed by the caller.
 
 Ownership:
 
 - this call consumes the request object's content exactly once;
 - after a successful or failed execute, the object itself may still be
-  released with `pit_destroy_pretrade_pre_trade_request`, but it cannot be
+  released with `openpit_destroy_pretrade_pre_trade_request`, but it cannot be
   executed again.
 
 Reject ownership contract:
 
-- on `Rejected`, a non-null `PitRejectList` pointer is written to
+- on `Rejected`, a non-null `OpenPitRejectList` pointer is written to
   `out_rejects` if it is not null;
 - the caller takes ownership and MUST release it with
-  `pit_destroy_reject_list`; failing to do so leaks the heap allocation made
-  inside this call;
+  `openpit_destroy_reject_list`; failing to do so leaks the heap allocation
+  made inside this call;
 - no thread-local state is involved, and the returned pointer is safe to read
   on any thread;
 - on `Passed` and `Error`, null is written to `out_rejects`, and the caller
   must not call destroy in those cases.
 
 ```c
-PitPretradeStatus pit_pretrade_pre_trade_request_execute(
-    PitPretradePreTradeRequest * request,
-    PitPretradePreTradeReservation ** out_reservation,
-    PitRejectList ** out_rejects,
-    PitOutError out_error
+OpenPitPretradeStatus openpit_pretrade_pre_trade_request_execute(
+    OpenPitPretradePreTradeRequest * request,
+    OpenPitPretradePreTradeReservation ** out_reservation,
+    OpenPitRejectList ** out_rejects,
+    OpenPitOutError out_error
 );
 ```
 
-## `pit_destroy_pretrade_pre_trade_request`
+## `openpit_destroy_pretrade_pre_trade_request`
 
 Releases a deferred request pointer owned by the caller.
 
@@ -375,12 +378,12 @@ Contract:
 - this function always succeeds.
 
 ```c
-void pit_destroy_pretrade_pre_trade_request(
-    PitPretradePreTradeRequest * request
+void openpit_destroy_pretrade_pre_trade_request(
+    OpenPitPretradePreTradeRequest * request
 );
 ```
 
-## `pit_pretrade_pre_trade_reservation_commit`
+## `openpit_pretrade_pre_trade_reservation_commit`
 
 Finalizes a reservation and applies the reserved state permanently.
 
@@ -393,12 +396,12 @@ Contract:
 - this function always succeeds.
 
 ```c
-void pit_pretrade_pre_trade_reservation_commit(
-    PitPretradePreTradeReservation * reservation
+void openpit_pretrade_pre_trade_reservation_commit(
+    OpenPitPretradePreTradeReservation * reservation
 );
 ```
 
-## `pit_pretrade_pre_trade_reservation_rollback`
+## `openpit_pretrade_pre_trade_reservation_rollback`
 
 Cancels a reservation and releases the reserved state.
 
@@ -411,12 +414,12 @@ Contract:
 - this function always succeeds.
 
 ```c
-void pit_pretrade_pre_trade_reservation_rollback(
-    PitPretradePreTradeReservation * reservation
+void openpit_pretrade_pre_trade_reservation_rollback(
+    OpenPitPretradePreTradeReservation * reservation
 );
 ```
 
-## `pit_pretrade_pre_trade_reservation_get_lock`
+## `openpit_pretrade_pre_trade_reservation_get_lock`
 
 Returns a snapshot of the lock attached to a reservation.
 
@@ -431,12 +434,12 @@ Lifetime contract:
 - the returned snapshot is detached from the reservation state.
 
 ```c
-PitPretradePreTradeLock pit_pretrade_pre_trade_reservation_get_lock(
-    const PitPretradePreTradeReservation * reservation
+OpenPitPretradePreTradeLock openpit_pretrade_pre_trade_reservation_get_lock(
+    const OpenPitPretradePreTradeReservation * reservation
 );
 ```
 
-## `pit_destroy_pretrade_pre_trade_reservation`
+## `openpit_destroy_pretrade_pre_trade_reservation`
 
 Releases a reservation pointer owned by the caller.
 
@@ -449,36 +452,36 @@ Contract:
 - this function always succeeds.
 
 ```c
-void pit_destroy_pretrade_pre_trade_reservation(
-    PitPretradePreTradeReservation * reservation
+void openpit_destroy_pretrade_pre_trade_reservation(
+    OpenPitPretradePreTradeReservation * reservation
 );
 ```
 
-## `PitEngineApplyExecutionReportResult`
+## `OpenPitEngineApplyExecutionReportResult`
 
-Result of `pit_engine_apply_execution_report`.
+Result of `openpit_engine_apply_execution_report`.
 
 ```c
-typedef struct PitEngineApplyExecutionReportResult {
-    PitPretradePostTradeResult post_trade_result;
+typedef struct OpenPitEngineApplyExecutionReportResult {
+    OpenPitPretradePostTradeResult post_trade_result;
     bool is_error;
-} PitEngineApplyExecutionReportResult;
+} OpenPitEngineApplyExecutionReportResult;
 ```
 
-## `pit_engine_apply_execution_report`
+## `openpit_engine_apply_execution_report`
 
 Applies an execution report to engine state.
 
 Success:
 
-- returns `PitEngineApplyExecutionReportResult { is_error = false, ... }`.
+- returns `OpenPitEngineApplyExecutionReportResult { is_error = false, ... }`.
 
 Error:
 
-- returns `PitEngineApplyExecutionReportResult { is_error = true, post_trade_result = { kill_switch_triggered = false } }` when input pointers
+- returns `OpenPitEngineApplyExecutionReportResult { is_error = true, post_trade_result = { kill_switch_triggered = false } }` when input pointers
   are invalid or the report payload cannot be decoded;
-- if `out_error` is not null, writes a caller-owned `PitSharedString` error
-  handle that MUST be released with `pit_destroy_shared_string`;
+- if `out_error` is not null, writes a caller-owned `OpenPitSharedString`
+  error handle that MUST be released with `openpit_destroy_shared_string`;
 - when `is_error` is `true`, do not trust any other fields beyond the fact
   that the call failed.
 
@@ -489,14 +492,14 @@ Lifetime contract:
   function returns.
 
 ```c
-PitEngineApplyExecutionReportResult pit_engine_apply_execution_report(
-    PitEngine * engine,
-    const PitExecutionReport * report,
-    PitOutError out_error
+OpenPitEngineApplyExecutionReportResult openpit_engine_apply_execution_report(
+    OpenPitEngine * engine,
+    const OpenPitExecutionReport * report,
+    OpenPitOutError out_error
 );
 ```
 
-## `pit_destroy_account_adjustment_batch_error`
+## `openpit_destroy_account_adjustment_batch_error`
 
 Releases a batch-error object returned by account-adjustment apply.
 
@@ -506,12 +509,12 @@ Contract:
 - this function always succeeds.
 
 ```c
-void pit_destroy_account_adjustment_batch_error(
-    PitAccountAdjustmentBatchError * batch_error
+void openpit_destroy_account_adjustment_batch_error(
+    OpenPitAccountAdjustmentBatchError * batch_error
 );
 ```
 
-## `pit_account_adjustment_batch_error_get_failed_adjustment_index`
+## `openpit_account_adjustment_batch_error_get_failed_adjustment_index`
 
 Returns the failing adjustment index from a batch error.
 
@@ -522,12 +525,12 @@ Contract:
 - violating the pointer contract aborts the call.
 
 ```c
-size_t pit_account_adjustment_batch_error_get_failed_adjustment_index(
-    const PitAccountAdjustmentBatchError * batch_error
+size_t openpit_account_adjustment_batch_error_get_failed_adjustment_index(
+    const OpenPitAccountAdjustmentBatchError * batch_error
 );
 ```
 
-## `pit_account_adjustment_batch_error_get_rejects`
+## `openpit_account_adjustment_batch_error_get_rejects`
 
 Returns a non-owning reject-list view from a batch error.
 
@@ -539,37 +542,38 @@ Contract:
 - violating the pointer contract aborts the call.
 
 ```c
-const PitRejectList * pit_account_adjustment_batch_error_get_rejects(
-    const PitAccountAdjustmentBatchError * batch_error
+const OpenPitRejectList * openpit_account_adjustment_batch_error_get_rejects(
+    const OpenPitAccountAdjustmentBatchError * batch_error
 );
 ```
 
-## `pit_engine_apply_account_adjustment`
+## `openpit_engine_apply_account_adjustment`
 
 Applies a batch of account adjustments to one account.
 
 Success:
 
-- returns `PitAccountAdjustmentApplyStatus::Applied` when the batch was
+- returns `OpenPitAccountAdjustmentApplyStatus::Applied` when the batch was
   accepted and applied;
-- returns `PitAccountAdjustmentApplyStatus::Rejected` when the call itself
+- returns `OpenPitAccountAdjustmentApplyStatus::Rejected` when the call itself
   completed normally but a policy rejected the batch; read `out_reject`.
 
 Error:
 
-- returns `PitAccountAdjustmentApplyStatus::Error` when input pointers are
+- returns `OpenPitAccountAdjustmentApplyStatus::Error` when input pointers are
   invalid or some adjustment payload cannot be decoded;
 - on `Error`, if `out_error` is not null, it is filled with a caller-owned
-  `PitSharedString` that MUST be destroyed by the caller.
+  `OpenPitSharedString` that MUST be destroyed by the caller.
 
 Result handling:
 
 - `Applied` means there is no reject object to clean up;
 - `Rejected` stores batch error details in `out_reject`, the caller must
-  release a returned object with `pit_destroy_account_adjustment_batch_error`;
-- rejects returned by `pit_account_adjustment_batch_error_get_rejects` contain
-  string views borrowed from the batch error and must not be used after the
-  batch error is destroyed;
+  release a returned object with
+  `openpit_destroy_account_adjustment_batch_error`;
+- rejects returned by `openpit_account_adjustment_batch_error_get_rejects`
+  contain string views borrowed from the batch error and must not be used
+  after the batch error is destroyed;
 - when `Error` is returned, do not use any pointer from a previous unrelated
   call as if it belonged to this failure.
 
@@ -578,15 +582,15 @@ Lifetime contract:
 - every `adjustment` entry from the contiguous input array is read as a
   borrowed view during this call only;
 - release a returned batch error with
-  `pit_destroy_account_adjustment_batch_error`.
+  `openpit_destroy_account_adjustment_batch_error`.
 
 ```c
-PitAccountAdjustmentApplyStatus pit_engine_apply_account_adjustment(
-    PitEngine * engine,
-    PitParamAccountId account_id,
-    const PitAccountAdjustment * adjustments,
+OpenPitAccountAdjustmentApplyStatus openpit_engine_apply_account_adjustment(
+    OpenPitEngine * engine,
+    OpenPitParamAccountId account_id,
+    const OpenPitAccountAdjustment * adjustments,
     size_t adjustments_len,
-    PitAccountAdjustmentBatchError ** out_reject,
-    PitOutError out_error
+    OpenPitAccountAdjustmentBatchError ** out_reject,
+    OpenPitOutError out_error
 );
 ```

@@ -18,7 +18,7 @@
 package native
 
 /*
-#include "pit.h"
+#include "openpit.h"
 */
 import "C"
 
@@ -76,24 +76,24 @@ func CreateRejectList(reserve int) RejectList {
 	if reserve < 0 {
 		reserve = 0
 	}
-	return C.pit_create_reject_list(C.size_t(reserve))
+	return C.openpit_create_reject_list(C.size_t(reserve))
 }
 
 func DestroyRejectList(rejects RejectList) {
-	C.pit_destroy_reject_list(rejects)
+	C.openpit_destroy_reject_list(rejects)
 }
 
 func RejectListPush(list RejectList, reject Reject) {
-	C.pit_reject_list_push(list, reject)
+	C.openpit_reject_list_push(list, reject)
 }
 
 func RejectListLen(list RejectList) int {
-	return int(C.pit_reject_list_len(list))
+	return int(C.openpit_reject_list_len(list))
 }
 
 func RejectListGet(list RejectList, index int) Reject {
 	var out Reject
-	if !C.pit_reject_list_get(list, C.size_t(index), &out) { //nolint:gocritic
+	if !C.openpit_reject_list_get(list, C.size_t(index), &out) { //nolint:gocritic
 		return Reject{}
 	}
 	return out

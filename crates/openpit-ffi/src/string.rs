@@ -32,14 +32,14 @@ use std::sync::Arc;
 /// - the caller must not free or mutate memory behind `ptr`.
 /// - if the caller needs to retain the string beyond that announced lifetime,
 ///   the caller must copy the bytes.
-pub struct PitStringView {
+pub struct OpenPitStringView {
     /// Pointer to the first UTF-8 byte.
     pub ptr: *const u8,
     /// Number of bytes at `ptr`.
     pub len: usize,
 }
 
-impl PitStringView {
+impl OpenPitStringView {
     pub const fn not_set() -> Self {
         Self {
             ptr: std::ptr::null(),
@@ -62,29 +62,29 @@ impl PitStringView {
 /// must not depend on thread-local state remaining intact on the reader side.
 ///
 /// Ownership contract:
-/// - every non-null `*mut PitSharedString` returned through FFI is owned by
+/// - every non-null `*mut OpenPitSharedString` returned through FFI is owned by
 ///   the caller;
-/// - the caller MUST release it with `pit_destroy_shared_string` when no
+/// - the caller MUST release it with `openpit_destroy_shared_string` when no
 ///   longer needed; failing to do so leaks the underlying allocation;
 /// - the handle internally holds a reference-counted copy of the string, so
 ///   multiple live handles pointing at the same original value are safe and
 ///   independent; destroying one handle does not affect the others.
 ///
 /// Read contract:
-/// - read the bytes with `pit_shared_string_view`;
-/// - the returned `PitStringView` is valid while this specific handle is
-///   alive and must not outlive the call to `pit_destroy_shared_string`
+/// - read the bytes with `openpit_shared_string_view`;
+/// - the returned `OpenPitStringView` is valid while this specific handle is
+///   alive and must not outlive the call to `openpit_destroy_shared_string`
 ///   for this handle.
 ///
 /// Threading contract:
 /// - the handle itself is safe to move to and read from any thread once the
 ///   caller has received it; no thread-local state is consulted when reading
 ///   or destroying.
-pub struct PitSharedString {
+pub struct OpenPitSharedString {
     inner: Arc<String>,
 }
 
-impl PitSharedString {
+impl OpenPitSharedString {
     /// Builds a new handle that holds a fresh shared copy of `value`.
     ///
     /// Returns a heap-allocated pointer the caller owns.
@@ -104,13 +104,13 @@ impl PitSharedString {
 }
 
 #[no_mangle]
-/// Releases a `PitSharedString` handle.
+/// Releases a `OpenPitSharedString` handle.
 ///
 /// Null input is a no-op.
 ///
-/// After this call, the handle and any `PitStringView` previously obtained
+/// After this call, the handle and any `OpenPitStringView` previously obtained
 /// from it are invalid and must not be used.
-pub extern "C" fn pit_destroy_shared_string(handle: *mut PitSharedString) {
+pub extern "C" fn openpit_destroy_shared_string(handle: *mut OpenPitSharedString) {
     if handle.is_null() {
         return;
     }
@@ -124,32 +124,35 @@ pub extern "C" fn pit_destroy_shared_string(handle: *mut PitSharedString) {
 ///
 /// The returned view is valid only while `handle` remains alive. The caller
 /// must copy the bytes if they must outlive the handle.
-pub extern "C" fn pit_shared_string_view(handle: *const PitSharedString) -> PitStringView {
+pub extern "C" fn openpit_shared_string_view(
+    handle: *const OpenPitSharedString,
+) -> OpenPitStringView {
     if handle.is_null() {
-        return PitStringView::not_set();
+        return OpenPitStringView::not_set();
     }
-    PitStringView::from_utf8(unsafe { &*handle }.as_str())
+    OpenPitStringView::from_utf8(unsafe { &*handle }.as_str())
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        pit_destroy_shared_string, pit_shared_string_view, PitSharedString, PitStringView,
+        openpit_destroy_shared_string, openpit_shared_string_view, OpenPitSharedString,
+        OpenPitStringView,
     };
 
     #[test]
-    fn pit_string_view_helpers_are_stable() {
-        let not_set = PitStringView::not_set();
+    fn openpit_string_view_helpers_are_stable() {
+        let not_set = OpenPitStringView::not_set();
         assert!(not_set.ptr.is_null());
         assert_eq!(not_set.len, 0);
 
         let value = "openpit";
-        let view = PitStringView::from_utf8(value);
+        let view = OpenPitStringView::from_utf8(value);
         assert!(!view.ptr.is_null());
         assert_eq!(view.len, value.len());
     }
 
-    fn view_to_string(view: crate::PitStringView) -> String {
+    fn view_to_string(view: crate::OpenPitStringView) -> String {
         if view.ptr.is_null() {
             return String::new();
         }
@@ -159,29 +162,29 @@ mod tests {
 
     #[test]
     fn new_handle_roundtrips_bytes() {
-        let handle = PitSharedString::new_handle("hello");
+        let handle = OpenPitSharedString::new_handle("hello");
         assert!(!handle.is_null());
-        assert_eq!(view_to_string(pit_shared_string_view(handle)), "hello");
-        pit_destroy_shared_string(handle);
+        assert_eq!(view_to_string(openpit_shared_string_view(handle)), "hello");
+        openpit_destroy_shared_string(handle);
     }
 
     #[test]
     fn null_inputs_are_safe() {
-        let view = pit_shared_string_view(std::ptr::null());
+        let view = openpit_shared_string_view(std::ptr::null());
         assert!(view.ptr.is_null());
         assert_eq!(view.len, 0);
 
-        pit_destroy_shared_string(std::ptr::null_mut());
+        openpit_destroy_shared_string(std::ptr::null_mut());
     }
 
     #[test]
     fn independent_handles_can_be_dropped_in_any_order() {
         let shared = std::sync::Arc::new("shared".to_owned());
-        let a = PitSharedString::from_arc(shared.clone());
-        let b = PitSharedString::from_arc(shared);
-        assert_eq!(view_to_string(pit_shared_string_view(a)), "shared");
-        pit_destroy_shared_string(a);
-        assert_eq!(view_to_string(pit_shared_string_view(b)), "shared");
-        pit_destroy_shared_string(b);
+        let a = OpenPitSharedString::from_arc(shared.clone());
+        let b = OpenPitSharedString::from_arc(shared);
+        assert_eq!(view_to_string(openpit_shared_string_view(a)), "shared");
+        openpit_destroy_shared_string(a);
+        assert_eq!(view_to_string(openpit_shared_string_view(b)), "shared");
+        openpit_destroy_shared_string(b);
     }
 }

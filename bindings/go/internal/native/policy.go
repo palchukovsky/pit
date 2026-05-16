@@ -18,7 +18,7 @@
 package native
 
 /*
-#include "pit.h"
+#include "openpit.h"
 */
 import "C"
 
@@ -167,32 +167,32 @@ func CreatePretradeCustomCheckPreTradeStartPolicy(
 	userData unsafe.Pointer,
 ) (PretradeCheckPreTradeStartPolicy, error) {
 	var outError SharedString
-	p := C.pit_create_pretrade_custom_check_pre_trade_start_policy(
+	p := C.openpit_create_pretrade_custom_check_pre_trade_start_policy(
 		importString(name),
-		*(*C.PitPretradeCheckPreTradeStartPolicyCheckPreTradeStartFn)(checkFnAddr),
-		*(*C.PitPretradeCheckPreTradeStartPolicyApplyExecutionReportFn)(applyExecutionReportFnAddr),
-		*(*C.PitPretradeCheckPreTradeStartPolicyFreeUserDataFn)(freeUserDataFnAddr),
+		*(*C.OpenPitPretradeCheckPreTradeStartPolicyCheckPreTradeStartFn)(checkFnAddr),
+		*(*C.OpenPitPretradeCheckPreTradeStartPolicyApplyExecutionReportFn)(applyExecutionReportFnAddr),
+		*(*C.OpenPitPretradeCheckPreTradeStartPolicyFreeUserDataFn)(freeUserDataFnAddr),
 		userData,
-		C.PitOutError(&outError), //nolint:gocritic
+		C.OpenPitOutError(&outError), //nolint:gocritic
 	)
 	if p == nil {
 		return nil,
 			consumeSharedStringAsError(
 				outError,
-				"pit_create_pretrade_custom_check_pre_trade_start_policy failed",
+				"openpit_create_pretrade_custom_check_pre_trade_start_policy failed",
 			)
 	}
 	return p, nil
 }
 
 func DestroyPretradeCheckPreTradeStartPolicy(policy PretradeCheckPreTradeStartPolicy) {
-	C.pit_destroy_pretrade_check_pre_trade_start_policy(policy)
+	C.openpit_destroy_pretrade_check_pre_trade_start_policy(policy)
 }
 
 func PretradeCheckPreTradeStartPolicyGetName(
 	policy PretradeCheckPreTradeStartPolicy,
 ) StringView {
-	return newStringView(C.pit_pretrade_check_pre_trade_start_policy_get_name(policy))
+	return newStringView(C.openpit_pretrade_check_pre_trade_start_policy_get_name(policy))
 }
 
 //------------------------------------------------------------------------------
@@ -206,27 +206,27 @@ func CreatePretradeCustomPreTradePolicy(
 	userData unsafe.Pointer,
 ) (PretradePreTradePolicy, error) {
 	var outError SharedString
-	p := C.pit_create_pretrade_custom_pre_trade_policy(
+	p := C.openpit_create_pretrade_custom_pre_trade_policy(
 		importString(name),
-		*(*C.PitPretradePreTradePolicyCheckFn)(checkFnAddr),
-		*(*C.PitPretradePreTradePolicyApplyExecutionReportFn)(applyFnAddr),
-		*(*C.PitPretradePreTradePolicyFreeUserDataFn)(freeUserDataFnAddr),
+		*(*C.OpenPitPretradePreTradePolicyCheckFn)(checkFnAddr),
+		*(*C.OpenPitPretradePreTradePolicyApplyExecutionReportFn)(applyFnAddr),
+		*(*C.OpenPitPretradePreTradePolicyFreeUserDataFn)(freeUserDataFnAddr),
 		userData,
-		C.PitOutError(&outError), //nolint:gocritic
+		C.OpenPitOutError(&outError), //nolint:gocritic
 	)
 	if p == nil {
 		return nil,
-			consumeSharedStringAsError(outError, "pit_create_pretrade_custom_pre_trade_policy failed")
+			consumeSharedStringAsError(outError, "openpit_create_pretrade_custom_pre_trade_policy failed")
 	}
 	return p, nil
 }
 
 func DestroyPretradePreTradePolicy(policy PretradePreTradePolicy) {
-	C.pit_destroy_pretrade_pre_trade_policy(policy)
+	C.openpit_destroy_pretrade_pre_trade_policy(policy)
 }
 
 func PretradePreTradePolicyGetName(policy PretradePreTradePolicy) StringView {
-	return newStringView(C.pit_pretrade_pre_trade_policy_get_name(policy))
+	return newStringView(C.openpit_pretrade_pre_trade_policy_get_name(policy))
 }
 
 //------------------------------------------------------------------------------
@@ -239,26 +239,26 @@ func CreateCustomAccountAdjustmentPolicy(
 	userData unsafe.Pointer,
 ) (AccountAdjustmentPolicy, error) {
 	var outError SharedString
-	p := C.pit_create_custom_account_adjustment_policy(
+	p := C.openpit_create_custom_account_adjustment_policy(
 		importString(name),
-		*(*C.PitAccountAdjustmentPolicyApplyFn)(applyFnAddr),
-		*(*C.PitAccountAdjustmentPolicyFreeUserDataFn)(freeUserDataFnAddr),
+		*(*C.OpenPitAccountAdjustmentPolicyApplyFn)(applyFnAddr),
+		*(*C.OpenPitAccountAdjustmentPolicyFreeUserDataFn)(freeUserDataFnAddr),
 		userData,
-		C.PitOutError(&outError), //nolint:gocritic
+		C.OpenPitOutError(&outError), //nolint:gocritic
 	)
 	if p == nil {
 		return nil,
-			consumeSharedStringAsError(outError, "pit_create_custom_account_adjustment_policy failed")
+			consumeSharedStringAsError(outError, "openpit_create_custom_account_adjustment_policy failed")
 	}
 	return p, nil
 }
 
 func DestroyAccountAdjustmentPolicy(policy AccountAdjustmentPolicy) {
-	C.pit_destroy_account_adjustment_policy(policy)
+	C.openpit_destroy_account_adjustment_policy(policy)
 }
 
 func AccountAdjustmentPolicyGetName(policy AccountAdjustmentPolicy) StringView {
-	return newStringView(C.pit_account_adjustment_policy_get_name(policy))
+	return newStringView(C.openpit_account_adjustment_policy_get_name(policy))
 }
 
 //------------------------------------------------------------------------------

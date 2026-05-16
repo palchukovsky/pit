@@ -21,7 +21,7 @@ package runtime
 
 import "embed"
 
-const name = "pit_ffi.dll"
+const name = "openpit_ffi.dll"
 
 //go:embed all:windows-amd64
 var embeddedFS embed.FS

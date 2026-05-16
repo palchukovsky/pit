@@ -15,7 +15,7 @@
 //
 // Please see https://github.com/openpitkit and the OWNERS file for details.
 
-use crate::PitStringView;
+use crate::OpenPitStringView;
 use openpit::pretrade::{Reject, RejectCode, RejectScope, Rejects};
 use std::ffi::c_void;
 
@@ -25,7 +25,7 @@ use std::ffi::c_void;
 ///
 /// Valid values: `Order` (1), `Account` (2). Zero is not a valid scope value;
 /// the caller must always set this field explicitly.
-pub enum PitRejectScope {
+pub enum OpenPitRejectScope {
     /// The reject applies to one order or order-like request.
     Order = 1,
     /// The reject applies to account state rather than to one order only.
@@ -37,11 +37,11 @@ pub enum PitRejectScope {
 /// Stable classification code for a reject.
 ///
 /// Read this first when you need machine-readable handling. The textual fields
-/// in [`PitReject`] provide operator-facing explanation and extra context.
+/// in [`OpenPitReject`] provide operator-facing explanation and extra context.
 ///
 /// Valid codes are `1..=39` and `255` (`Other`). Unknown incoming codes are
 /// mapped to `Other` (`255`).
-pub enum PitRejectCode {
+pub enum OpenPitRejectCode {
     /// A required field is absent.
     MissingRequiredField = 1,
     /// A field cannot be parsed from the supplied wire value.
@@ -133,13 +133,13 @@ pub enum PitRejectCode {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 /// Single rejection record returned by checks.
-pub struct PitReject {
+pub struct OpenPitReject {
     /// Policy name that produced the reject.
-    pub policy: PitStringView,
+    pub policy: OpenPitStringView,
     /// Human-readable reject reason.
-    pub reason: PitStringView,
+    pub reason: OpenPitStringView,
     /// Case-specific reject details.
-    pub details: PitStringView,
+    pub details: OpenPitStringView,
     /// Opaque caller-defined token.
     ///
     /// The SDK never inspects, dereferences, or frees this value. Its meaning,
@@ -152,19 +152,19 @@ pub struct PitReject {
     /// `Clone`.
     pub user_data: *mut c_void,
     /// Stable machine-readable reject code.
-    pub code: PitRejectCode,
+    pub code: OpenPitRejectCode,
     /// Reject scope.
-    pub scope: PitRejectScope,
+    pub scope: OpenPitRejectScope,
 }
 
-impl PitReject {
+impl OpenPitReject {
     pub(crate) fn from_reject(inner: &Reject) -> Self {
         Self {
-            policy: PitStringView::from_utf8(inner.policy.as_str()),
-            reason: PitStringView::from_utf8(inner.reason.as_str()),
-            details: PitStringView::from_utf8(inner.details.as_str()),
+            policy: OpenPitStringView::from_utf8(inner.policy.as_str()),
+            reason: OpenPitStringView::from_utf8(inner.reason.as_str()),
+            details: OpenPitStringView::from_utf8(inner.details.as_str()),
             user_data: inner.user_data as *mut c_void,
-            code: PitRejectCode::from(inner.code),
+            code: OpenPitRejectCode::from(inner.code),
             scope: export_reject_scope(inner.scope.clone()),
         }
     }
@@ -182,59 +182,59 @@ impl PitReject {
 }
 
 /// Caller-owned list of rejects.
-pub struct PitRejectList {
+pub struct OpenPitRejectList {
     pub(crate) items: Vec<Reject>,
 }
 
-impl From<PitRejectCode> for RejectCode {
-    fn from(value: PitRejectCode) -> Self {
+impl From<OpenPitRejectCode> for RejectCode {
+    fn from(value: OpenPitRejectCode) -> Self {
         match value {
-            PitRejectCode::MissingRequiredField => Self::MissingRequiredField,
-            PitRejectCode::InvalidFieldFormat => Self::InvalidFieldFormat,
-            PitRejectCode::InvalidFieldValue => Self::InvalidFieldValue,
-            PitRejectCode::UnsupportedOrderType => Self::UnsupportedOrderType,
-            PitRejectCode::UnsupportedTimeInForce => Self::UnsupportedTimeInForce,
-            PitRejectCode::UnsupportedOrderAttribute => Self::UnsupportedOrderAttribute,
-            PitRejectCode::DuplicateClientOrderId => Self::DuplicateClientOrderId,
-            PitRejectCode::TooLateToEnter => Self::TooLateToEnter,
-            PitRejectCode::ExchangeClosed => Self::ExchangeClosed,
-            PitRejectCode::UnknownInstrument => Self::UnknownInstrument,
-            PitRejectCode::UnknownAccount => Self::UnknownAccount,
-            PitRejectCode::UnknownVenue => Self::UnknownVenue,
-            PitRejectCode::UnknownClearingAccount => Self::UnknownClearingAccount,
-            PitRejectCode::UnknownCollateralAsset => Self::UnknownCollateralAsset,
-            PitRejectCode::InsufficientFunds => Self::InsufficientFunds,
-            PitRejectCode::InsufficientMargin => Self::InsufficientMargin,
-            PitRejectCode::InsufficientPosition => Self::InsufficientPosition,
-            PitRejectCode::CreditLimitExceeded => Self::CreditLimitExceeded,
-            PitRejectCode::RiskLimitExceeded => Self::RiskLimitExceeded,
-            PitRejectCode::OrderExceedsLimit => Self::OrderExceedsLimit,
-            PitRejectCode::OrderQtyExceedsLimit => Self::OrderQtyExceedsLimit,
-            PitRejectCode::OrderNotionalExceedsLimit => Self::OrderNotionalExceedsLimit,
-            PitRejectCode::PositionLimitExceeded => Self::PositionLimitExceeded,
-            PitRejectCode::ConcentrationLimitExceeded => Self::ConcentrationLimitExceeded,
-            PitRejectCode::LeverageLimitExceeded => Self::LeverageLimitExceeded,
-            PitRejectCode::RateLimitExceeded => Self::RateLimitExceeded,
-            PitRejectCode::PnlKillSwitchTriggered => Self::PnlKillSwitchTriggered,
-            PitRejectCode::AccountBlocked => Self::AccountBlocked,
-            PitRejectCode::AccountNotAuthorized => Self::AccountNotAuthorized,
-            PitRejectCode::ComplianceRestriction => Self::ComplianceRestriction,
-            PitRejectCode::InstrumentRestricted => Self::InstrumentRestricted,
-            PitRejectCode::JurisdictionRestriction => Self::JurisdictionRestriction,
-            PitRejectCode::WashTradePrevention => Self::WashTradePrevention,
-            PitRejectCode::SelfMatchPrevention => Self::SelfMatchPrevention,
-            PitRejectCode::ShortSaleRestriction => Self::ShortSaleRestriction,
-            PitRejectCode::RiskConfigurationMissing => Self::RiskConfigurationMissing,
-            PitRejectCode::ReferenceDataUnavailable => Self::ReferenceDataUnavailable,
-            PitRejectCode::OrderValueCalculationFailed => Self::OrderValueCalculationFailed,
-            PitRejectCode::SystemUnavailable => Self::SystemUnavailable,
-            PitRejectCode::Custom => Self::Custom,
-            PitRejectCode::Other => Self::Other,
+            OpenPitRejectCode::MissingRequiredField => Self::MissingRequiredField,
+            OpenPitRejectCode::InvalidFieldFormat => Self::InvalidFieldFormat,
+            OpenPitRejectCode::InvalidFieldValue => Self::InvalidFieldValue,
+            OpenPitRejectCode::UnsupportedOrderType => Self::UnsupportedOrderType,
+            OpenPitRejectCode::UnsupportedTimeInForce => Self::UnsupportedTimeInForce,
+            OpenPitRejectCode::UnsupportedOrderAttribute => Self::UnsupportedOrderAttribute,
+            OpenPitRejectCode::DuplicateClientOrderId => Self::DuplicateClientOrderId,
+            OpenPitRejectCode::TooLateToEnter => Self::TooLateToEnter,
+            OpenPitRejectCode::ExchangeClosed => Self::ExchangeClosed,
+            OpenPitRejectCode::UnknownInstrument => Self::UnknownInstrument,
+            OpenPitRejectCode::UnknownAccount => Self::UnknownAccount,
+            OpenPitRejectCode::UnknownVenue => Self::UnknownVenue,
+            OpenPitRejectCode::UnknownClearingAccount => Self::UnknownClearingAccount,
+            OpenPitRejectCode::UnknownCollateralAsset => Self::UnknownCollateralAsset,
+            OpenPitRejectCode::InsufficientFunds => Self::InsufficientFunds,
+            OpenPitRejectCode::InsufficientMargin => Self::InsufficientMargin,
+            OpenPitRejectCode::InsufficientPosition => Self::InsufficientPosition,
+            OpenPitRejectCode::CreditLimitExceeded => Self::CreditLimitExceeded,
+            OpenPitRejectCode::RiskLimitExceeded => Self::RiskLimitExceeded,
+            OpenPitRejectCode::OrderExceedsLimit => Self::OrderExceedsLimit,
+            OpenPitRejectCode::OrderQtyExceedsLimit => Self::OrderQtyExceedsLimit,
+            OpenPitRejectCode::OrderNotionalExceedsLimit => Self::OrderNotionalExceedsLimit,
+            OpenPitRejectCode::PositionLimitExceeded => Self::PositionLimitExceeded,
+            OpenPitRejectCode::ConcentrationLimitExceeded => Self::ConcentrationLimitExceeded,
+            OpenPitRejectCode::LeverageLimitExceeded => Self::LeverageLimitExceeded,
+            OpenPitRejectCode::RateLimitExceeded => Self::RateLimitExceeded,
+            OpenPitRejectCode::PnlKillSwitchTriggered => Self::PnlKillSwitchTriggered,
+            OpenPitRejectCode::AccountBlocked => Self::AccountBlocked,
+            OpenPitRejectCode::AccountNotAuthorized => Self::AccountNotAuthorized,
+            OpenPitRejectCode::ComplianceRestriction => Self::ComplianceRestriction,
+            OpenPitRejectCode::InstrumentRestricted => Self::InstrumentRestricted,
+            OpenPitRejectCode::JurisdictionRestriction => Self::JurisdictionRestriction,
+            OpenPitRejectCode::WashTradePrevention => Self::WashTradePrevention,
+            OpenPitRejectCode::SelfMatchPrevention => Self::SelfMatchPrevention,
+            OpenPitRejectCode::ShortSaleRestriction => Self::ShortSaleRestriction,
+            OpenPitRejectCode::RiskConfigurationMissing => Self::RiskConfigurationMissing,
+            OpenPitRejectCode::ReferenceDataUnavailable => Self::ReferenceDataUnavailable,
+            OpenPitRejectCode::OrderValueCalculationFailed => Self::OrderValueCalculationFailed,
+            OpenPitRejectCode::SystemUnavailable => Self::SystemUnavailable,
+            OpenPitRejectCode::Custom => Self::Custom,
+            OpenPitRejectCode::Other => Self::Other,
         }
     }
 }
 
-impl From<RejectCode> for PitRejectCode {
+impl From<RejectCode> for OpenPitRejectCode {
     fn from(value: RejectCode) -> Self {
         match value {
             RejectCode::MissingRequiredField => Self::MissingRequiredField,
@@ -283,21 +283,21 @@ impl From<RejectCode> for PitRejectCode {
     }
 }
 
-fn export_reject_scope(value: RejectScope) -> PitRejectScope {
+fn export_reject_scope(value: RejectScope) -> OpenPitRejectScope {
     match value {
-        RejectScope::Order => PitRejectScope::Order,
-        RejectScope::Account => PitRejectScope::Account,
+        RejectScope::Order => OpenPitRejectScope::Order,
+        RejectScope::Account => OpenPitRejectScope::Account,
     }
 }
 
-fn import_reject_scope(value: PitRejectScope) -> RejectScope {
+fn import_reject_scope(value: OpenPitRejectScope) -> RejectScope {
     match value {
-        PitRejectScope::Order => RejectScope::Order,
-        PitRejectScope::Account => RejectScope::Account,
+        OpenPitRejectScope::Order => RejectScope::Order,
+        OpenPitRejectScope::Account => RejectScope::Account,
     }
 }
 
-fn import_string(ptr: PitStringView) -> String {
+fn import_string(ptr: OpenPitStringView) -> String {
     if ptr.ptr.is_null() {
         return String::default();
     }
@@ -306,12 +306,12 @@ fn import_string(ptr: PitStringView) -> String {
     String::from_utf8_lossy(bytes).into_owned()
 }
 
-pub(crate) fn rejects_to_list_owned(values: Rejects) -> PitRejectList {
+pub(crate) fn rejects_to_list_owned(values: Rejects) -> OpenPitRejectList {
     let mut out = Vec::with_capacity(values.len());
     for reject in values.iter().cloned() {
         out.push(reject);
     }
-    PitRejectList { items: out }
+    OpenPitRejectList { items: out }
 }
 
 #[no_mangle]
@@ -321,10 +321,10 @@ pub(crate) fn rejects_to_list_owned(values: Rejects) -> PitRejectList {
 ///
 /// Contract:
 /// - returns a new caller-owned list;
-/// - release it with `pit_destroy_reject_list`;
+/// - release it with `openpit_destroy_reject_list`;
 /// - this function always succeeds.
-pub extern "C" fn pit_create_reject_list(reserve: usize) -> *mut PitRejectList {
-    Box::into_raw(Box::new(PitRejectList {
+pub extern "C" fn openpit_create_reject_list(reserve: usize) -> *mut OpenPitRejectList {
+    Box::into_raw(Box::new(OpenPitRejectList {
         items: Vec::with_capacity(reserve),
     }))
 }
@@ -335,7 +335,7 @@ pub extern "C" fn pit_create_reject_list(reserve: usize) -> *mut PitRejectList {
 /// Contract:
 /// - passing null is allowed;
 /// - this function always succeeds.
-pub extern "C" fn pit_destroy_reject_list(rejects: *mut PitRejectList) {
+pub extern "C" fn openpit_destroy_reject_list(rejects: *mut OpenPitRejectList) {
     if rejects.is_null() {
         return;
     }
@@ -350,7 +350,7 @@ pub extern "C" fn pit_destroy_reject_list(rejects: *mut PitRejectList) {
 /// - string views in `reject` are copied before this function returns;
 /// - this function never fails;
 /// - violating the pointer contract aborts the call.
-pub extern "C" fn pit_reject_list_push(list: *mut PitRejectList, reject: PitReject) {
+pub extern "C" fn openpit_reject_list_push(list: *mut OpenPitRejectList, reject: OpenPitReject) {
     assert!(!list.is_null(), "reject list pointer is null");
     let list = unsafe { &mut *list };
     list.items.push(reject.to_reject());
@@ -363,7 +363,7 @@ pub extern "C" fn pit_reject_list_push(list: *mut PitRejectList, reject: PitReje
 /// - `list` must be a valid non-null pointer;
 /// - this function never fails;
 /// - violating the pointer contract aborts the call.
-pub extern "C" fn pit_reject_list_len(list: *const PitRejectList) -> usize {
+pub extern "C" fn openpit_reject_list_len(list: *const OpenPitRejectList) -> usize {
     assert!(!list.is_null(), "reject list pointer is null");
     let list = unsafe { &*list };
     list.items.len()
@@ -383,10 +383,10 @@ pub extern "C" fn pit_reject_list_len(list: *const PitRejectList) -> usize {
 /// - the copied view remains valid while `list` is alive and unchanged;
 /// - this function never fails;
 /// - violating the pointer contract aborts the call.
-pub extern "C" fn pit_reject_list_get(
-    list: *const PitRejectList,
+pub extern "C" fn openpit_reject_list_get(
+    list: *const OpenPitRejectList,
     index: usize,
-    out_reject: *mut PitReject,
+    out_reject: *mut OpenPitReject,
 ) -> bool {
     assert!(!list.is_null(), "reject list pointer is null");
     assert!(!out_reject.is_null(), "reject output pointer is null");
@@ -394,21 +394,22 @@ pub extern "C" fn pit_reject_list_get(
     let Some(reject) = list.items.get(index) else {
         return false;
     };
-    unsafe { *out_reject = PitReject::from_reject(reject) };
+    unsafe { *out_reject = OpenPitReject::from_reject(reject) };
     true
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::PitStringView;
+    use crate::OpenPitStringView;
     use openpit::pretrade::{Reject, RejectCode, RejectScope};
 
     use super::{
-        pit_create_reject_list, pit_destroy_reject_list, pit_reject_list_get, pit_reject_list_len,
-        pit_reject_list_push, PitReject, PitRejectCode, PitRejectScope,
+        openpit_create_reject_list, openpit_destroy_reject_list, openpit_reject_list_get,
+        openpit_reject_list_len, openpit_reject_list_push, OpenPitReject, OpenPitRejectCode,
+        OpenPitRejectScope,
     };
 
-    fn string_view_to_string(view: PitStringView) -> String {
+    fn string_view_to_string(view: OpenPitStringView) -> String {
         if view.ptr.is_null() {
             return String::new();
         }
@@ -418,7 +419,7 @@ mod tests {
 
     #[test]
     fn reject_list_destroy_is_null_safe() {
-        pit_destroy_reject_list(std::ptr::null_mut());
+        openpit_destroy_reject_list(std::ptr::null_mut());
     }
 
     #[test]
@@ -430,7 +431,7 @@ mod tests {
             "reason".to_string(),
             "details".to_string(),
         );
-        let exported = PitReject::from_reject(&reject);
+        let exported = OpenPitReject::from_reject(&reject);
         assert_eq!(string_view_to_string(exported.policy), "test_policy");
         assert_eq!(string_view_to_string(exported.reason), "reason");
         assert_eq!(string_view_to_string(exported.details), "details");
@@ -439,44 +440,44 @@ mod tests {
 
     #[test]
     fn reject_list_push_len_get_roundtrip() {
-        let list = pit_create_reject_list(1);
-        let reject = PitReject {
-            policy: PitStringView::from_utf8("policy"),
-            reason: PitStringView::from_utf8("reason"),
-            details: PitStringView::from_utf8("details"),
+        let list = openpit_create_reject_list(1);
+        let reject = OpenPitReject {
+            policy: OpenPitStringView::from_utf8("policy"),
+            reason: OpenPitStringView::from_utf8("reason"),
+            details: OpenPitStringView::from_utf8("details"),
             user_data: 55usize as *mut std::ffi::c_void,
-            code: PitRejectCode::Other,
-            scope: PitRejectScope::Order,
+            code: OpenPitRejectCode::Other,
+            scope: OpenPitRejectScope::Order,
         };
-        pit_reject_list_push(list, reject);
-        assert_eq!(pit_reject_list_len(list), 1);
+        openpit_reject_list_push(list, reject);
+        assert_eq!(openpit_reject_list_len(list), 1);
         let stored = unsafe { &*list };
         assert_eq!(stored.items[0].user_data, 55usize);
-        let mut first = PitReject {
-            policy: PitStringView::not_set(),
-            reason: PitStringView::not_set(),
-            details: PitStringView::not_set(),
+        let mut first = OpenPitReject {
+            policy: OpenPitStringView::not_set(),
+            reason: OpenPitStringView::not_set(),
+            details: OpenPitStringView::not_set(),
             user_data: std::ptr::null_mut(),
-            code: PitRejectCode::Other,
-            scope: PitRejectScope::Order,
+            code: OpenPitRejectCode::Other,
+            scope: OpenPitRejectScope::Order,
         };
-        assert!(pit_reject_list_get(list, 0, &mut first));
-        assert_eq!(first.code, PitRejectCode::Other);
+        assert!(openpit_reject_list_get(list, 0, &mut first));
+        assert_eq!(first.code, OpenPitRejectCode::Other);
         assert_eq!(first.user_data, 55usize as *mut std::ffi::c_void);
         assert_eq!(string_view_to_string(first.policy), "policy");
-        assert!(!pit_reject_list_get(list, 1, &mut first));
-        pit_destroy_reject_list(list);
+        assert!(!openpit_reject_list_get(list, 1, &mut first));
+        openpit_destroy_reject_list(list);
     }
 
     #[test]
     fn import_reject_copies_view_payload() {
-        let view = PitReject {
-            policy: PitStringView::from_utf8("policy"),
-            reason: PitStringView::from_utf8("reason"),
-            details: PitStringView::from_utf8("details"),
+        let view = OpenPitReject {
+            policy: OpenPitStringView::from_utf8("policy"),
+            reason: OpenPitStringView::from_utf8("reason"),
+            details: OpenPitStringView::from_utf8("details"),
             user_data: 77usize as *mut std::ffi::c_void,
-            code: PitRejectCode::RateLimitExceeded,
-            scope: PitRejectScope::Account,
+            code: OpenPitRejectCode::RateLimitExceeded,
+            scope: OpenPitRejectScope::Account,
         };
         let imported = view.to_reject();
         assert_eq!(imported.policy, "policy");
@@ -490,51 +491,51 @@ mod tests {
     #[test]
     fn reject_code_roundtrip_covers_all_ffi_variants() {
         let all = [
-            PitRejectCode::MissingRequiredField,
-            PitRejectCode::InvalidFieldFormat,
-            PitRejectCode::InvalidFieldValue,
-            PitRejectCode::UnsupportedOrderType,
-            PitRejectCode::UnsupportedTimeInForce,
-            PitRejectCode::UnsupportedOrderAttribute,
-            PitRejectCode::DuplicateClientOrderId,
-            PitRejectCode::TooLateToEnter,
-            PitRejectCode::ExchangeClosed,
-            PitRejectCode::UnknownInstrument,
-            PitRejectCode::UnknownAccount,
-            PitRejectCode::UnknownVenue,
-            PitRejectCode::UnknownClearingAccount,
-            PitRejectCode::UnknownCollateralAsset,
-            PitRejectCode::InsufficientFunds,
-            PitRejectCode::InsufficientMargin,
-            PitRejectCode::InsufficientPosition,
-            PitRejectCode::CreditLimitExceeded,
-            PitRejectCode::RiskLimitExceeded,
-            PitRejectCode::OrderExceedsLimit,
-            PitRejectCode::OrderQtyExceedsLimit,
-            PitRejectCode::OrderNotionalExceedsLimit,
-            PitRejectCode::PositionLimitExceeded,
-            PitRejectCode::ConcentrationLimitExceeded,
-            PitRejectCode::LeverageLimitExceeded,
-            PitRejectCode::RateLimitExceeded,
-            PitRejectCode::PnlKillSwitchTriggered,
-            PitRejectCode::AccountBlocked,
-            PitRejectCode::AccountNotAuthorized,
-            PitRejectCode::ComplianceRestriction,
-            PitRejectCode::InstrumentRestricted,
-            PitRejectCode::JurisdictionRestriction,
-            PitRejectCode::WashTradePrevention,
-            PitRejectCode::SelfMatchPrevention,
-            PitRejectCode::ShortSaleRestriction,
-            PitRejectCode::RiskConfigurationMissing,
-            PitRejectCode::ReferenceDataUnavailable,
-            PitRejectCode::OrderValueCalculationFailed,
-            PitRejectCode::SystemUnavailable,
-            PitRejectCode::Custom,
-            PitRejectCode::Other,
+            OpenPitRejectCode::MissingRequiredField,
+            OpenPitRejectCode::InvalidFieldFormat,
+            OpenPitRejectCode::InvalidFieldValue,
+            OpenPitRejectCode::UnsupportedOrderType,
+            OpenPitRejectCode::UnsupportedTimeInForce,
+            OpenPitRejectCode::UnsupportedOrderAttribute,
+            OpenPitRejectCode::DuplicateClientOrderId,
+            OpenPitRejectCode::TooLateToEnter,
+            OpenPitRejectCode::ExchangeClosed,
+            OpenPitRejectCode::UnknownInstrument,
+            OpenPitRejectCode::UnknownAccount,
+            OpenPitRejectCode::UnknownVenue,
+            OpenPitRejectCode::UnknownClearingAccount,
+            OpenPitRejectCode::UnknownCollateralAsset,
+            OpenPitRejectCode::InsufficientFunds,
+            OpenPitRejectCode::InsufficientMargin,
+            OpenPitRejectCode::InsufficientPosition,
+            OpenPitRejectCode::CreditLimitExceeded,
+            OpenPitRejectCode::RiskLimitExceeded,
+            OpenPitRejectCode::OrderExceedsLimit,
+            OpenPitRejectCode::OrderQtyExceedsLimit,
+            OpenPitRejectCode::OrderNotionalExceedsLimit,
+            OpenPitRejectCode::PositionLimitExceeded,
+            OpenPitRejectCode::ConcentrationLimitExceeded,
+            OpenPitRejectCode::LeverageLimitExceeded,
+            OpenPitRejectCode::RateLimitExceeded,
+            OpenPitRejectCode::PnlKillSwitchTriggered,
+            OpenPitRejectCode::AccountBlocked,
+            OpenPitRejectCode::AccountNotAuthorized,
+            OpenPitRejectCode::ComplianceRestriction,
+            OpenPitRejectCode::InstrumentRestricted,
+            OpenPitRejectCode::JurisdictionRestriction,
+            OpenPitRejectCode::WashTradePrevention,
+            OpenPitRejectCode::SelfMatchPrevention,
+            OpenPitRejectCode::ShortSaleRestriction,
+            OpenPitRejectCode::RiskConfigurationMissing,
+            OpenPitRejectCode::ReferenceDataUnavailable,
+            OpenPitRejectCode::OrderValueCalculationFailed,
+            OpenPitRejectCode::SystemUnavailable,
+            OpenPitRejectCode::Custom,
+            OpenPitRejectCode::Other,
         ];
         for code in all {
             let domain = RejectCode::from(code);
-            let ffi = PitRejectCode::from(domain);
+            let ffi = OpenPitRejectCode::from(domain);
             assert_eq!(ffi, code);
         }
     }

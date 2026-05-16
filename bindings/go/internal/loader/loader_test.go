@@ -37,9 +37,9 @@ func TestEnsureVersionedPath_Valid(t *testing.T) {
 		version string
 		path    string
 	}{
-		{"0.2.0", filepath.Join("/cache", "pit-go", "0.2.0", "linux-amd64", "libpit_ffi.so")},
-		{"1.0.0", filepath.Join("/cache", "1.0.0", "libpit.so")},
-		{"0.2.0", filepath.Join("/cache", "pit-go", "0.2.0", "linux-amd64", "libpit_ffi.so")},
+		{"0.2.0", filepath.Join("/cache", "pit-go", "0.2.0", "linux-amd64", "libopenpit_ffi.so")},
+		{"1.0.0", filepath.Join("/cache", "1.0.0", "libopenpit_ffi.so")},
+		{"0.2.0", filepath.Join("/cache", "pit-go", "0.2.0", "linux-amd64", "libopenpit_ffi.so")},
 	}
 	for _, tc := range cases {
 		if err := ensureVersionedPath(tc.version, tc.path); err != nil {
@@ -57,17 +57,17 @@ func TestEnsureVersionedPath_Invalid(t *testing.T) {
 		{
 			"missing version segment",
 			"0.2.0",
-			filepath.Join("/cache", "pit-go", "linux-amd64", "libpit_ffi.so"),
+			filepath.Join("/cache", "pit-go", "linux-amd64", "libopenpit_ffi.so"),
 		},
 		{
 			"empty version",
 			"",
-			filepath.Join("/cache", "pit-go", "linux-amd64", "libpit_ffi.so"),
+			filepath.Join("/cache", "pit-go", "linux-amd64", "libopenpit_ffi.so"),
 		},
 		{
 			"version of slashes only",
 			"///",
-			filepath.Join("/cache", "///", "linux-amd64", "libpit_ffi.so"),
+			filepath.Join("/cache", "///", "linux-amd64", "libopenpit_ffi.so"),
 		},
 	}
 	for _, tc := range cases {
@@ -129,7 +129,7 @@ func TestResolveCacheDir_OverrideWhitespace(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestResolvePath_Override_FileExists(t *testing.T) {
-	overridePath := filepath.Join(t.TempDir(), "pit_ffi")
+	overridePath := filepath.Join(t.TempDir(), "openpit")
 	if err := os.WriteFile(overridePath, []byte("fake-runtime"), 0o755); err != nil { // nolint
 		t.Fatalf("write override file: %v", err)
 	}
@@ -146,11 +146,20 @@ func TestResolvePath_Override_FileExists(t *testing.T) {
 }
 
 func TestResolvePath_Override_FileMissing(t *testing.T) {
-	t.Setenv(envRuntimePath, "/nonexistent/pit_ffi.so")
+	t.Setenv(envRuntimePath, "/nonexistent/openpit.so")
 
 	_, err := resolvePath()
 	if err == nil {
 		t.Fatal("resolvePath: want error for missing override, got nil")
+	}
+}
+
+func TestResolvePath_Override_RelativeRejected(t *testing.T) {
+	t.Setenv(envRuntimePath, "openpit.so")
+
+	_, err := resolvePath()
+	if err == nil {
+		t.Fatal("resolvePath: want error for relative override, got nil")
 	}
 }
 
@@ -219,7 +228,7 @@ func TestResolvePath_CacheHit(t *testing.T) {
 
 func TestWrite_CreatesFile(t *testing.T) {
 	dir := t.TempDir()
-	targetPath := filepath.Join(dir, "libpit_ffi.so")
+	targetPath := filepath.Join(dir, "libopenpit_ffi.so")
 	data := []byte("test-library-data")
 
 	if err := write(targetPath, data, 0o755); err != nil {
@@ -241,7 +250,7 @@ func TestWrite_Permissions(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	targetPath := filepath.Join(dir, "libpit_ffi.so")
+	targetPath := filepath.Join(dir, "libopenpit_ffi.so")
 
 	if err := write(targetPath, []byte("data"), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
@@ -258,7 +267,7 @@ func TestWrite_Permissions(t *testing.T) {
 
 func TestWrite_Idempotent(t *testing.T) {
 	dir := t.TempDir()
-	targetPath := filepath.Join(dir, "libpit_ffi.so")
+	targetPath := filepath.Join(dir, "libopenpit_ffi.so")
 	data := []byte("library-data")
 
 	if err := write(targetPath, data, 0o755); err != nil {
@@ -279,7 +288,7 @@ func TestWrite_Idempotent(t *testing.T) {
 
 func TestWrite_LeavesNoTempFile(t *testing.T) {
 	dir := t.TempDir()
-	targetPath := filepath.Join(dir, "libpit_ffi.so")
+	targetPath := filepath.Join(dir, "libopenpit_ffi.so")
 
 	if err := write(targetPath, []byte("data"), 0o755); err != nil {
 		t.Fatalf("write: %v", err)
@@ -378,7 +387,7 @@ func TestLoad_ReturnsErrorForCorruptCachedRuntime(t *testing.T) {
 	if loadErr == nil {
 		t.Fatal("loadErr = nil, want non-nil")
 	}
-	if !strings.Contains(loadErr.Error(), "failed to load Pit runtime library") {
+	if !strings.Contains(loadErr.Error(), "failed to load OpenPit runtime library") {
 		t.Fatalf("loadErr = %q, want runtime-load failure", loadErr.Error())
 	}
 }

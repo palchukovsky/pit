@@ -4,107 +4,107 @@
 
 [Back to index](index.md)
 
-## `PitOutError`
+## `OpenPitOutError`
 
 Error out-pointer used by fallible FFI calls.
 
 ```c
-typedef PitSharedString ** PitOutError;
+typedef OpenPitSharedString ** OpenPitOutError;
 ```
 
-## `PitParamErrorCode`
+## `OpenPitParamErrorCode`
 
 Parameter error code transported through FFI.
 
 ```c
-typedef uint32_t PitParamErrorCode;
+typedef uint32_t OpenPitParamErrorCode;
 /**
  * Error code is not specified.
  */
-#define PitParamErrorCode_Unspecified ((PitParamErrorCode) 0)
+#define OpenPitParamErrorCode_Unspecified ((OpenPitParamErrorCode) 0)
 /**
  * Value must be non-negative.
  */
-#define PitParamErrorCode_Negative ((PitParamErrorCode) 1)
+#define OpenPitParamErrorCode_Negative ((OpenPitParamErrorCode) 1)
 /**
  * Division by zero.
  */
-#define PitParamErrorCode_DivisionByZero ((PitParamErrorCode) 2)
+#define OpenPitParamErrorCode_DivisionByZero ((OpenPitParamErrorCode) 2)
 /**
  * Arithmetic overflow.
  */
-#define PitParamErrorCode_Overflow ((PitParamErrorCode) 3)
+#define OpenPitParamErrorCode_Overflow ((OpenPitParamErrorCode) 3)
 /**
  * Arithmetic underflow.
  */
-#define PitParamErrorCode_Underflow ((PitParamErrorCode) 4)
+#define OpenPitParamErrorCode_Underflow ((OpenPitParamErrorCode) 4)
 /**
  * Invalid float value.
  */
-#define PitParamErrorCode_InvalidFloat ((PitParamErrorCode) 5)
+#define OpenPitParamErrorCode_InvalidFloat ((OpenPitParamErrorCode) 5)
 /**
  * Invalid textual format.
  */
-#define PitParamErrorCode_InvalidFormat ((PitParamErrorCode) 6)
+#define OpenPitParamErrorCode_InvalidFormat ((OpenPitParamErrorCode) 6)
 /**
  * Invalid price value.
  */
-#define PitParamErrorCode_InvalidPrice ((PitParamErrorCode) 7)
+#define OpenPitParamErrorCode_InvalidPrice ((OpenPitParamErrorCode) 7)
 /**
  * Invalid leverage value.
  */
-#define PitParamErrorCode_InvalidLeverage ((PitParamErrorCode) 8)
+#define OpenPitParamErrorCode_InvalidLeverage ((OpenPitParamErrorCode) 8)
 /**
  * Asset identifier is empty.
  */
-#define PitParamErrorCode_AssetEmpty ((PitParamErrorCode) 9)
+#define OpenPitParamErrorCode_AssetEmpty ((OpenPitParamErrorCode) 9)
 /**
  * Account identifier string is empty.
  */
-#define PitParamErrorCode_AccountIdEmpty ((PitParamErrorCode) 10)
+#define OpenPitParamErrorCode_AccountIdEmpty ((OpenPitParamErrorCode) 10)
 /**
  * Catch-all code for unknown cases.
  */
-#define PitParamErrorCode_Other ((PitParamErrorCode) 4294967295)
+#define OpenPitParamErrorCode_Other ((OpenPitParamErrorCode) 4294967295)
 ```
 
-## `PitParamError`
+## `OpenPitParamError`
 
 Caller-owned parameter error container.
 
 ```c
-typedef struct PitParamError {
-    PitParamErrorCode code;
-    PitSharedString * message;
-} PitParamError;
+typedef struct OpenPitParamError {
+    OpenPitParamErrorCode code;
+    OpenPitSharedString * message;
+} OpenPitParamError;
 ```
 
-## `PitOutParamError`
+## `OpenPitOutParamError`
 
 Parameter error out-pointer used by fallible param FFI calls.
 
 ```c
-typedef PitParamError ** PitOutParamError;
+typedef OpenPitParamError ** OpenPitOutParamError;
 ```
 
-## `pit_destroy_param_error`
+## `openpit_destroy_param_error`
 
 Releases a caller-owned parameter error container.
 
 ### Safety
 
 `handle` must be either null or a pointer returned by this library through
-`PitOutParamError`. The handle must be destroyed at most once.
+`OpenPitOutParamError`. The handle must be destroyed at most once.
 
 ```c
-void pit_destroy_param_error(
-    PitParamError * handle
+void openpit_destroy_param_error(
+    OpenPitParamError * handle
 );
 ```
 
-## `pit_get_runtime_version`
+## `openpit_get_runtime_version`
 
-Returns the Pit runtime version string.
+Returns the OpenPit runtime version string.
 
 This function never fails.
 
@@ -112,5 +112,5 @@ The returned view is read-only, never null, and remains valid for the entire
 process lifetime. The caller must not release it.
 
 ```c
-PitStringView pit_get_runtime_version(void);
+OpenPitStringView openpit_get_runtime_version(void);
 ```

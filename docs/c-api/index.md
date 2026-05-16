@@ -1,6 +1,6 @@
-# Pit C API
+# OpenPit C API
 
-- Header: `pit.h`
+- Header: `openpit.h`
 - Sections:
   - [Parameter Types](params.md)
   - [Orders](orders.md)

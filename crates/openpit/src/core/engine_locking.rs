@@ -218,7 +218,7 @@ impl EngineLockingPolicy for SyncedEngineLocking {
 ///
 /// # Pure Rust vs binding-layer contract
 ///
-/// Unlike the binding-layer `pit_interop::EngineLocking` under
+/// Unlike the binding-layer `openpit_interop::EngineLocking` under
 /// `SyncMode::Account`, this pure-Rust handle does **not** allow concurrent
 /// invocation from multiple threads even when calls are partitioned by
 /// account. The `!Sync` bound enforces this at compile time. Rust SDK clients
@@ -287,7 +287,7 @@ unsafe impl<T: ?Sized + Send> Send for SequentialEngineHandleWeak<T> {}
 ///
 /// This policy is `!Sync`: the Rust type system forbids concurrent invocation
 /// on the same handle regardless of how calls are partitioned. This differs
-/// from `pit_interop::EngineLocking` under `SyncMode::Account`, which allows
+/// from `openpit_interop::EngineLocking` under `SyncMode::Account`, which allows
 /// concurrent invocation when the caller guarantees per-account serialisation.
 /// Rust SDK clients who need per-account concurrency must shard `Engine`
 /// ownership — one handle (or one `Arc<Mutex<Engine<...>>>`) per account shard.

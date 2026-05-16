@@ -48,16 +48,21 @@ func EnsureRuntimeLoaded() error {
 func load() {
 	path, err := resolvePath()
 	if err != nil {
-		loadErr = fmt.Errorf("failed to check Pit runtime library %q: %w", path, err)
+		loadErr = fmt.Errorf("failed to check OpenPit runtime library %q: %w", path, err)
 		return
 	}
 	if err := loadRuntimeLibrary(path); err != nil {
-		loadErr = fmt.Errorf("failed to load Pit runtime library %q: %w", path, err)
+		loadErr = fmt.Errorf("failed to load OpenPit runtime library %q: %w", path, err)
 	}
 }
 
 func resolvePath() (string, error) {
 	if forcedPath := strings.TrimSpace(os.Getenv(envRuntimePath)); forcedPath != "" {
+		forcedPath = filepath.Clean(forcedPath)
+		if !filepath.IsAbs(forcedPath) {
+			return "", fmt.Errorf("override path %q must be absolute", forcedPath)
+		}
+		// #nosec G703 -- this path is an explicit runtime override.
 		if _, err := os.Stat(forcedPath); err != nil {
 			return "", fmt.Errorf("failed to stat override path %q: %w", forcedPath, err)
 		}

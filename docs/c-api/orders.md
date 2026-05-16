@@ -4,86 +4,86 @@
 
 [Back to index](index.md)
 
-## `PitOrderOperation`
+## `OpenPitOrderOperation`
 
 Optional operation group for an order.
 
 The group is absent when all fields are absent.
 
 ```c
-typedef struct PitOrderOperation {
-    PitParamTradeAmount trade_amount;
-    PitInstrument instrument;
-    PitParamPriceOptional price;
-    PitParamAccountIdOptional account_id;
-    PitParamSide side;
-} PitOrderOperation;
+typedef struct OpenPitOrderOperation {
+    OpenPitParamTradeAmount trade_amount;
+    OpenPitInstrument instrument;
+    OpenPitParamPriceOptional price;
+    OpenPitParamAccountIdOptional account_id;
+    OpenPitParamSide side;
+} OpenPitOrderOperation;
 ```
 
-## `PitOrderPosition`
+## `OpenPitOrderPosition`
 
 Optional position-management group for an order.
 
 The group is absent when every field is `NotSet`.
 
 ```c
-typedef struct PitOrderPosition {
-    PitParamPositionSide position_side;
-    PitTriBool reduce_only;
-    PitTriBool close_position;
-} PitOrderPosition;
+typedef struct OpenPitOrderPosition {
+    OpenPitParamPositionSide position_side;
+    OpenPitTriBool reduce_only;
+    OpenPitTriBool close_position;
+} OpenPitOrderPosition;
 ```
 
-## `PitOrderMargin`
+## `OpenPitOrderMargin`
 
 Optional margin group for an order.
 
 The group is absent when every field is `NotSet`.
 
 ```c
-typedef struct PitOrderMargin {
-    PitStringView collateral_asset;
-    PitTriBool auto_borrow;
-    PitParamLeverage leverage;
-} PitOrderMargin;
+typedef struct OpenPitOrderMargin {
+    OpenPitStringView collateral_asset;
+    OpenPitTriBool auto_borrow;
+    OpenPitParamLeverage leverage;
+} OpenPitOrderMargin;
 ```
 
-## `PitOrder`
+## `OpenPitOrder`
 
 Full caller-owned order payload.
 
 ```c
-typedef struct PitOrder {
-    PitOrderOperationOptional operation;
-    PitOrderMarginOptional margin;
-    PitOrderPositionOptional position;
+typedef struct OpenPitOrder {
+    OpenPitOrderOperationOptional operation;
+    OpenPitOrderMarginOptional margin;
+    OpenPitOrderPositionOptional position;
     void * user_data;
-} PitOrder;
+} OpenPitOrder;
 ```
 
-## `PitOrderOperationOptional`
+## `OpenPitOrderOperationOptional`
 
 ```c
-typedef struct PitOrderOperationOptional {
-    PitOrderOperation value;
+typedef struct OpenPitOrderOperationOptional {
+    OpenPitOrderOperation value;
     bool is_set;
-} PitOrderOperationOptional;
+} OpenPitOrderOperationOptional;
 ```
 
-## `PitOrderMarginOptional`
+## `OpenPitOrderMarginOptional`
 
 ```c
-typedef struct PitOrderMarginOptional {
-    PitOrderMargin value;
+typedef struct OpenPitOrderMarginOptional {
+    OpenPitOrderMargin value;
     bool is_set;
-} PitOrderMarginOptional;
+} OpenPitOrderMarginOptional;
 ```
 
-## `PitOrderPositionOptional`
+## `OpenPitOrderPositionOptional`
 
 ```c
-typedef struct PitOrderPositionOptional {
-    PitOrderPosition value;
+typedef struct OpenPitOrderPositionOptional {
+    OpenPitOrderPosition value;
     bool is_set;
-} PitOrderPositionOptional;
+} OpenPitOrderPositionOptional;
 ```

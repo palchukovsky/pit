@@ -19,7 +19,7 @@ package custompolicy
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../native
-#include "pit.h"
+#include "openpit.h"
 */
 import "C"
 
@@ -67,12 +67,12 @@ func (a *AccountAdjustment) Close() {
 
 //export pitAccountAdjustmentPolicyApply
 func pitAccountAdjustmentPolicyApply(
-	ctx *C.PitAccountAdjustmentContext,
-	accountID C.PitParamAccountId,
-	adjustment *C.PitAccountAdjustment,
-	mutations *C.PitMutations,
+	ctx *C.OpenPitAccountAdjustmentContext,
+	accountID C.OpenPitParamAccountId,
+	adjustment *C.OpenPitAccountAdjustment,
+	mutations *C.OpenPitMutations,
 	userData unsafe.Pointer,
-) *C.PitRejectList {
+) *C.OpenPitRejectList {
 	// Panics from the user implementation are deliberately allowed to propagate.
 	// A panic unwinding across the FFI boundary may terminate the process;
 	// containing it is the implementer's responsibility, as stated on the Policy

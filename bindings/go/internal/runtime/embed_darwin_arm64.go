@@ -21,7 +21,7 @@ package runtime
 
 import "embed"
 
-const name = "libpit_ffi.dylib"
+const name = "libopenpit_ffi.dylib"
 
 //go:embed all:darwin-arm64
 var embeddedFS embed.FS

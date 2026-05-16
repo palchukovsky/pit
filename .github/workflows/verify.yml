@@ -134,13 +134,13 @@ jobs:
           go-version: ${{ env.CI_GO }}
 
       - name: Build native runtime for Go integration tests
-        run: cargo build -p pit-ffi --release --locked --manifest-path ../../Cargo.toml
+        run: cargo build -p openpit-ffi --release --locked --manifest-path ../../Cargo.toml
 
       - name: Export runtime library path, loader path and CGO link flags
         run: |
-          echo "OPENPIT_RUNTIME_LIBRARY_PATH=${GITHUB_WORKSPACE}/target/release/libpit_ffi.so" >> "$GITHUB_ENV"
+          echo "OPENPIT_RUNTIME_LIBRARY_PATH=${GITHUB_WORKSPACE}/target/release/libopenpit_ffi.so" >> "$GITHUB_ENV"
           echo "LD_LIBRARY_PATH=${GITHUB_WORKSPACE}/target/release${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" >> "$GITHUB_ENV"
-          echo "CGO_LDFLAGS=-L${GITHUB_WORKSPACE}/target/release -lpit_ffi" >> "$GITHUB_ENV"
+          echo "CGO_LDFLAGS=-L${GITHUB_WORKSPACE}/target/release -lopenpit_ffi" >> "$GITHUB_ENV"
 
       - name: Check formatting
         run: |

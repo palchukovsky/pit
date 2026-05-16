@@ -19,7 +19,7 @@ package custompolicy
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../native
-#include "pit.h"
+#include "openpit.h"
 */
 import "C"
 
@@ -66,10 +66,10 @@ func (c *CheckPreTradeStart) Close() {
 
 //export pitPretradeCheckPreTradeStartPolicyCheckPreTradeStart
 func pitPretradeCheckPreTradeStartPolicyCheckPreTradeStart(
-	ctx *C.PitPretradeContext,
-	order *C.PitOrder,
+	ctx *C.OpenPitPretradeContext,
+	order *C.OpenPitOrder,
 	userData unsafe.Pointer,
-) *C.PitRejectList {
+) *C.OpenPitRejectList {
 	// Panics from the user implementation are deliberately allowed to propagate.
 	// A panic unwinding across the FFI boundary may terminate the process;
 	// containing it is the implementer's responsibility, as stated on the Policy
@@ -86,7 +86,7 @@ func pitPretradeCheckPreTradeStartPolicyCheckPreTradeStart(
 
 //export pitPretradeCheckPreTradeStartPolicyApplyExecutionReport
 func pitPretradeCheckPreTradeStartPolicyApplyExecutionReport(
-	report *C.PitExecutionReport,
+	report *C.OpenPitExecutionReport,
 	userData unsafe.Pointer,
 ) C.bool {
 	// Panics from the user implementation are deliberately allowed to

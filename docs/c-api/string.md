@@ -4,7 +4,7 @@
 
 [Back to index](index.md)
 
-## `PitStringView`
+## `OpenPitStringView`
 
 Non-owning UTF-8 string view.
 
@@ -20,13 +20,13 @@ Lifetime contract:
   caller must copy the bytes.
 
 ```c
-typedef struct PitStringView {
+typedef struct OpenPitStringView {
     const uint8_t * ptr;
     size_t len;
-} PitStringView;
+} OpenPitStringView;
 ```
 
-## `PitSharedString`
+## `OpenPitSharedString`
 
 Owning shared-string handle.
 
@@ -36,20 +36,20 @@ depend on thread-local state remaining intact on the reader side.
 
 Ownership contract:
 
-- every non-null `*mut PitSharedString` returned through FFI is owned by the
-  caller;
-- the caller MUST release it with `pit_destroy_shared_string` when no longer
-  needed; failing to do so leaks the underlying allocation;
+- every non-null `*mut OpenPitSharedString` returned through FFI is owned by
+  the caller;
+- the caller MUST release it with `openpit_destroy_shared_string` when no
+  longer needed; failing to do so leaks the underlying allocation;
 - the handle internally holds a reference-counted copy of the string, so
   multiple live handles pointing at the same original value are safe and
   independent; destroying one handle does not affect the others.
 
 Read contract:
 
-- read the bytes with `pit_shared_string_view`;
-- the returned `PitStringView` is valid while this specific handle is alive
-  and must not outlive the call to `pit_destroy_shared_string` for this
-  handle.
+- read the bytes with `openpit_shared_string_view`;
+- the returned `OpenPitStringView` is valid while this specific handle is
+  alive and must not outlive the call to `openpit_destroy_shared_string` for
+  this handle.
 
 Threading contract:
 
@@ -58,25 +58,25 @@ Threading contract:
   destroying.
 
 ```c
-typedef struct PitSharedString PitSharedString;
+typedef struct OpenPitSharedString OpenPitSharedString;
 ```
 
-## `pit_destroy_shared_string`
+## `openpit_destroy_shared_string`
 
-Releases a `PitSharedString` handle.
+Releases a `OpenPitSharedString` handle.
 
 Null input is a no-op.
 
-After this call, the handle and any `PitStringView` previously obtained from it
-are invalid and must not be used.
+After this call, the handle and any `OpenPitStringView` previously obtained from
+it are invalid and must not be used.
 
 ```c
-void pit_destroy_shared_string(
-    PitSharedString * handle
+void openpit_destroy_shared_string(
+    OpenPitSharedString * handle
 );
 ```
 
-## `pit_shared_string_view`
+## `openpit_shared_string_view`
 
 Borrows a read-only view of the bytes stored in the handle.
 
@@ -86,7 +86,7 @@ The returned view is valid only while `handle` remains alive. The caller must
 copy the bytes if they must outlive the handle.
 
 ```c
-PitStringView pit_shared_string_view(
-    const PitSharedString * handle
+OpenPitStringView openpit_shared_string_view(
+    const OpenPitSharedString * handle
 );
 ```

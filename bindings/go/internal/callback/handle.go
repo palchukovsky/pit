@@ -20,11 +20,11 @@ package callback
 /*
 #include <stdint.h>
 
-static inline void* pit_create_user_data_from_handle(uintptr_t handle) {
+static inline void* openpit_create_user_data_from_handle(uintptr_t handle) {
 	return (void*)handle;
 }
 
-static inline uintptr_t pit_create_handle_from_user_data(void *userData) {
+static inline uintptr_t openpit_create_handle_from_user_data(void *userData) {
 	return (uintptr_t)userData;
 }
 */
@@ -36,9 +36,9 @@ import (
 )
 
 func NewUserDataFromHandle(handle cgo.Handle) unsafe.Pointer {
-	return C.pit_create_user_data_from_handle(C.uintptr_t(handle))
+	return C.openpit_create_user_data_from_handle(C.uintptr_t(handle))
 }
 
 func NewHandleFromUserData(userData unsafe.Pointer) cgo.Handle {
-	return cgo.Handle(C.pit_create_handle_from_user_data(userData))
+	return cgo.Handle(C.openpit_create_handle_from_user_data(userData))
 }

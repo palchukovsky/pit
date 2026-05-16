@@ -87,7 +87,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF#refs/tags/v}"
-          for MANIFEST in crates/openpit/Cargo.toml crates/openpit-derive/Cargo.toml crates/pit-ffi/Cargo.toml bindings/python/Cargo.toml; do
+          for MANIFEST in crates/openpit/Cargo.toml crates/openpit-derive/Cargo.toml crates/openpit-ffi/Cargo.toml bindings/python/Cargo.toml; do
             CARGO_VERSION="$(grep -m1 '^version\s*=' "${MANIFEST}" | sed 's/^version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/')"
             if [[ "${CARGO_VERSION}" != "${VERSION}" ]]; then
               echo "::error::Tag version ${VERSION} does not match ${MANIFEST} version ${CARGO_VERSION}"
@@ -396,12 +396,14 @@ jobs:
           echo "WHEEL_PATH=${WHEEL}" >> "$GITHUB_ENV"
 
       - name: Install built wheel
-        if: matrix.name == 'linux-x86_64-manylinux2014' || !startsWith(matrix.os,
+        if:
+          matrix.name == 'linux-x86_64-manylinux2014' || !startsWith(matrix.os,
           'ubuntu')
         run: python -m pip install --force-reinstall --no-deps "${{ env.WHEEL_PATH }}"
 
       - name: Verify wheel import and version
-        if: matrix.name == 'linux-x86_64-manylinux2014' || !startsWith(matrix.os,
+        if:
+          matrix.name == 'linux-x86_64-manylinux2014' || !startsWith(matrix.os,
           'ubuntu')
         shell: bash
         env:
@@ -427,7 +429,8 @@ jobs:
           PY
 
       - name: Run wheel tests
-        if: matrix.name == 'linux-x86_64-manylinux2014' || !startsWith(matrix.os,
+        if:
+          matrix.name == 'linux-x86_64-manylinux2014' || !startsWith(matrix.os,
           'ubuntu')
         run: python -m pytest bindings/python/tests
 
@@ -646,31 +649,31 @@ jobs:
             target: x86_64-unknown-linux-gnu
             goos: linux
             goarch: amd64
-            lib_name: libpit_ffi.so
+            lib_name: libopenpit_ffi.so
           - name: linux-arm64
             os: ubuntu-22.04
             target: aarch64-unknown-linux-gnu
             goos: linux
             goarch: arm64
-            lib_name: libpit_ffi.so
+            lib_name: libopenpit_ffi.so
           - name: darwin-amd64
             os: macos-15-intel
             target: x86_64-apple-darwin
             goos: darwin
             goarch: amd64
-            lib_name: libpit_ffi.dylib
+            lib_name: libopenpit_ffi.dylib
           - name: darwin-arm64
             os: macos-14
             target: aarch64-apple-darwin
             goos: darwin
             goarch: arm64
-            lib_name: libpit_ffi.dylib
+            lib_name: libopenpit_ffi.dylib
           - name: windows-amd64
             os: windows-2022
             target: x86_64-pc-windows-msvc
             goos: windows
             goarch: amd64
-            lib_name: pit_ffi.dll
+            lib_name: openpit_ffi.dll
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -707,7 +710,7 @@ jobs:
           set -euo pipefail
           export RUSTFLAGS="--remap-path-prefix=$(pwd)=."
           python scripts/generate_api_c.py
-          cargo build -p pit-ffi --release --locked --target "${{ matrix.target }}"
+          cargo build -p openpit-ffi --release --locked --target "${{ matrix.target }}"
 
       - name: Package artifact (unix)
         if: runner.os != 'Windows'
@@ -727,7 +730,7 @@ jobs:
             fi
           fi
 
-          DST="dist/pit-ffi-${VERSION}-${{ matrix.goos }}-${{ matrix.goarch }}-${{ matrix.lib_name }}"
+          DST="dist/openpit-ffi--${{ matrix.goos }}-${{ matrix.goarch }}-${{ matrix.lib_name }}"
           cp "${SRC}" "${DST}"
           cp bindings/c/pit.h dist/pit.h
           cp LICENSE dist/LICENSE
@@ -747,7 +750,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Path dist -Force | Out-Null
           $src = "target/${{ matrix.target }}/release/${{ matrix.lib_name }}"
-          $dst = "dist/pit-ffi-$env:VERSION-${{ matrix.goos }}-${{ matrix.goarch }}-${{ matrix.lib_name }}"
+          $dst = "dist/openpit-ffi-:VERSION-${{ matrix.goos }}-${{ matrix.goarch }}-${{ matrix.lib_name }}"
           Copy-Item $src $dst -Force
           Copy-Item bindings/c/pit.h dist/pit.h -Force
           Copy-Item LICENSE dist/LICENSE -Force
@@ -827,11 +830,11 @@ jobs:
           cp "${MONOREPO}/OWNERS"  "${WORKTREE}/OWNERS"
 
           declare -A PLATFORMS=(
-            ["linux-amd64"]="libpit_ffi.so"
-            ["linux-arm64"]="libpit_ffi.so"
-            ["darwin-amd64"]="libpit_ffi.dylib"
-            ["darwin-arm64"]="libpit_ffi.dylib"
-            ["windows-amd64"]="pit_ffi.dll"
+            ["linux-amd64"]="libopenpit_ffi.so"
+            ["linux-arm64"]="libopenpit_ffi.so"
+            ["darwin-amd64"]="libopenpit_ffi.dylib"
+            ["darwin-arm64"]="libopenpit_ffi.dylib"
+            ["windows-amd64"]="openpit_ffi.dll"
           )
           for platform in "${!PLATFORMS[@]}"; do
             lib="${PLATFORMS[$platform]}"
@@ -839,7 +842,7 @@ jobs:
             goarch="${platform#*-}"
             dir="${WORKTREE}/internal/runtime/${platform}"
             mkdir -p "${dir}"
-            cp "/tmp/runtime-dl/pit-ffi-${VERSION}-${goos}-${goarch}-${lib}" "${dir}/${lib}"
+            cp "/tmp/runtime-dl/openpit-ffi--${goos}-${goarch}-${lib}" "${dir}/${lib}"
           done
           # internal/runtime/.gitignore excludes *.so/*.dylib/*.dll in the
           # monorepo; -f below pierces that ignore inside the mirror only.
@@ -888,7 +891,7 @@ jobs:
 
               BODY_FILE="$(mktemp)"
               printf '%s\n' \
-                "Go SDK source mirror for Pit v${VERSION}." \
+                "Go SDK source mirror for OpenPit v${VERSION}." \
                 "" \
                 "Install:" \
                 "" \
@@ -1003,7 +1006,8 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{
+          RUN_URL:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{
             github.run_id }}
           VERSION: ${{ needs.verify-tag.outputs.version }}
         run: |

@@ -20,9 +20,9 @@ use std::str;
 use openpit::param::Asset;
 use openpit::Instrument;
 
-use crate::PitStringView;
+use crate::OpenPitStringView;
 
-fn parse_string_view(value: PitStringView, field: &str) -> Result<Option<&str>, String> {
+fn parse_string_view(value: OpenPitStringView, field: &str) -> Result<Option<&str>, String> {
     if value.ptr.is_null() {
         if value.len == 0 {
             return Ok(None);
@@ -35,7 +35,10 @@ fn parse_string_view(value: PitStringView, field: &str) -> Result<Option<&str>, 
     Ok(Some(text))
 }
 
-pub(crate) fn parse_asset_view(value: PitStringView, field: &str) -> Result<Option<Asset>, String> {
+pub(crate) fn parse_asset_view(
+    value: OpenPitStringView,
+    field: &str,
+) -> Result<Option<Asset>, String> {
     let Some(text) = parse_string_view(value, field)? else {
         return Ok(None);
     };
@@ -44,7 +47,7 @@ pub(crate) fn parse_asset_view(value: PitStringView, field: &str) -> Result<Opti
         .map_err(|err| format!("invalid {field}: {err}"))
 }
 
-pub(crate) fn import_instrument(value: &PitInstrument) -> Result<Option<Instrument>, String> {
+pub(crate) fn import_instrument(value: &OpenPitInstrument) -> Result<Option<Instrument>, String> {
     // `Instrument` owns its asset codes, so decoding a borrowed view
     // necessarily creates owned values here.
     let underlying = parse_asset_view(value.underlying_asset, "instrument.underlying_asset")?;
@@ -70,26 +73,26 @@ pub(crate) fn import_instrument(value: &PitInstrument) -> Result<Option<Instrume
 /// - both string views set: instrument is present;
 /// - both string views not set: instrument is absent;
 /// - only one string view set: invalid payload.
-pub struct PitInstrument {
+pub struct OpenPitInstrument {
     /// Traded asset, for example `AAPL` or `BTC`.
-    pub underlying_asset: PitStringView,
+    pub underlying_asset: OpenPitStringView,
     /// Settlement asset, for example `USD`.
-    pub settlement_asset: PitStringView,
+    pub settlement_asset: OpenPitStringView,
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{import_instrument, parse_asset_view, PitInstrument};
-    use crate::PitStringView;
+    use super::{import_instrument, parse_asset_view, OpenPitInstrument};
+    use crate::OpenPitStringView;
 
     #[test]
     fn import_instrument_accepts_complete_value() {
-        let instrument = PitInstrument {
-            underlying_asset: PitStringView {
+        let instrument = OpenPitInstrument {
+            underlying_asset: OpenPitStringView {
                 ptr: b"SPX".as_ptr(),
                 len: 3,
             },
-            settlement_asset: PitStringView {
+            settlement_asset: OpenPitStringView {
                 ptr: b"USD".as_ptr(),
                 len: 3,
             },
@@ -104,18 +107,18 @@ mod tests {
 
     #[test]
     fn import_instrument_accepts_absent_value() {
-        let instrument = PitInstrument::default();
+        let instrument = OpenPitInstrument::default();
         assert_eq!(import_instrument(&instrument).expect("must parse"), None);
     }
 
     #[test]
     fn import_instrument_rejects_partial_value() {
-        let instrument = PitInstrument {
-            underlying_asset: PitStringView {
+        let instrument = OpenPitInstrument {
+            underlying_asset: OpenPitStringView {
                 ptr: b"SPX".as_ptr(),
                 len: 3,
             },
-            settlement_asset: PitStringView::not_set(),
+            settlement_asset: OpenPitStringView::not_set(),
         };
 
         let err = import_instrument(&instrument).expect_err("partial instrument must fail");
@@ -126,7 +129,7 @@ mod tests {
     fn parse_asset_view_rejects_invalid_utf8() {
         let bytes = [0xff_u8, 0xfe_u8];
         let err = parse_asset_view(
-            PitStringView {
+            OpenPitStringView {
                 ptr: bytes.as_ptr(),
                 len: bytes.len(),
             },

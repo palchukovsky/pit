@@ -19,7 +19,7 @@ package mutation
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../internal/native
-#include "pit.h"
+#include "openpit.h"
 */
 import "C"
 

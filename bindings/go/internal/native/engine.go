@@ -18,10 +18,10 @@
 package native
 
 /*
-#include "pit.h"
+#include "openpit.h"
 
-extern const PitRejectList * pit_account_adjustment_batch_error_get_rejects(
-    const PitAccountAdjustmentBatchError * batch_error
+extern const OpenPitRejectList * openpit_account_adjustment_batch_error_get_rejects(
+    const OpenPitAccountAdjustmentBatchError * batch_error
 );
 */
 import "C"
@@ -35,35 +35,35 @@ import (
 //------------------------------------------------------------------------------
 // Engine
 
-type SyncPolicy = C.PitSyncPolicy
+type SyncPolicy = C.OpenPitSyncPolicy
 
 const (
-	SyncPolicyFull    SyncPolicy = C.PitSyncPolicy_Full
-	SyncPolicyLocal   SyncPolicy = C.PitSyncPolicy_Local
-	SyncPolicyAccount SyncPolicy = C.PitSyncPolicy_Account
+	SyncPolicyFull    SyncPolicy = C.OpenPitSyncPolicy_Full
+	SyncPolicyLocal   SyncPolicy = C.OpenPitSyncPolicy_Local
+	SyncPolicyAccount SyncPolicy = C.OpenPitSyncPolicy_Account
 )
 
 func CreateEngineBuilder(syncPolicy SyncPolicy) (EngineBuilder, error) {
 	var outError SharedString
-	builder := C.pit_create_engine_builder(
+	builder := C.openpit_create_engine_builder(
 		syncPolicy,
-		C.PitOutError(&outError), //nolint:gocritic
+		C.OpenPitOutError(&outError), //nolint:gocritic
 	)
 	if builder == nil {
-		return nil, consumeSharedStringAsError(outError, "pit_create_engine_builder failed")
+		return nil, consumeSharedStringAsError(outError, "openpit_create_engine_builder failed")
 	}
 	return builder, nil
 }
 
 func DestroyEngineBuilder(builder EngineBuilder) {
-	C.pit_destroy_engine_builder(builder)
+	C.openpit_destroy_engine_builder(builder)
 }
 
 func EngineBuilderBuild(builder EngineBuilder) (Engine, error) {
 	var outError SharedString
-	e := C.pit_engine_builder_build(builder, C.PitOutError(&outError)) //nolint:gocritic
+	e := C.openpit_engine_builder_build(builder, C.OpenPitOutError(&outError)) //nolint:gocritic
 	if e == nil {
-		return nil, consumeSharedStringAsError(outError, "pit_engine_builder_build failed")
+		return nil, consumeSharedStringAsError(outError, "openpit_engine_builder_build failed")
 	}
 	return e, nil
 }
@@ -73,14 +73,14 @@ func EngineBuilderAddCheckPreTradeStartPolicy(
 	policy PretradeCheckPreTradeStartPolicy,
 ) error {
 	var outError SharedString
-	if !C.pit_engine_builder_add_check_pre_trade_start_policy(
+	if !C.openpit_engine_builder_add_check_pre_trade_start_policy(
 		builder,
 		policy,
-		C.PitOutError(&outError), //nolint:gocritic
+		C.OpenPitOutError(&outError), //nolint:gocritic
 	) {
 		return consumeSharedStringAsError(
 			outError,
-			"pit_engine_builder_add_check_pre_trade_start_policy failed",
+			"openpit_engine_builder_add_check_pre_trade_start_policy failed",
 		)
 	}
 	return nil
@@ -88,8 +88,8 @@ func EngineBuilderAddCheckPreTradeStartPolicy(
 
 func EngineBuilderAddPreTradePolicy(builder EngineBuilder, policy PretradePreTradePolicy) error {
 	var outError SharedString
-	if !C.pit_engine_builder_add_pre_trade_policy(builder, policy, C.PitOutError(&outError)) { //nolint:gocritic
-		return consumeSharedStringAsError(outError, "pit_engine_builder_add_pre_trade_policy failed")
+	if !C.openpit_engine_builder_add_pre_trade_policy(builder, policy, C.OpenPitOutError(&outError)) { //nolint:gocritic
+		return consumeSharedStringAsError(outError, "openpit_engine_builder_add_pre_trade_policy failed")
 	}
 	return nil
 }
@@ -99,14 +99,14 @@ func EngineBuilderAddAccountAdjustmentPolicy(
 	policy AccountAdjustmentPolicy,
 ) error {
 	var outError SharedString
-	if !C.pit_engine_builder_add_account_adjustment_policy(
+	if !C.openpit_engine_builder_add_account_adjustment_policy(
 		builder,
 		policy,
-		C.PitOutError(&outError), //nolint:gocritic
+		C.OpenPitOutError(&outError), //nolint:gocritic
 	) {
 		return consumeSharedStringAsError(
 			outError,
-			"pit_engine_builder_add_account_adjustment_policy failed",
+			"openpit_engine_builder_add_account_adjustment_policy failed",
 		)
 	}
 	return nil
@@ -114,13 +114,13 @@ func EngineBuilderAddAccountAdjustmentPolicy(
 
 func EngineBuilderAddBuiltinOrderValidation(builder EngineBuilder) error {
 	var outError SharedString
-	if !C.pit_engine_builder_add_builtin_order_validation_policy(
+	if !C.openpit_engine_builder_add_builtin_order_validation_policy(
 		builder,
-		C.PitOutError(&outError), //nolint:gocritic
+		C.OpenPitOutError(&outError), //nolint:gocritic
 	) {
 		return consumeSharedStringAsError(
 			outError,
-			"pit_engine_builder_add_builtin_order_validation_policy failed",
+			"openpit_engine_builder_add_builtin_order_validation_policy failed",
 		)
 	}
 	return nil
@@ -133,21 +133,21 @@ func EngineBuilderAddBuiltinRateLimit(
 	accounts []PretradePoliciesRateLimitAccountBarrier,
 	accountAssets []PretradePoliciesRateLimitAccountAssetBarrier,
 ) error {
-	var assetsPtr *C.PitPretradePoliciesRateLimitAssetBarrier
+	var assetsPtr *C.OpenPitPretradePoliciesRateLimitAssetBarrier
 	if len(assets) > 0 {
-		assetsPtr = (*C.PitPretradePoliciesRateLimitAssetBarrier)(unsafe.Pointer(&assets[0]))
+		assetsPtr = (*C.OpenPitPretradePoliciesRateLimitAssetBarrier)(unsafe.Pointer(&assets[0]))
 	}
-	var accountsPtr *C.PitPretradePoliciesRateLimitAccountBarrier
+	var accountsPtr *C.OpenPitPretradePoliciesRateLimitAccountBarrier
 	if len(accounts) > 0 {
-		accountsPtr = (*C.PitPretradePoliciesRateLimitAccountBarrier)(unsafe.Pointer(&accounts[0]))
+		accountsPtr = (*C.OpenPitPretradePoliciesRateLimitAccountBarrier)(unsafe.Pointer(&accounts[0]))
 	}
-	var accountAssetsPtr *C.PitPretradePoliciesRateLimitAccountAssetBarrier
+	var accountAssetsPtr *C.OpenPitPretradePoliciesRateLimitAccountAssetBarrier
 	if len(accountAssets) > 0 {
-		accountAssetsPtr = (*C.PitPretradePoliciesRateLimitAccountAssetBarrier)(unsafe.Pointer(&accountAssets[0]))
+		accountAssetsPtr = (*C.OpenPitPretradePoliciesRateLimitAccountAssetBarrier)(unsafe.Pointer(&accountAssets[0]))
 	}
 
 	var outError SharedString
-	if !C.pit_engine_builder_add_builtin_rate_limit_policy(
+	if !C.openpit_engine_builder_add_builtin_rate_limit_policy(
 		builder,
 		broker,
 		assetsPtr,
@@ -156,11 +156,11 @@ func EngineBuilderAddBuiltinRateLimit(
 		C.size_t(len(accounts)),
 		accountAssetsPtr,
 		C.size_t(len(accountAssets)),
-		C.PitOutError(&outError), //nolint:gocritic
+		C.OpenPitOutError(&outError), //nolint:gocritic
 	) {
 		return consumeSharedStringAsError(
 			outError,
-			"pit_engine_builder_add_builtin_rate_limit_policy failed",
+			"openpit_engine_builder_add_builtin_rate_limit_policy failed",
 		)
 	}
 	return nil
@@ -172,30 +172,30 @@ func EngineBuilderAddBuiltinOrderSizeLimit(
 	assets []PretradePoliciesOrderSizeAssetBarrier,
 	accountAssets []PretradePoliciesOrderSizeAccountAssetBarrier,
 ) error {
-	var assetsPtr *C.PitPretradePoliciesOrderSizeAssetBarrier
+	var assetsPtr *C.OpenPitPretradePoliciesOrderSizeAssetBarrier
 	if len(assets) > 0 {
-		assetsPtr = (*C.PitPretradePoliciesOrderSizeAssetBarrier)(unsafe.Pointer(&assets[0]))
+		assetsPtr = (*C.OpenPitPretradePoliciesOrderSizeAssetBarrier)(unsafe.Pointer(&assets[0]))
 	}
-	var accountAssetsPtr *C.PitPretradePoliciesOrderSizeAccountAssetBarrier
+	var accountAssetsPtr *C.OpenPitPretradePoliciesOrderSizeAccountAssetBarrier
 	if len(accountAssets) > 0 {
-		accountAssetsPtr = (*C.PitPretradePoliciesOrderSizeAccountAssetBarrier)(
+		accountAssetsPtr = (*C.OpenPitPretradePoliciesOrderSizeAccountAssetBarrier)(
 			unsafe.Pointer(&accountAssets[0]),
 		)
 	}
 
 	var outError SharedString
-	if !C.pit_engine_builder_add_builtin_order_size_limit_policy(
+	if !C.openpit_engine_builder_add_builtin_order_size_limit_policy(
 		builder,
 		broker,
 		assetsPtr,
 		C.size_t(len(assets)),
 		accountAssetsPtr,
 		C.size_t(len(accountAssets)),
-		C.PitOutError(&outError), //nolint:gocritic
+		C.OpenPitOutError(&outError), //nolint:gocritic
 	) {
 		return consumeSharedStringAsError(
 			outError,
-			"pit_engine_builder_add_builtin_order_size_limit_policy failed",
+			"openpit_engine_builder_add_builtin_order_size_limit_policy failed",
 		)
 	}
 	return nil
@@ -206,67 +206,67 @@ func EngineBuilderAddBuiltinPnlBoundsKillswitch(
 	brokerBarriers []PretradePoliciesPnlBoundsBarrier,
 	accountBarriers []PretradePoliciesPnlBoundsAccountBarrier,
 ) error {
-	var brokerPtr *C.PitPretradePoliciesPnlBoundsBarrier
+	var brokerPtr *C.OpenPitPretradePoliciesPnlBoundsBarrier
 	if len(brokerBarriers) > 0 {
-		brokerPtr = (*C.PitPretradePoliciesPnlBoundsBarrier)(unsafe.Pointer(&brokerBarriers[0]))
+		brokerPtr = (*C.OpenPitPretradePoliciesPnlBoundsBarrier)(unsafe.Pointer(&brokerBarriers[0]))
 	}
-	var accountPtr *C.PitPretradePoliciesPnlBoundsAccountBarrier
+	var accountPtr *C.OpenPitPretradePoliciesPnlBoundsAccountBarrier
 	if len(accountBarriers) > 0 {
-		accountPtr = (*C.PitPretradePoliciesPnlBoundsAccountBarrier)(
+		accountPtr = (*C.OpenPitPretradePoliciesPnlBoundsAccountBarrier)(
 			unsafe.Pointer(&accountBarriers[0]),
 		)
 	}
 
 	var outError SharedString
-	if !C.pit_engine_builder_add_builtin_pnl_bounds_killswitch_policy(
+	if !C.openpit_engine_builder_add_builtin_pnl_bounds_killswitch_policy(
 		builder,
 		brokerPtr,
 		C.size_t(len(brokerBarriers)),
 		accountPtr,
 		C.size_t(len(accountBarriers)),
-		C.PitOutError(&outError), //nolint:gocritic
+		C.OpenPitOutError(&outError), //nolint:gocritic
 	) {
 		return consumeSharedStringAsError(
 			outError,
-			"pit_engine_builder_add_builtin_pnl_bounds_killswitch_policy failed",
+			"openpit_engine_builder_add_builtin_pnl_bounds_killswitch_policy failed",
 		)
 	}
 	return nil
 }
 
 func DestroyEngine(engine Engine) {
-	C.pit_destroy_engine(engine)
+	C.openpit_destroy_engine(engine)
 }
 
 func EngineStartPreTrade(engine Engine, order Order) (PretradePreTradeRequest, RejectList, error) {
 	var request PretradePreTradeRequest
 	var rejects RejectList
 	var outError SharedString
-	status := C.pit_engine_start_pre_trade(
+	status := C.openpit_engine_start_pre_trade(
 		engine,
 		&order,
 		&request,
 		&rejects,
-		C.PitOutError(&outError), //nolint:gocritic
+		C.OpenPitOutError(&outError), //nolint:gocritic
 	)
 
 	switch status {
-	case C.PitPretradeStatus_Passed:
+	case C.OpenPitPretradeStatus_Passed:
 		return request, nil, nil
-	case C.PitPretradeStatus_Rejected:
+	case C.OpenPitPretradeStatus_Rejected:
 		if rejects == nil {
 			return nil, nil, errors.New("order rejected, but no reject reason provided")
 		}
 		return nil, rejects, nil
-	case C.PitPretradeStatus_Error:
-		return nil, nil, consumeSharedStringAsError(outError, "pit_engine_start_pre_trade failed")
+	case C.OpenPitPretradeStatus_Error:
+		return nil, nil, consumeSharedStringAsError(outError, "openpit_engine_start_pre_trade failed")
 	default:
 		DestroyPretradePreTradeRequest(request)
 		DestroyRejectList(rejects)
 		DestroySharedString(outError)
 		return nil,
 			nil,
-			fmt.Errorf("pit_engine_start_pre_trade failed with unexpected status %d", status)
+			fmt.Errorf("openpit_engine_start_pre_trade failed with unexpected status %d", status)
 	}
 }
 
@@ -277,31 +277,31 @@ func EngineExecutePreTrade(
 	var reservation PretradePreTradeReservation
 	var rejects RejectList
 	var outError SharedString
-	status := C.pit_engine_execute_pre_trade(
+	status := C.openpit_engine_execute_pre_trade(
 		engine,
 		&order,
 		&reservation,
 		&rejects,
-		C.PitOutError(&outError), //nolint:gocritic
+		C.OpenPitOutError(&outError), //nolint:gocritic
 	)
 
 	switch status {
-	case C.PitPretradeStatus_Passed:
+	case C.OpenPitPretradeStatus_Passed:
 		return reservation, nil, nil
-	case C.PitPretradeStatus_Rejected:
+	case C.OpenPitPretradeStatus_Rejected:
 		if rejects == nil {
 			return nil, nil, errors.New("order rejected, but no reject reason provided")
 		}
 		return nil, rejects, nil
-	case C.PitPretradeStatus_Error:
-		return nil, nil, consumeSharedStringAsError(outError, "pit_engine_execute_pre_trade failed")
+	case C.OpenPitPretradeStatus_Error:
+		return nil, nil, consumeSharedStringAsError(outError, "openpit_engine_execute_pre_trade failed")
 	default:
 		DestroyPretradePreTradeReservation(reservation)
 		DestroyRejectList(rejects)
 		DestroySharedString(outError)
 		return nil,
 			nil,
-			fmt.Errorf("pit_engine_execute_pre_trade failed with unexpected status %d", status)
+			fmt.Errorf("openpit_engine_execute_pre_trade failed with unexpected status %d", status)
 	}
 }
 
@@ -314,10 +314,10 @@ func EngineApplyExecutionReport(
 	report ExecutionReport,
 ) (PretradePostTradeResult, error) {
 	var outError SharedString
-	result := C.pit_engine_apply_execution_report(engine, &report, C.PitOutError(&outError)) //nolint:gocritic
+	result := C.openpit_engine_apply_execution_report(engine, &report, C.OpenPitOutError(&outError)) //nolint:gocritic
 	if result.is_error {
 		return PretradePostTradeResult{},
-			consumeSharedStringAsError(outError, "pit_engine_apply_execution_report failed")
+			consumeSharedStringAsError(outError, "openpit_engine_apply_execution_report failed")
 	}
 	return PretradePostTradeResult{
 			KillSwitchTriggered: bool(result.post_trade_result.kill_switch_triggered),
@@ -330,34 +330,34 @@ func EngineApplyAccountAdjustment(
 	accountID ParamAccountID,
 	adjustments []AccountAdjustment,
 ) (AccountAdjustmentBatchError, error) {
-	var adjustmentsPtr *C.PitAccountAdjustment
+	var adjustmentsPtr *C.OpenPitAccountAdjustment
 	if len(adjustments) > 0 {
-		adjustmentsPtr = (*C.PitAccountAdjustment)(unsafe.Pointer(&adjustments[0]))
+		adjustmentsPtr = (*C.OpenPitAccountAdjustment)(unsafe.Pointer(&adjustments[0]))
 	}
 
 	var reject AccountAdjustmentBatchError
 	var outError SharedString
-	status := C.pit_engine_apply_account_adjustment(
+	status := C.openpit_engine_apply_account_adjustment(
 		engine,
 		accountID,
 		adjustmentsPtr,
 		C.size_t(len(adjustments)),
 		&reject,
-		C.PitOutError(&outError), //nolint:gocritic
+		C.OpenPitOutError(&outError), //nolint:gocritic
 	)
 
 	switch status {
-	case C.PitAccountAdjustmentApplyStatus_Error:
-		return nil, consumeSharedStringAsError(outError, "pit_engine_apply_account_adjustment failed")
-	case C.PitAccountAdjustmentApplyStatus_Applied:
+	case C.OpenPitAccountAdjustmentApplyStatus_Error:
+		return nil, consumeSharedStringAsError(outError, "openpit_engine_apply_account_adjustment failed")
+	case C.OpenPitAccountAdjustmentApplyStatus_Applied:
 		return nil, nil
-	case C.PitAccountAdjustmentApplyStatus_Rejected:
+	case C.OpenPitAccountAdjustmentApplyStatus_Rejected:
 		return reject, nil
 	default:
 		DestroyAccountAdjustmentBatchError(reject)
 		DestroySharedString(outError)
 		return nil,
-			fmt.Errorf("pit_engine_apply_account_adjustment failed with unexpected status %d", status)
+			fmt.Errorf("openpit_engine_apply_account_adjustment failed with unexpected status %d", status)
 	}
 }
 
@@ -370,25 +370,25 @@ func PretradePreTradeRequestExecute(
 	var reservation PretradePreTradeReservation
 	var rejects RejectList
 	var outError SharedString
-	status := C.pit_pretrade_pre_trade_request_execute(
+	status := C.openpit_pretrade_pre_trade_request_execute(
 		request,
 		&reservation,
 		&rejects,
-		C.PitOutError(&outError), //nolint:gocritic
+		C.OpenPitOutError(&outError), //nolint:gocritic
 	)
 
 	switch status {
-	case C.PitPretradeStatus_Passed:
+	case C.OpenPitPretradeStatus_Passed:
 		return reservation, nil, nil
-	case C.PitPretradeStatus_Rejected:
+	case C.OpenPitPretradeStatus_Rejected:
 		if rejects == nil {
 			return nil, nil, errors.New("order rejected, but no reject reason provided")
 		}
 		return nil, rejects, nil
-	case C.PitPretradeStatus_Error:
+	case C.OpenPitPretradeStatus_Error:
 		return nil,
 			nil,
-			consumeSharedStringAsError(outError, "pit_pretrade_pre_trade_request_execute failed")
+			consumeSharedStringAsError(outError, "openpit_pretrade_pre_trade_request_execute failed")
 	default:
 		DestroyPretradePreTradeReservation(reservation)
 		DestroyPretradePreTradeRequest(request)
@@ -396,33 +396,33 @@ func PretradePreTradeRequestExecute(
 		DestroySharedString(outError)
 		return nil,
 			nil,
-			fmt.Errorf("pit_pretrade_pre_trade_request_execute failed with unexpected status %d", status)
+			fmt.Errorf("openpit_pretrade_pre_trade_request_execute failed with unexpected status %d", status)
 	}
 }
 
 func DestroyPretradePreTradeRequest(request PretradePreTradeRequest) {
-	C.pit_destroy_pretrade_pre_trade_request(request)
+	C.openpit_destroy_pretrade_pre_trade_request(request)
 }
 
 //------------------------------------------------------------------------------
 // PretradePreTradeReservation
 
 func DestroyPretradePreTradeReservation(reservation PretradePreTradeReservation) {
-	C.pit_destroy_pretrade_pre_trade_reservation(reservation)
+	C.openpit_destroy_pretrade_pre_trade_reservation(reservation)
 }
 
 func PretradePreTradeReservationCommit(reservation PretradePreTradeReservation) {
-	C.pit_pretrade_pre_trade_reservation_commit(reservation)
+	C.openpit_pretrade_pre_trade_reservation_commit(reservation)
 }
 
 func PretradePreTradeReservationRollback(reservation PretradePreTradeReservation) {
-	C.pit_pretrade_pre_trade_reservation_rollback(reservation)
+	C.openpit_pretrade_pre_trade_reservation_rollback(reservation)
 }
 
 func PretradePreTradeReservationGetLock(
 	reservation PretradePreTradeReservation,
 ) PretradePreTradeLock {
-	return C.pit_pretrade_pre_trade_reservation_get_lock(reservation)
+	return C.openpit_pretrade_pre_trade_reservation_get_lock(reservation)
 }
 
 //------------------------------------------------------------------------------
@@ -453,17 +453,17 @@ func PretradePreTradeLockUnsetPrice(lock *PretradePreTradeLock) {
 // AccountAdjustment
 
 func DestroyAccountAdjustmentBatchError(handle AccountAdjustmentBatchError) {
-	C.pit_destroy_account_adjustment_batch_error(handle)
+	C.openpit_destroy_account_adjustment_batch_error(handle)
 }
 
 func AccountAdjustmentBatchErrorGetFailedAdjustmentIndex(
 	handle AccountAdjustmentBatchError,
 ) int {
-	return int(C.pit_account_adjustment_batch_error_get_failed_adjustment_index(handle))
+	return int(C.openpit_account_adjustment_batch_error_get_failed_adjustment_index(handle))
 }
 
 func AccountAdjustmentBatchErrorGetRejects(handle AccountAdjustmentBatchError) RejectList {
-	return C.pit_account_adjustment_batch_error_get_rejects(handle)
+	return C.openpit_account_adjustment_batch_error_get_rejects(handle)
 }
 
 //------------------------------------------------------------------------------
@@ -477,15 +477,15 @@ func MutationsPush(
 	freeFnAddr unsafe.Pointer,
 ) error {
 	var outError SharedString
-	if !C.pit_mutations_push(
+	if !C.openpit_mutations_push(
 		mutations,
-		*(*C.PitMutationFn)(commitFnAddr),
-		*(*C.PitMutationFn)(rollbackFnAddr),
+		*(*C.OpenPitMutationFn)(commitFnAddr),
+		*(*C.OpenPitMutationFn)(rollbackFnAddr),
 		userData,
-		*(*C.PitMutationFreeFn)(freeFnAddr),
-		C.PitOutError(&outError), //nolint:gocritic
+		*(*C.OpenPitMutationFreeFn)(freeFnAddr),
+		C.OpenPitOutError(&outError), //nolint:gocritic
 	) {
-		return consumeSharedStringAsError(outError, "pit_mutations_push failed")
+		return consumeSharedStringAsError(outError, "openpit_mutations_push failed")
 	}
 	return nil
 }

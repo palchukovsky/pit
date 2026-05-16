@@ -79,7 +79,7 @@ use crate::storage::policy::{LockingPolicy, LockingPolicyFactory};
 /// use std::thread;
 /// use openpit::Engine;
 ///
-/// let builder = Engine::<(), ()>::builder().with_account_sync();
+/// let builder = Engine::<(), ()>::builder().account_sync();
 /// let storage = Arc::new(builder.storage_builder().create::<u64, u64>());
 /// let s2 = Arc::clone(&storage);
 /// thread::spawn(move || {

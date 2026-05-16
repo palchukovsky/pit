@@ -23,7 +23,7 @@
 /// A `SyncPolicy` is a purely type-level construct — typically a zero-sized
 /// struct — that bundles all synchronization configuration in one place. The
 /// engine builder accepts it through
-/// [`EngineBuilder::with_sync`](crate::EngineBuilder::with_sync) and carries
+/// [`EngineBuilder::sync`](crate::EngineBuilder::sync) and carries
 /// it through the builder type chain into [`SyncedEngineBuilder`] and
 /// [`ReadyEngineBuilder`], giving trading policies (which receive a
 /// `&`[`StorageBuilder`]) a uniform surface to create their internal data
@@ -73,7 +73,7 @@
 ///
 /// use openpit::pretrade::policies::{RateLimit, RateLimitBrokerBarrier, RateLimitPolicy};
 ///
-/// let builder = Engine::<MyOrder>::builder().with_sync(MyFullySyncPolicy);
+/// let builder = Engine::<MyOrder>::builder().sync(MyFullySyncPolicy);
 /// let policy = RateLimitPolicy::new(
 ///     Some(RateLimitBrokerBarrier {
 ///         limit: RateLimit {
@@ -87,7 +87,7 @@
 ///     builder.storage_builder(),
 /// )?;
 /// let _engine = builder
-///     .check_pre_trade_start_policy(policy)
+///     .pre_trade(policy)
 ///     .build()?;
 /// # Ok(())
 /// # }
@@ -174,7 +174,7 @@ pub trait SyncPolicy {
 
     /// Creates the locking-policy factory for this sync policy.
     ///
-    /// Called once by [`EngineBuilder::with_sync`](crate::EngineBuilder::with_sync)
+    /// Called once by [`EngineBuilder::sync`](crate::EngineBuilder::sync)
     /// to initialise the [`StorageBuilder`](crate::StorageBuilder) that is
     /// handed to registered trading policies.
     fn create_locking_factory(&self) -> Self::StorageLockingPolicyFactory;
@@ -186,7 +186,7 @@ pub trait SyncPolicy {
 /// storages.
 ///
 /// Concrete [`SyncPolicy`] used by
-/// [`EngineBuilder::with_full_sync`](crate::EngineBuilder::with_full_sync).
+/// [`EngineBuilder::full_sync`](crate::EngineBuilder::full_sync).
 /// Storage tables created by registered trading policies use
 /// [`FullLocking`](crate::storage::FullLocking): two independent
 /// reader-writer locks (one for the key index, one for all values) ensure
@@ -195,14 +195,14 @@ pub trait SyncPolicy {
 /// Most callers reach this policy through the builder shortcut. Name the
 /// type directly only when implementing a custom [`SyncPolicy`] that
 /// delegates to it, or when calling
-/// [`EngineBuilder::with_sync`](crate::EngineBuilder::with_sync) explicitly.
+/// [`EngineBuilder::sync`](crate::EngineBuilder::sync) explicitly.
 pub struct FullSyncPolicy;
 
 /// Single-thread (no-sync) synchronization policy for
 /// [`Engine`](crate::Engine) storages.
 ///
 /// Concrete [`SyncPolicy`] used by
-/// [`EngineBuilder::with_local_sync`](crate::EngineBuilder::with_local_sync).
+/// [`EngineBuilder::no_sync`](crate::EngineBuilder::no_sync).
 /// Storage tables created by registered trading policies use
 /// [`NoLocking`](crate::storage::NoLocking): no synchronization primitives
 /// are allocated. The resulting storages are `!Send + !Sync`; this policy is
@@ -212,14 +212,14 @@ pub struct FullSyncPolicy;
 /// Most callers reach this policy through the builder shortcut. Name the
 /// type directly only when implementing a custom [`SyncPolicy`] that
 /// delegates to it, or when calling
-/// [`EngineBuilder::with_sync`](crate::EngineBuilder::with_sync) explicitly.
+/// [`EngineBuilder::sync`](crate::EngineBuilder::sync) explicitly.
 pub struct LocalSyncPolicy;
 
 /// Account-keyed synchronization policy for [`Engine`](crate::Engine)
 /// storages and sequential cross-thread engine handles.
 ///
 /// Concrete [`SyncPolicy`] used by
-/// [`EngineBuilder::with_account_sync`](crate::EngineBuilder::with_account_sync).
+/// [`EngineBuilder::account_sync`](crate::EngineBuilder::account_sync).
 /// Storage tables created by registered trading policies use
 /// [`IndexLocking<AccountKeyConstraint>`](crate::storage::IndexLocking):
 /// one reader-writer lock guards key insertions and removals, and the
@@ -234,7 +234,7 @@ pub struct LocalSyncPolicy;
 /// Most callers reach this policy through the builder shortcut. Name the
 /// type directly only when implementing a custom [`SyncPolicy`] that
 /// delegates to it, or when calling
-/// [`EngineBuilder::with_sync`](crate::EngineBuilder::with_sync) explicitly.
+/// [`EngineBuilder::sync`](crate::EngineBuilder::sync) explicitly.
 pub struct AccountSyncPolicy;
 
 impl SyncPolicy for FullSyncPolicy {

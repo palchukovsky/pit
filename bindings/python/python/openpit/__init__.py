@@ -33,7 +33,7 @@ Quickstart::
 
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
+        .no_sync()
         .builtin(openpit.pretrade.policies.build_order_validation())
         .build()
     )
@@ -55,11 +55,11 @@ The SDK never spawns OS threads: each public method runs on the OS thread that
 invoked it. The engine handle's threading capability depends on the sync policy
 selected at builder time:
 
-- `with_full_sync()` - concurrent invocation on the same handle is safe;
+- `full_sync()` - concurrent invocation on the same handle is safe;
   sequential cross-thread invocation is also safe.
-- `with_local_sync()` - the handle stays on the OS thread that created the
+- `no_sync()` - the handle stays on the OS thread that created the
   engine.
-- `with_account_sync()` - concurrent invocation on the same handle is safe when
+- `account_sync()` - concurrent invocation on the same handle is safe when
   the caller pins each account to a single chain (one queue or one worker at a
   time), so calls for the same account are never concurrent.
 """
@@ -75,7 +75,6 @@ from ._openpit import (
     RejectError,
     SyncedEngineBuilder,
 )
-from .account_adjustment import AccountAdjustmentPolicy
 from .core import (
     AccountAdjustment,
     AccountAdjustmentAmount,
@@ -100,13 +99,13 @@ from .pretrade import PostTradeResult
 
 EngineBuilder.__doc__ = """
 First stage of the engine builder. Select a synchronization policy via
-`with_full_sync()`, `with_local_sync()`, or `with_account_sync()`.
+`full_sync()`, `no_sync()`, or `account_sync()`.
 
-Prefer `with_local_sync()` when you do not explicitly work with multiple threads
+Prefer `no_sync()` when you do not explicitly work with multiple threads
 yourself: it has zero synchronization overhead and is the right default for
 embeddings that drive the engine from a single thread (synchronous code or one
-asyncio loop). Use `with_full_sync()` when sharing the engine across threads
-concurrently. Use `with_account_sync()` for sharded sequential workloads where
+asyncio loop). Use `full_sync()` when sharing the engine across threads
+concurrently. Use `account_sync()` for sharded sequential workloads where
 each account is pinned to one processing chain. Storage owned by built-in or
 custom policies is always account-keyed regardless of sync mode.
 """
@@ -120,7 +119,7 @@ ReadyEngineBuilder.__doc__ = """
 Third stage of the engine builder (at least one policy registered). Accepts additional
 policies and builds the engine via ``build()``.
 
-Policy names must be unique across start-stage and main-stage pre-trade policies.
+Policy names must be unique within one engine configuration.
 """
 
 RejectError.__doc__ = """
@@ -136,44 +135,21 @@ def _set_doc(obj, doc: str) -> None:
         obj.__doc__ = doc
 
 
-_CHECK_PRE_TRADE_START_POLICY_DOC = """Register a start-stage policy.
+_PRE_TRADE_DOC = """Register a pre-trade policy.
 
-Start policies run during ``Engine.start_pre_trade`` before the deferred
-main-stage request exists. They return normal business rejects directly and
-do not participate in main-stage rollback.
+Registered policies may implement start checks, main pre-trade checks,
+post-trade feedback, and account-adjustment validation through
+``openpit.pretrade.Policy``.
     """
-_set_doc(
-    SyncedEngineBuilder.check_pre_trade_start_policy, _CHECK_PRE_TRADE_START_POLICY_DOC
-)
-_set_doc(
-    ReadyEngineBuilder.check_pre_trade_start_policy, _CHECK_PRE_TRADE_START_POLICY_DOC
-)
-
-_PRE_TRADE_POLICY_DOC = """Register a main-stage pre-trade policy.
-
-Main-stage policies run when ``PreTradeRequest.execute`` is called. They may
-return rejects and mutations; the engine rolls mutations back when the main
-stage fails.
-    """
-_set_doc(SyncedEngineBuilder.pre_trade_policy, _PRE_TRADE_POLICY_DOC)
-_set_doc(ReadyEngineBuilder.pre_trade_policy, _PRE_TRADE_POLICY_DOC)
-
-_ACCOUNT_ADJUSTMENT_POLICY_DOC = """Register an account-adjustment policy.
-
-Account-adjustment policies validate batches passed to
-``Engine.apply_account_adjustment`` and may return rejects or rollback
-mutations.
-    """
-_set_doc(SyncedEngineBuilder.account_adjustment_policy, _ACCOUNT_ADJUSTMENT_POLICY_DOC)
-_set_doc(ReadyEngineBuilder.account_adjustment_policy, _ACCOUNT_ADJUSTMENT_POLICY_DOC)
+_set_doc(SyncedEngineBuilder.pre_trade, _PRE_TRADE_DOC)
+_set_doc(ReadyEngineBuilder.pre_trade, _PRE_TRADE_DOC)
 
 _set_doc(
     ReadyEngineBuilder.build,
     """Build an engine from the registered policies.
 
 Returns:
-    Engine: Engine instance. Policy names must be unique across start-stage
-    and main-stage pre-trade policies.
+    Engine: Engine instance. Policy names must be unique.
     """,
 )
 _set_doc(
@@ -194,7 +170,7 @@ Args:
         current order groups before invoking policies.
 
 Returns:
-    openpit.pretrade.StartPreTradeResult: Success result with a single-use
+    openpit.pretrade.StartResult: Success result with a single-use
     request handle, or failure result with one or more business rejects.
 
 Raises:
@@ -258,7 +234,6 @@ __all__ = [
     "AccountAdjustmentBounds",
     "AccountAdjustmentContext",
     "AccountAdjustmentPositionOperation",
-    "AccountAdjustmentPolicy",
     "AdjustmentAmount",
     "ExecutionReport",
     "ExecutionReportFillDetails",

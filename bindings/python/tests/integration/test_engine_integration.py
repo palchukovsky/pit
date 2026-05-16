@@ -5,7 +5,7 @@ import openpit
 import pytest
 
 
-class IntegrationStrategy(openpit.pretrade.PreTradePolicy):
+class IntegrationStrategy(openpit.pretrade.Policy):
     # @typing.override
     def __init__(self, *, max_abs_notional: str) -> None:
         self._max_abs_notional = openpit.param.Volume(max_abs_notional)
@@ -19,7 +19,7 @@ class IntegrationStrategy(openpit.pretrade.PreTradePolicy):
     # @typing.override
     def perform_pre_trade_check(
         self,
-        ctx: openpit.pretrade.PreTradeContext,
+        ctx: openpit.pretrade.Context,
         order: openpit.Order,
     ) -> openpit.pretrade.PolicyDecision:
         assert order.operation is not None
@@ -114,9 +114,9 @@ def test_engine_end_to_end_table(case: str, expected_code: str | None) -> None:
         strategy = IntegrationStrategy(max_abs_notional="700")
         engine = (
             openpit.Engine.builder()
-            .with_local_sync()
+            .no_sync()
             .builtin(openpit.pretrade.policies.build_order_validation())
-            .pre_trade_policy(policy=strategy)
+            .pre_trade(policy=strategy)
             .build()
         )
 
@@ -144,12 +144,7 @@ def test_engine_end_to_end_table(case: str, expected_code: str | None) -> None:
 
     if case == "rollback_on_exception":
         strategy = IntegrationStrategy(max_abs_notional="1000")
-        engine = (
-            openpit.Engine.builder()
-            .with_local_sync()
-            .pre_trade_policy(policy=strategy)
-            .build()
-        )
+        engine = openpit.Engine.builder().no_sync().pre_trade(policy=strategy).build()
 
         start = engine.start_pre_trade(
             order=conftest.make_order(
@@ -186,12 +181,7 @@ def test_engine_end_to_end_table(case: str, expected_code: str | None) -> None:
 
     if case == "main_stage_reject":
         strategy = IntegrationStrategy(max_abs_notional="700")
-        engine = (
-            openpit.Engine.builder()
-            .with_local_sync()
-            .pre_trade_policy(policy=strategy)
-            .build()
-        )
+        engine = openpit.Engine.builder().no_sync().pre_trade(policy=strategy).build()
 
         start = engine.start_pre_trade(
             order=conftest.make_order(
@@ -218,7 +208,7 @@ def test_engine_end_to_end_table(case: str, expected_code: str | None) -> None:
         policies = openpit.pretrade.policies
         engine = (
             openpit.Engine.builder()
-            .with_local_sync()
+            .no_sync()
             .builtin(
                 policies.build_rate_limit().broker_barrier(
                     policies.RateLimitBrokerBarrier(
@@ -244,7 +234,7 @@ def test_engine_end_to_end_table(case: str, expected_code: str | None) -> None:
         policies = openpit.pretrade.policies
         engine = (
             openpit.Engine.builder()
-            .with_local_sync()
+            .no_sync()
             .builtin(
                 policies.build_pnl_bounds_killswitch()
                 .broker_barriers(
@@ -304,7 +294,7 @@ def test_engine_end_to_end_table(case: str, expected_code: str | None) -> None:
         )
         engine = (
             openpit.Engine.builder()
-            .with_local_sync()
+            .no_sync()
             .builtin(
                 policies.build_order_size_limit()
                 .broker_barrier(

@@ -61,7 +61,7 @@ use super::storage::Storage;
 /// ```
 /// use openpit::Engine;
 ///
-/// let engine_builder = Engine::<(), ()>::builder().with_full_sync();
+/// let engine_builder = Engine::<(), ()>::builder().full_sync();
 /// let users = engine_builder.storage_builder().create::<u64, String>();
 /// let orders = engine_builder.storage_builder().create::<u64, Vec<u8>>();
 /// // `users` and `orders` are unrelated storages; locking one does

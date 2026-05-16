@@ -20,11 +20,19 @@ from __future__ import annotations
 import collections.abc
 
 from .account_adjustment import (
-    AccountAdjustment,
-    AccountAdjustmentAmount,
-    AccountAdjustmentBalanceOperation,
-    AccountAdjustmentBounds,
-    AccountAdjustmentPositionOperation,
+    Adjustment as AccountAdjustment,
+)
+from .account_adjustment import (
+    Amount as AccountAdjustmentAmount,
+)
+from .account_adjustment import (
+    BalanceOperation as AccountAdjustmentBalanceOperation,
+)
+from .account_adjustment import (
+    Bounds as AccountAdjustmentBounds,
+)
+from .account_adjustment import (
+    PositionOperation as AccountAdjustmentPositionOperation,
 )
 from .param import (
     AccountId,
@@ -40,7 +48,7 @@ from .param import (
     Trade,
     TradeAmount,
 )
-from .pretrade import PreTradeLock
+from .pretrade import Lock
 
 class AccountAdjustmentContext:
     """Context of the current account-adjustment operation."""
@@ -210,7 +218,7 @@ class ExecutionReportFillDetails:
         *,
         last_trade: Trade | None = None,
         leaves_quantity: Quantity | None = None,
-        lock: PreTradeLock,
+        lock: Lock,
         is_final: bool | None = None,
     ) -> None: ...
     @property
@@ -222,7 +230,7 @@ class ExecutionReportFillDetails:
         """Remaining order quantity after this fill."""
 
     @property
-    def lock(self) -> PreTradeLock:
+    def lock(self) -> Lock:
         """Order lock payload."""
 
     @property

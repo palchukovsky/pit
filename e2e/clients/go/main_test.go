@@ -8,16 +8,13 @@ import (
 )
 
 func TestBuildEngineFromPublicModule(t *testing.T) {
-	builder, err := openpit.NewEngineBuilder()
+	engine, err := openpit.NewEngineBuilder().
+		NoSync().
+		Builtin(policies.BuildOrderValidation()).
+		Build()
 	if err != nil {
-		t.Logf("engine builder returned error (acceptable in offline mode): %v", err)
+		t.Logf("engine build returned error (acceptable in offline mode): %v", err)
 		return
-	}
-	builder.BuiltinCheckPreTradeStartPolicy(policies.NewOrderValidation())
-
-	engine, err := builder.Build()
-	if err != nil {
-		t.Fatalf("Build() error = %v", err)
 	}
 	defer engine.Stop()
 }

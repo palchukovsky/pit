@@ -21,30 +21,29 @@ from .._openpit import (
     AccountAdjustmentBatchResult,
     ExecuteResult,
     PostTradeResult,
-    PreTradeRequest,
-    PreTradeReservation,
     Reject,
-    StartPreTradeResult,
+    Request,
+    Reservation,
+    StartResult,
 )
 from .._openpit import (
-    PreTradeLock as _PreTradeLock,
+    Lock as _Lock,
 )
 from ..param import Price
 from . import policies
 from ._enum import RejectCode, RejectScope
 from .policy import (
-    CheckPreTradeStartPolicy,
+    Context,
+    Policy,
     PolicyDecision,
     PolicyReject,
-    PreTradeContext,
-    PreTradePolicy,
 )
 
 RejectCode.__module__ = __name__
 RejectScope.__module__ = __name__
 
 
-PreTradeContext.__doc__ = """
+Context.__doc__ = """
 Opaque context object passed to Python policy callbacks.
 
 The object identifies the current engine evaluation context. Treat it as
@@ -53,11 +52,11 @@ policies should not create instances directly.
 """
 
 ExecuteResult.__doc__ = """
-Result of ``PreTradeRequest.execute`` or ``Engine.execute_pre_trade``.
+Result of ``Request.execute`` or ``Engine.execute_pre_trade``.
 
 Attributes:
     ok: ``True`` when all evaluated stages accepted the order.
-    reservation: ``PreTradeReservation`` on success, otherwise ``None``.
+    reservation: ``Reservation`` on success, otherwise ``None``.
     rejects: Ordered list of business rejects when ``ok`` is ``False``.
 
 Successful results must be finalized by committing or rolling back the
@@ -86,7 +85,7 @@ Attributes:
     user_data: Opaque caller-defined integer token copied from custom rejects.
 """
 
-PreTradeRequest.__doc__ = """
+Request.__doc__ = """
 Deferred main-stage request handle produced by ``Engine.start_pre_trade``.
 
 The handle is single-use. Calling ``execute`` more than once raises
@@ -94,7 +93,7 @@ The handle is single-use. Calling ``execute`` more than once raises
 main stage; it represents a snapshot of the submitted order.
 """
 
-PreTradeReservation.__doc__ = """
+Reservation.__doc__ = """
 Single-use reservation handle returned by successful main-stage execution.
 
 Call ``commit`` only after the order has been accepted by the downstream venue
@@ -103,12 +102,12 @@ to send the order. Calling either finalizer more than once raises
 ``RuntimeError``.
 """
 
-StartPreTradeResult.__doc__ = """
+StartResult.__doc__ = """
 Result of ``Engine.start_pre_trade``.
 
 Attributes:
-    ok: ``True`` when start-stage policies accepted the order.
-    request: Deferred ``PreTradeRequest`` on success, otherwise ``None``.
+    ok: ``True`` when start-stage checks accepted the order.
+    request: Deferred ``Request`` on success, otherwise ``None``.
     rejects: Merged start-stage reject list when ``ok`` is ``False``.
 """
 
@@ -125,12 +124,12 @@ Attributes:
 Rejects = list[Reject]
 
 
-class PreTradeLock(_PreTradeLock):
+class Lock(_Lock):
     """Pre-trade price lock payload."""
 
     # @typing.override
-    def __new__(cls, *args: object, **kwargs: object) -> "PreTradeLock":
-        return _PreTradeLock.__new__(cls, *args, **kwargs)
+    def __new__(cls, *args: object, **kwargs: object) -> "Lock":
+        return _Lock.__new__(cls, *args, **kwargs)
 
     # @typing.override
     def __init__(self, price: Price | None = None) -> None:
@@ -140,29 +139,28 @@ class PreTradeLock(_PreTradeLock):
     # @typing.override
     @property
     def price(self) -> Price | None:
-        return _PreTradeLock.price.__get__(self, type(self))
+        return _Lock.price.__get__(self, type(self))
 
     # @typing.override
     def __repr__(self) -> str:
-        return f"PreTradeLock(price={self.price!r})"
+        return f"Lock(price={self.price!r})"
 
 
 __all__ = [
     "AccountAdjustmentBatchResult",
-    "CheckPreTradeStartPolicy",
     "ExecuteResult",
-    "PreTradePolicy",
-    "PreTradeContext",
+    "Policy",
+    "Context",
     "PolicyDecision",
     "PolicyReject",
     "PostTradeResult",
-    "PreTradeLock",
+    "Lock",
     "Reject",
     "Rejects",
     "RejectCode",
     "RejectScope",
-    "PreTradeRequest",
-    "PreTradeReservation",
-    "StartPreTradeResult",
+    "Request",
+    "Reservation",
+    "StartResult",
     "policies",
 ]

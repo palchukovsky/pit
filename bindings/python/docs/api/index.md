@@ -61,17 +61,17 @@ to carry project metadata into policy callbacks.
 
 ## Pre-trade results and handles
 
-These classes model the two-stage pre-trade lifecycle. `StartPreTradeResult`
+These classes model the two-stage pre-trade lifecycle. `StartResult`
 contains a deferred request handle. `ExecuteResult` contains either rejects or a
 reservation that must be committed or rolled back.
 
 ```{eval-rst}
 .. automodule:: openpit.pretrade
 
-.. autoclass:: openpit.pretrade.PreTradeContext
+.. autoclass:: openpit.pretrade.Context
    :members:
 
-.. autoclass:: openpit.pretrade.PreTradeLock
+.. autoclass:: openpit.pretrade.Lock
    :members:
 
 .. autoclass:: openpit.pretrade.RejectCode
@@ -80,7 +80,7 @@ reservation that must be committed or rolled back.
 .. autoclass:: openpit.pretrade.RejectScope
    :members:
 
-.. autoclass:: openpit.pretrade.StartPreTradeResult
+.. autoclass:: openpit.pretrade.StartResult
    :members:
 
 .. autoclass:: openpit.pretrade.ExecuteResult
@@ -92,10 +92,10 @@ reservation that must be committed or rolled back.
 .. autoclass:: openpit.pretrade.AccountAdjustmentBatchResult
    :members:
 
-.. autoclass:: openpit.pretrade.PreTradeRequest
+.. autoclass:: openpit.pretrade.Request
    :members:
 
-.. autoclass:: openpit.pretrade.PreTradeReservation
+.. autoclass:: openpit.pretrade.Reservation
    :members:
 
 .. autoclass:: openpit.pretrade.Reject

@@ -21,11 +21,11 @@ import abc
 import collections.abc
 import dataclasses
 
-from .. import ExecutionReport, Order
+from .. import AccountAdjustment, AccountAdjustmentContext, ExecutionReport, Order
+from .._openpit import Context
 from ..core import Mutation
+from ..param import AccountId
 from ._enum import RejectScope
-
-class PreTradeContext: ...
 
 @dataclasses.dataclass(frozen=True)
 class PolicyReject:
@@ -33,6 +33,7 @@ class PolicyReject:
     reason: str
     details: str
     scope: RejectScope = RejectScope.ORDER
+    user_data: int = 0
 
 @dataclasses.dataclass(frozen=True)
 class PolicyDecision:
@@ -51,28 +52,29 @@ class PolicyDecision:
         mutations: collections.abc.Iterable[Mutation] = (),
     ) -> PolicyDecision: ...
 
-class CheckPreTradeStartPolicy(abc.ABC):
+class Policy(abc.ABC):
     @property
     @abc.abstractmethod
     def name(self) -> str: ...
-    @abc.abstractmethod
     def check_pre_trade_start(
         self,
-        ctx: PreTradeContext,
+        ctx: Context,
         order: Order,
     ) -> collections.abc.Iterable[PolicyReject]: ...
-    @abc.abstractmethod
-    def apply_execution_report(self, report: ExecutionReport) -> bool: ...
-
-class PreTradePolicy(abc.ABC):
-    @property
-    @abc.abstractmethod
-    def name(self) -> str: ...
-    @abc.abstractmethod
     def perform_pre_trade_check(
         self,
-        ctx: PreTradeContext,
+        ctx: Context,
         order: Order,
     ) -> PolicyDecision: ...
-    @abc.abstractmethod
     def apply_execution_report(self, report: ExecutionReport) -> bool: ...
+    def apply_account_adjustment(
+        self,
+        ctx: AccountAdjustmentContext,
+        account_id: AccountId,
+        adjustment: AccountAdjustment,
+    ) -> (
+        PolicyDecision
+        | collections.abc.Iterable[PolicyReject]
+        | tuple[Mutation, ...]
+        | None
+    ): ...

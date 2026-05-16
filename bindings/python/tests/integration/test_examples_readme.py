@@ -70,7 +70,7 @@ def test_readme_quickstart() -> None:
     max_notional = openpit.param.Volume("100000")
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
+        .no_sync()
         .builtin(policies.build_order_validation())
         .builtin(
             policies.build_pnl_bounds_killswitch().broker_barriers(
@@ -193,14 +193,14 @@ def test_readme_quickstart() -> None:
     assert result.kill_switch_triggered is False
 
 
-class BlockedAccountPolicy(openpit.pretrade.CheckPreTradeStartPolicy):
+class BlockedAccountPolicy(openpit.pretrade.Policy):
     @property
     def name(self) -> str:
         return "BlockedAccountPolicy"
 
     def check_pre_trade_start(
         self,
-        ctx: openpit.pretrade.PreTradeContext,
+        ctx: openpit.pretrade.Context,
         order: openpit.Order,
     ) -> tuple[openpit.pretrade.PolicyReject, ...]:
         del ctx
@@ -224,7 +224,7 @@ class BlockedAccountPolicy(openpit.pretrade.CheckPreTradeStartPolicy):
         return False
 
 
-class DocsNotionalCapPolicy(openpit.pretrade.PreTradePolicy):
+class DocsNotionalCapPolicy(openpit.pretrade.Policy):
     def __init__(self, max_notional: openpit.param.Volume) -> None:
         self._max_notional = max_notional
 
@@ -234,7 +234,7 @@ class DocsNotionalCapPolicy(openpit.pretrade.PreTradePolicy):
 
     def perform_pre_trade_check(
         self,
-        ctx: openpit.pretrade.PreTradeContext,
+        ctx: openpit.pretrade.Context,
         order: openpit.Order,
     ) -> openpit.pretrade.PolicyDecision:
         del ctx
@@ -267,14 +267,14 @@ class DocsNotionalCapPolicy(openpit.pretrade.PreTradePolicy):
         return False
 
 
-class MyMainStagePolicy(openpit.pretrade.PreTradePolicy):
+class MyMainStagePolicy(openpit.pretrade.Policy):
     @property
     def name(self) -> str:
         return "MyMainStagePolicy"
 
     def perform_pre_trade_check(
         self,
-        ctx: openpit.pretrade.PreTradeContext,
+        ctx: openpit.pretrade.Context,
         order: openpit.Order,
     ) -> openpit.pretrade.PolicyDecision:
         del ctx, order
@@ -285,10 +285,10 @@ class MyMainStagePolicy(openpit.pretrade.PreTradePolicy):
         return False
 
 
-class MyAccountAdjustmentPolicy(openpit.AccountAdjustmentPolicy):
+class MyAdjustmentCheck(openpit.pretrade.Policy):
     @property
     def name(self) -> str:
-        return "MyAccountAdjustmentPolicy"
+        return "MyAdjustmentCheck"
 
     def apply_account_adjustment(
         self,
@@ -301,11 +301,11 @@ class MyAccountAdjustmentPolicy(openpit.AccountAdjustmentPolicy):
 
 @pytest.mark.integration
 def test_docs_guides_policies_start_stage_policy() -> None:
-    # Source: bindings/python/docs/guides/policies.md — Start-stage policies
+    # Source: bindings/python/docs/guides/policies.md — start-stage checks
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
-        .check_pre_trade_start_policy(policy=BlockedAccountPolicy())
+        .no_sync()
+        .pre_trade(policy=BlockedAccountPolicy())
         .build()
     )
 
@@ -323,11 +323,11 @@ def test_docs_guides_policies_start_stage_policy() -> None:
 
 @pytest.mark.integration
 def test_docs_guides_policies_main_stage_policy() -> None:
-    # Source: bindings/python/docs/guides/policies.md — Main-stage policies
+    # Source: bindings/python/docs/guides/policies.md — main-stage checks
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
-        .pre_trade_policy(
+        .no_sync()
+        .pre_trade(
             policy=DocsNotionalCapPolicy(
                 max_notional=openpit.param.Volume("1000"),
             )
@@ -353,10 +353,10 @@ def test_docs_guides_engine_build_engine() -> None:
     # Source: bindings/python/docs/guides/engine.md — Build an engine
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
+        .no_sync()
         .builtin(openpit.pretrade.policies.build_order_validation())
-        .pre_trade_policy(policy=MyMainStagePolicy())
-        .account_adjustment_policy(policy=MyAccountAdjustmentPolicy())
+        .pre_trade(policy=MyMainStagePolicy())
+        .pre_trade(policy=MyAdjustmentCheck())
         .build()
     )
 
@@ -368,7 +368,7 @@ def test_docs_guides_engine_explicit_two_stage_flow() -> None:
     # Source: bindings/python/docs/guides/engine.md — Run the explicit two-stage flow
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
+        .no_sync()
         .builtin(openpit.pretrade.policies.build_order_validation())
         .build()
     )
@@ -393,7 +393,7 @@ def test_docs_guides_engine_shortcut_flow() -> None:
     # Source: bindings/python/docs/guides/engine.md — Run the shortcut flow
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
+        .no_sync()
         .builtin(openpit.pretrade.policies.build_order_validation())
         .build()
     )
@@ -410,7 +410,7 @@ def test_docs_guides_engine_finalize_reservations() -> None:
     # Source: bindings/python/docs/guides/engine.md — Finalize reservations
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
+        .no_sync()
         .builtin(openpit.pretrade.policies.build_order_validation())
         .build()
     )
@@ -438,7 +438,7 @@ def test_docs_guides_engine_apply_post_trade_reports() -> None:
     # Source: bindings/python/docs/guides/engine.md — Apply post-trade reports
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
+        .no_sync()
         .builtin(openpit.pretrade.policies.build_order_validation())
         .build()
     )

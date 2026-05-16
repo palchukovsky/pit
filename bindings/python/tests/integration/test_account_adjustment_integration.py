@@ -2,7 +2,7 @@ import openpit
 import pytest
 
 
-class RecordingAdjustmentPolicy(openpit.AccountAdjustmentPolicy):
+class RecordingAdjustmentCheck(openpit.pretrade.Policy):
     def __init__(self, *, reject_on_asset: str | None = None) -> None:
         self.seen_account_ids: list[int] = []
         self.seen_assets: list[str] = []
@@ -11,7 +11,7 @@ class RecordingAdjustmentPolicy(openpit.AccountAdjustmentPolicy):
     # @typing.override
     @property
     def name(self) -> str:
-        return "RecordingAdjustmentPolicy"
+        return "RecordingAdjustmentCheck"
 
     # @typing.override
     def apply_account_adjustment(
@@ -40,7 +40,7 @@ class RecordingAdjustmentPolicy(openpit.AccountAdjustmentPolicy):
 # Rollback correctness is verified by running the same batch a second time on the same
 # engine and confirming identical behaviour — if the engine had retained committed state
 # from the first run, the second run would deviate.
-class MutatingRecordingPolicy(openpit.AccountAdjustmentPolicy):
+class MutatingRecordingPolicy(openpit.pretrade.Policy):
     def __init__(self, *, reject_on_asset: str | None = None) -> None:
         self.seen_assets: list[str] = []
         self._reject_on_asset = reject_on_asset
@@ -87,13 +87,8 @@ def _make_balance_adjustment(asset_code: str) -> openpit.AccountAdjustment:
 @pytest.mark.integration
 def test_account_adjustment_integration_successful_batch() -> None:
     account_id = openpit.param.AccountId.from_u64(99224416)
-    policy = RecordingAdjustmentPolicy()
-    engine = (
-        openpit.Engine.builder()
-        .with_local_sync()
-        .account_adjustment_policy(policy=policy)
-        .build()
-    )
+    policy = RecordingAdjustmentCheck()
+    engine = openpit.Engine.builder().no_sync().pre_trade(policy=policy).build()
 
     result = engine.apply_account_adjustment(
         account_id=account_id,
@@ -112,13 +107,8 @@ def test_account_adjustment_integration_successful_batch() -> None:
 @pytest.mark.integration
 def test_account_adjustment_integration_reject_on_first() -> None:
     account_id = openpit.param.AccountId.from_u64(99224416)
-    policy = RecordingAdjustmentPolicy(reject_on_asset="USD")
-    engine = (
-        openpit.Engine.builder()
-        .with_local_sync()
-        .account_adjustment_policy(policy=policy)
-        .build()
-    )
+    policy = RecordingAdjustmentCheck(reject_on_asset="USD")
+    engine = openpit.Engine.builder().no_sync().pre_trade(policy=policy).build()
 
     result = engine.apply_account_adjustment(
         account_id=account_id,
@@ -137,13 +127,8 @@ def test_account_adjustment_integration_reject_on_first() -> None:
 @pytest.mark.integration
 def test_account_adjustment_integration_reject_on_last() -> None:
     account_id = openpit.param.AccountId.from_u64(99224416)
-    policy = RecordingAdjustmentPolicy(reject_on_asset="GBP")
-    engine = (
-        openpit.Engine.builder()
-        .with_local_sync()
-        .account_adjustment_policy(policy=policy)
-        .build()
-    )
+    policy = RecordingAdjustmentCheck(reject_on_asset="GBP")
+    engine = openpit.Engine.builder().no_sync().pre_trade(policy=policy).build()
 
     result = engine.apply_account_adjustment(
         account_id=account_id,
@@ -162,13 +147,8 @@ def test_account_adjustment_integration_reject_on_last() -> None:
 @pytest.mark.integration
 def test_account_adjustment_integration_reject_on_middle() -> None:
     account_id = openpit.param.AccountId.from_u64(99224416)
-    policy = RecordingAdjustmentPolicy(reject_on_asset="EUR")
-    engine = (
-        openpit.Engine.builder()
-        .with_local_sync()
-        .account_adjustment_policy(policy=policy)
-        .build()
-    )
+    policy = RecordingAdjustmentCheck(reject_on_asset="EUR")
+    engine = openpit.Engine.builder().no_sync().pre_trade(policy=policy).build()
 
     result = engine.apply_account_adjustment(
         account_id=account_id,
@@ -189,12 +169,7 @@ def test_account_adjustment_integration_reject_on_middle() -> None:
 def test_account_adjustment_integration_rollback_commits_on_success() -> None:
     account_id = openpit.param.AccountId.from_u64(99224416)
     policy = MutatingRecordingPolicy()
-    engine = (
-        openpit.Engine.builder()
-        .with_local_sync()
-        .account_adjustment_policy(policy=policy)
-        .build()
-    )
+    engine = openpit.Engine.builder().no_sync().pre_trade(policy=policy).build()
 
     result = engine.apply_account_adjustment(
         account_id=account_id,
@@ -215,12 +190,7 @@ def test_account_adjustment_integration_rollback_consistent_after_reject_first()
 ):
     account_id = openpit.param.AccountId.from_u64(99224416)
     policy = MutatingRecordingPolicy(reject_on_asset="USD")
-    engine = (
-        openpit.Engine.builder()
-        .with_local_sync()
-        .account_adjustment_policy(policy=policy)
-        .build()
-    )
+    engine = openpit.Engine.builder().no_sync().pre_trade(policy=policy).build()
 
     adjustments = [
         _make_balance_adjustment("USD"),
@@ -248,12 +218,7 @@ def test_account_adjustment_integration_rollback_consistent_after_reject_first()
 def test_account_adjustment_integration_rollback_consistent_after_reject_last() -> None:
     account_id = openpit.param.AccountId.from_u64(99224416)
     policy = MutatingRecordingPolicy(reject_on_asset="GBP")
-    engine = (
-        openpit.Engine.builder()
-        .with_local_sync()
-        .account_adjustment_policy(policy=policy)
-        .build()
-    )
+    engine = openpit.Engine.builder().no_sync().pre_trade(policy=policy).build()
 
     adjustments = [
         _make_balance_adjustment("USD"),
@@ -281,12 +246,7 @@ def test_account_adjustment_integration_rollback_consistent_after_reject_middle(
 ):
     account_id = openpit.param.AccountId.from_u64(99224416)
     policy = MutatingRecordingPolicy(reject_on_asset="EUR")
-    engine = (
-        openpit.Engine.builder()
-        .with_local_sync()
-        .account_adjustment_policy(policy=policy)
-        .build()
-    )
+    engine = openpit.Engine.builder().no_sync().pre_trade(policy=policy).build()
 
     adjustments = [
         _make_balance_adjustment("USD"),

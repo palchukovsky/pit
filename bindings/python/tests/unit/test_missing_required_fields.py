@@ -12,7 +12,7 @@ def test_start_pre_trade_order_without_operation_produces_missing_field_reject()
 ):
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
+        .no_sync()
         .builtin(openpit.pretrade.policies.build_order_validation())
         .build()
     )
@@ -28,7 +28,7 @@ def test_start_pre_trade_pnl_kill_switch_without_operation_rejects() -> None:
     policies = openpit.pretrade.policies
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
+        .no_sync()
         .builtin(
             policies.build_pnl_bounds_killswitch().broker_barriers(
                 policies.PnlBoundsBrokerBarrier(
@@ -56,7 +56,7 @@ def test_apply_execution_report_without_financial_impact_does_not_panic() -> Non
     policies = openpit.pretrade.policies
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
+        .no_sync()
         .builtin(
             policies.build_pnl_bounds_killswitch().broker_barriers(
                 policies.PnlBoundsBrokerBarrier(
@@ -86,7 +86,7 @@ def test_start_pre_trade_order_size_limit_without_operation_rejects() -> None:
     policies = openpit.pretrade.policies
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
+        .no_sync()
         .builtin(
             policies.build_order_size_limit()
             .broker_barrier(

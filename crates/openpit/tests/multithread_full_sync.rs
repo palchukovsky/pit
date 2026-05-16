@@ -21,7 +21,7 @@ use std::time::Duration;
 
 use openpit::param::{AccountId, Asset, Quantity, Side, TradeAmount};
 use openpit::pretrade::policies::{RateLimit, RateLimitBrokerBarrier, RateLimitPolicy};
-use openpit::pretrade::{CheckPreTradeStartPolicy, PreTradeContext};
+use openpit::pretrade::{PreTradeContext, PreTradePolicy};
 use openpit::storage::FullLocking;
 use openpit::{Engine, Instrument, OrderOperation};
 
@@ -54,7 +54,7 @@ fn build_order(account_id: AccountId) -> OrderOperation {
 #[test]
 fn rate_limit_full_sync_broker_counter_not_lost_under_concurrent_load() {
     let total_calls = TOTAL_THREADS * PER_THREAD;
-    let builder = Engine::<OrderOperation, ()>::builder().with_full_sync();
+    let builder = Engine::<OrderOperation, ()>::builder().full_sync();
     let policy: Arc<TestPolicy> = Arc::new(
         RateLimitPolicy::<FullLocking>::new(
             Some(RateLimitBrokerBarrier {
@@ -77,7 +77,7 @@ fn rate_limit_full_sync_broker_counter_not_lost_under_concurrent_load() {
             s.spawn(move || {
                 let order = build_order(AccountId::from_u64(tid as u64));
                 for _ in 0..PER_THREAD {
-                    <TestPolicy as CheckPreTradeStartPolicy<OrderOperation, ()>>::check_pre_trade_start(
+                    <TestPolicy as PreTradePolicy<OrderOperation, ()>>::check_pre_trade_start(
                         &policy,
                         &PreTradeContext::new(),
                         &order,
@@ -89,7 +89,7 @@ fn rate_limit_full_sync_broker_counter_not_lost_under_concurrent_load() {
     });
 
     let overflow_order = build_order(AccountId::from_u64(99));
-    <TestPolicy as CheckPreTradeStartPolicy<OrderOperation, ()>>::check_pre_trade_start(
+    <TestPolicy as PreTradePolicy<OrderOperation, ()>>::check_pre_trade_start(
         &policy,
         &PreTradeContext::new(),
         &overflow_order,

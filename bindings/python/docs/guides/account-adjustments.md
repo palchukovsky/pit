@@ -45,7 +45,7 @@ adjustment = openpit.AccountAdjustment(
 
 ## Policy result contract
 
-An `AccountAdjustmentPolicy` can return:
+A `Policy` registered through `pre_trade` can return:
 
 - `None` for success without mutations.
 - An iterable of `PolicyReject` objects to reject the batch.

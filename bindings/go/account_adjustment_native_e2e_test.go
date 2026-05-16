@@ -24,6 +24,7 @@ import (
 	"go.openpit.dev/openpit/model"
 	"go.openpit.dev/openpit/param"
 	"go.openpit.dev/openpit/pkg/optional"
+	"go.openpit.dev/openpit/pretrade"
 	"go.openpit.dev/openpit/reject"
 	"go.openpit.dev/openpit/tx"
 )
@@ -31,7 +32,7 @@ import (
 func TestAccountAdjustmentNativeE2E_BatchAppliesAndInvokesPolicyPerItem(t *testing.T) {
 	policy := &accountAdjustmentCountingPolicy{name: "count-adjustments"}
 
-	engine, err := NewEngineBuilder().WithFullSync().AccountAdjustmentPolicy(policy).Build()
+	engine, err := NewEngineBuilder().FullSync().PreTrade(policy).Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -124,6 +125,25 @@ func (accountAdjustmentCountingPolicy) Close() {}
 
 func (p accountAdjustmentCountingPolicy) Name() string {
 	return p.name
+}
+
+func (accountAdjustmentCountingPolicy) CheckPreTradeStart(
+	pretrade.Context,
+	model.Order,
+) []reject.Reject {
+	return nil
+}
+
+func (accountAdjustmentCountingPolicy) PerformPreTradeCheck(
+	pretrade.Context,
+	model.Order,
+	tx.Mutations,
+) []reject.Reject {
+	return nil
+}
+
+func (accountAdjustmentCountingPolicy) ApplyExecutionReport(model.ExecutionReport) bool {
+	return false
 }
 
 func (p *accountAdjustmentCountingPolicy) ApplyAccountAdjustment(

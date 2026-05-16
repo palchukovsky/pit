@@ -530,30 +530,6 @@ def parse_file(path: Path) -> list[Item]:
             docs = []
             attrs = []
             continue
-        if stripped.startswith("policy_release_fn!("):
-            block, i = collect_macro_invocation(lines, i)
-            item = parse_macro_function(block, docs, "release")
-            if item:
-                items.append(item)
-            docs = []
-            attrs = []
-            continue
-        if stripped.startswith("policy_destroy_fn!("):
-            block, i = collect_macro_invocation(lines, i)
-            item = parse_macro_function(block, docs, "destroy")
-            if item:
-                items.append(item)
-            docs = []
-            attrs = []
-            continue
-        if stripped.startswith("policy_get_name_fn!("):
-            block, i = collect_macro_invocation(lines, i)
-            item = parse_macro_function(block, docs, "get_name")
-            if item:
-                items.append(item)
-            docs = []
-            attrs = []
-            continue
         if stripped.startswith("define_decimal_param_ffi_common!("):
             block, i = collect_macro_invocation(lines, i)
             items.extend(parse_decimal_ffi_common(block, decimal_ffi_common_specs))
@@ -1231,41 +1207,6 @@ def parse_optional_wrapper(
         fields=[Field("value", value_match.group(1)), Field("is_set", "bool")],
         opaque=False,
         repr_name="C",
-    )
-
-
-def parse_macro_function(block: str, docs: list[str], kind: str) -> Item | None:
-    lines = [line.strip() for line in block.splitlines() if line.strip()]
-    args = [line.rstrip(",);") for line in lines[1:] if not line.startswith("///")]
-    if len(args) < 2:
-        return None
-    fn_name = args[0]
-    policy_ty = args[1]
-    if kind in {"release", "destroy"}:
-        return Item(
-            kind="function",
-            name=fn_name,
-            docs=list(docs),
-            section="policy.rs",
-            args=[("policy", f"*mut {policy_ty}")],
-            ret=None,
-        )
-    if kind == "get_name":
-        return Item(
-            kind="function",
-            name=fn_name,
-            docs=list(docs),
-            section="policy.rs",
-            args=[("policy", f"*const {policy_ty}")],
-            ret="OpenPitStringView",
-        )
-    return Item(
-        kind="function",
-        name=fn_name,
-        docs=list(docs),
-        section="policy.rs",
-        args=[("policy", f"*const {policy_ty}")],
-        ret="OpenPitStringView",
     )
 
 

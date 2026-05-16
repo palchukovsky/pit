@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"go.openpit.dev/openpit/accountadjustment"
 	"go.openpit.dev/openpit/model"
 	"go.openpit.dev/openpit/param"
 	"go.openpit.dev/openpit/pkg/optional"
@@ -66,8 +67,25 @@ func (p *wikiStrategyTagPolicy) CheckPreTradeStart(
 	return nil
 }
 
+func (wikiStrategyTagPolicy) PerformPreTradeCheck(
+	pretrade.Context,
+	wikiStrategyOrder,
+	tx.Mutations,
+) []reject.Reject {
+	return nil
+}
+
 func (wikiStrategyTagPolicy) ApplyExecutionReport(wikiStrategyReport) bool {
 	return false
+}
+
+func (wikiStrategyTagPolicy) ApplyAccountAdjustment(
+	accountadjustment.Context,
+	param.AccountID,
+	model.AccountAdjustment,
+	tx.Mutations,
+) []reject.Reject {
+	return nil
 }
 
 // --- Shared helpers ---
@@ -197,7 +215,7 @@ func wikiExampleEngine(t *testing.T) *Engine {
 	t.Helper()
 
 	engine, err := NewEngineBuilder().
-		WithFullSync().
+		FullSync().
 		Builtin(policies.BuildOrderValidation()).
 		Build()
 	if err != nil {
@@ -216,6 +234,10 @@ type wikiNotionalCapPolicy struct {
 func (wikiNotionalCapPolicy) Close() {}
 
 func (wikiNotionalCapPolicy) Name() string { return "NotionalCapPolicy" }
+
+func (wikiNotionalCapPolicy) CheckPreTradeStart(pretrade.Context, model.Order) []reject.Reject {
+	return nil
+}
 
 func (p *wikiNotionalCapPolicy) PerformPreTradeCheck(
 	_ pretrade.Context,
@@ -291,6 +313,15 @@ func (wikiNotionalCapPolicy) ApplyExecutionReport(model.ExecutionReport) bool {
 	return false
 }
 
+func (wikiNotionalCapPolicy) ApplyAccountAdjustment(
+	accountadjustment.Context,
+	param.AccountID,
+	model.AccountAdjustment,
+	tx.Mutations,
+) []reject.Reject {
+	return nil
+}
+
 // --- Policy-API: Rollback Safety Pattern ---
 
 type wikiReserveThenValidatePolicy struct {
@@ -301,6 +332,10 @@ type wikiReserveThenValidatePolicy struct {
 func (wikiReserveThenValidatePolicy) Close() {}
 
 func (wikiReserveThenValidatePolicy) Name() string { return "ReserveThenValidatePolicy" }
+
+func (wikiReserveThenValidatePolicy) CheckPreTradeStart(pretrade.Context, model.Order) []reject.Reject {
+	return nil
+}
 
 func (p *wikiReserveThenValidatePolicy) PerformPreTradeCheck(
 	_ pretrade.Context,
@@ -335,6 +370,15 @@ func (p *wikiReserveThenValidatePolicy) PerformPreTradeCheck(
 
 func (wikiReserveThenValidatePolicy) ApplyExecutionReport(model.ExecutionReport) bool {
 	return false
+}
+
+func (wikiReserveThenValidatePolicy) ApplyAccountAdjustment(
+	accountadjustment.Context,
+	param.AccountID,
+	model.AccountAdjustment,
+	tx.Mutations,
+) []reject.Reject {
+	return nil
 }
 
 // --- Tests ---
@@ -438,7 +482,7 @@ func TestExampleWikiPolicyNotionalCap(t *testing.T) {
 
 	policy := &wikiNotionalCapPolicy{MaxAbsNotional: maxNotional}
 
-	engine, err := NewEngineBuilder().WithFullSync().PreTradePolicy(policy).Build()
+	engine, err := NewEngineBuilder().FullSync().PreTrade(policy).Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -502,7 +546,7 @@ func TestExampleWikiPolicyRollbackSafety(t *testing.T) {
 		limit:    limit,
 	}
 
-	engine, err := NewEngineBuilder().WithFullSync().PreTradePolicy(policy).Build()
+	engine, err := NewEngineBuilder().FullSync().PreTrade(policy).Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -559,7 +603,7 @@ func TestExampleWikiGettingStartedBuildEngine(t *testing.T) {
 	}
 
 	engine, err := NewEngineBuilder().
-		WithFullSync().
+		FullSync().
 		Builtin(policies.BuildOrderValidation()).
 		Builtin(
 			policies.BuildPnlBoundsKillswitch().BrokerBarriers(
@@ -735,8 +779,8 @@ func TestExampleWikiGettingStartedApplyPostTrade(t *testing.T) {
 // Used in: pit.wiki/Policy-API.md — Example: Go Custom Models
 func TestExampleWikiCustomGoModels(t *testing.T) {
 	engine, err := NewClientPreTradeEngineBuilder[wikiStrategyOrder, wikiStrategyReport]().
-		WithFullSync().
-		CheckPreTradeStartPolicy(&wikiStrategyTagPolicy{}).
+		FullSync().
+		PreTrade(&wikiStrategyTagPolicy{}).
 		Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
@@ -785,7 +829,7 @@ func TestExampleWikiCustomGoModels(t *testing.T) {
 // Used in: pit.wiki/Policies.md — OrderValidationPolicy
 func TestExampleWikiPoliciesOrderValidation(t *testing.T) {
 	engine, err := NewEngineBuilder().
-		WithLocalSync().
+		NoSync().
 		Builtin(
 			policies.BuildOrderValidation(),
 		).
@@ -816,7 +860,7 @@ func TestExampleWikiPoliciesOrderValidation(t *testing.T) {
 // Used in: pit.wiki/Policies.md — RateLimitPolicy
 func TestExampleWikiPoliciesRateLimit(t *testing.T) {
 	engine, err := NewEngineBuilder().
-		WithLocalSync().
+		NoSync().
 		Builtin(
 			policies.BuildRateLimit().
 				BrokerBarrier(
@@ -868,7 +912,7 @@ func TestExampleWikiPoliciesOrderSizeLimit(t *testing.T) {
 	}
 
 	engine, err := NewEngineBuilder().
-		WithLocalSync().
+		NoSync().
 		Builtin(
 			policies.BuildOrderSizeLimit().
 				AssetBarriers(
@@ -929,7 +973,7 @@ func TestExampleWikiPoliciesPnlBoundsKillswitch(t *testing.T) {
 	}
 
 	engine, err := NewEngineBuilder().
-		WithLocalSync().
+		NoSync().
 		Builtin(
 			policies.BuildPnlBoundsKillswitch().
 				BrokerBarriers(
@@ -968,8 +1012,8 @@ func TestExampleWikiPoliciesPnlBoundsKillswitch(t *testing.T) {
 // Keep this example synced with the wiki snippet when the ClientEngine API changes.
 func TestExampleWikiCustomGoTypes(t *testing.T) {
 	engine, err := NewClientPreTradeEngineBuilder[wikiStrategyOrder, wikiStrategyReport]().
-		WithFullSync().
-		CheckPreTradeStartPolicy(&wikiStrategyTagPolicy{}).
+		FullSync().
+		PreTrade(&wikiStrategyTagPolicy{}).
 		Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)

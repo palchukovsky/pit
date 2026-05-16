@@ -27,8 +27,7 @@ import (
 	"go.openpit.dev/openpit/pretrade/policies"
 )
 
-// TestReadmeQuickstart mirrors the Usage example in bindings/go/README.md.
-// Keep both in sync.
+// Source: bindings/go/README.md - Usage
 func TestReadmeQuickstart(t *testing.T) {
 	usd, err := param.NewAsset("USD")
 	if err != nil {
@@ -50,7 +49,7 @@ func TestReadmeQuickstart(t *testing.T) {
 
 	// 1. Configure and build the engine.
 	engine, err := NewEngineBuilder().
-		WithFullSync().
+		FullSync().
 		Builtin(policies.BuildOrderValidation()).
 		Builtin(
 			policies.BuildPnlBoundsKillswitch().BrokerBarriers(

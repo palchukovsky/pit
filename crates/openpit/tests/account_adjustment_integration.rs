@@ -19,10 +19,11 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use openpit::param::AccountId;
+use openpit::pretrade::PreTradePolicy;
 use openpit::pretrade::{Reject, RejectCode, RejectScope, Rejects};
 use openpit::{
-    AccountAdjustmentBalanceOperation, AccountAdjustmentContext, AccountAdjustmentPolicy, Engine,
-    HasBalanceAsset, Mutation, Mutations,
+    AccountAdjustmentBalanceOperation, AccountAdjustmentContext, Engine, HasBalanceAsset, Mutation,
+    Mutations,
 };
 
 type TestAdjustment = AccountAdjustmentBalanceOperation;
@@ -46,7 +47,9 @@ struct RecordingAdjustmentPolicy {
     reject_on_asset: Option<String>,
 }
 
-impl AccountAdjustmentPolicy<TestAdjustment> for RecordingAdjustmentPolicy {
+impl<Order, ExecutionReport> PreTradePolicy<Order, ExecutionReport, TestAdjustment>
+    for RecordingAdjustmentPolicy
+{
     fn name(&self) -> &'static str {
         self.name
     }
@@ -88,7 +91,9 @@ struct MutatingRecordingPolicy {
     reject_on_asset: Option<String>,
 }
 
-impl AccountAdjustmentPolicy<TestAdjustment> for MutatingRecordingPolicy {
+impl<Order, ExecutionReport> PreTradePolicy<Order, ExecutionReport, TestAdjustment>
+    for MutatingRecordingPolicy
+{
     fn name(&self) -> &'static str {
         self.name
     }
@@ -144,8 +149,8 @@ fn make_engine(reject_on_asset: Option<&str>) -> EngineWithRecorders {
     let seen_ids = Rc::new(RefCell::new(Vec::new()));
     let seen_assets = Rc::new(RefCell::new(Vec::new()));
     let engine = Engine::<(), (), TestAdjustment>::builder()
-        .with_local_sync()
-        .account_adjustment_policy(RecordingAdjustmentPolicy {
+        .no_sync()
+        .pre_trade(RecordingAdjustmentPolicy {
             name: "RecordingAdjustmentPolicy",
             seen_account_ids: Rc::clone(&seen_ids),
             seen_asset_codes: Rc::clone(&seen_assets),
@@ -160,8 +165,8 @@ fn make_rollback_engine(reject_on_asset: Option<&str>) -> RollbackEngine {
     let committed = Rc::new(RefCell::new(Vec::new()));
     let rollback_order = Rc::new(RefCell::new(Vec::new()));
     let engine = Engine::<(), (), TestAdjustment>::builder()
-        .with_local_sync()
-        .account_adjustment_policy(MutatingRecordingPolicy {
+        .no_sync()
+        .pre_trade(MutatingRecordingPolicy {
             name: "MutatingRecordingPolicy",
             committed_assets: Rc::clone(&committed),
             rollback_order: Rc::clone(&rollback_order),

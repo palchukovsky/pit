@@ -3,14 +3,14 @@ import openpit
 import pytest
 
 
-class DualRejectPolicy(openpit.pretrade.PreTradePolicy):
+class DualRejectPolicy(openpit.pretrade.Policy):
     @property
     def name(self) -> str:
         return "DualRejectPolicy"
 
     def perform_pre_trade_check(
         self,
-        ctx: openpit.pretrade.PreTradeContext,
+        ctx: openpit.pretrade.Context,
         order: openpit.Order,
     ) -> openpit.pretrade.PolicyDecision:
         del ctx, order
@@ -44,7 +44,7 @@ class DualRejectPolicy(openpit.pretrade.PreTradePolicy):
 def test_execute_pre_trade_returns_ok_result_with_reservation() -> None:
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
+        .no_sync()
         .builtin(openpit.pretrade.policies.build_order_validation())
         .build()
     )
@@ -61,7 +61,7 @@ def test_execute_pre_trade_returns_ok_result_with_reservation() -> None:
 def test_execute_pre_trade_returns_single_reject_for_start_stage_failure() -> None:
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
+        .no_sync()
         .builtin(openpit.pretrade.policies.build_order_validation())
         .build()
     )
@@ -80,10 +80,7 @@ def test_execute_pre_trade_returns_single_reject_for_start_stage_failure() -> No
 @pytest.mark.unit
 def test_execute_pre_trade_preserves_main_stage_reject_list_order() -> None:
     engine = (
-        openpit.Engine.builder()
-        .with_local_sync()
-        .pre_trade_policy(policy=DualRejectPolicy())
-        .build()
+        openpit.Engine.builder().no_sync().pre_trade(policy=DualRejectPolicy()).build()
     )
 
     result = engine.execute_pre_trade(order=conftest.make_order())

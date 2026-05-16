@@ -18,10 +18,10 @@ def _make_adjustment(*, pending: str | None = None) -> openpit.AccountAdjustment
     )
 
 
-class PassAdjustmentPolicy(openpit.AccountAdjustmentPolicy):
+class PassAdjustmentCheck(openpit.pretrade.Policy):
     @property
     def name(self) -> str:
-        return "PassAdjustmentPolicy"
+        return "PassAdjustmentCheck"
 
     def apply_account_adjustment(
         self,
@@ -33,7 +33,7 @@ class PassAdjustmentPolicy(openpit.AccountAdjustmentPolicy):
         return None
 
 
-class RejectOnPendingPolicy(openpit.AccountAdjustmentPolicy):
+class RejectOnPendingPolicy(openpit.pretrade.Policy):
     def __init__(self) -> None:
         self.seen_pending: list[str | None] = []
 
@@ -71,12 +71,12 @@ class RejectOnPendingPolicy(openpit.AccountAdjustmentPolicy):
         return None
 
 
-class MutatingAdjustmentPolicy(openpit.AccountAdjustmentPolicy):
+class MutatingAdjustmentCheck(openpit.pretrade.Policy):
     """Policy that registers a kill-switch mutation on every adjustment."""
 
     @property
     def name(self) -> str:
-        return "MutatingAdjustmentPolicy"
+        return "MutatingAdjustmentCheck"
 
     def apply_account_adjustment(
         self,
@@ -94,11 +94,11 @@ class MutatingAdjustmentPolicy(openpit.AccountAdjustmentPolicy):
 
 
 @pytest.mark.unit
-def test_account_adjustment_policy_passes_when_none_returned() -> None:
+def test_pre_trade_passes_when_none_returned() -> None:
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
-        .account_adjustment_policy(policy=PassAdjustmentPolicy())
+        .no_sync()
+        .pre_trade(policy=PassAdjustmentCheck())
         .build()
     )
 
@@ -114,11 +114,11 @@ def test_account_adjustment_policy_passes_when_none_returned() -> None:
 
 
 @pytest.mark.unit
-def test_account_adjustment_policy_rejects_batch() -> None:
+def test_pre_trade_rejects_batch() -> None:
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
-        .account_adjustment_policy(policy=RejectOnPendingPolicy())
+        .no_sync()
+        .pre_trade(policy=RejectOnPendingPolicy())
         .build()
     )
 
@@ -138,12 +138,7 @@ def test_account_adjustment_policy_rejects_batch() -> None:
 @pytest.mark.unit
 def test_account_adjustment_batch_stops_on_first_reject() -> None:
     policy = RejectOnPendingPolicy()
-    engine = (
-        openpit.Engine.builder()
-        .with_local_sync()
-        .account_adjustment_policy(policy=policy)
-        .build()
-    )
+    engine = openpit.Engine.builder().no_sync().pre_trade(policy=policy).build()
 
     result = engine.apply_account_adjustment(
         account_id=openpit.param.AccountId.from_u64(99224416),
@@ -160,11 +155,11 @@ def test_account_adjustment_batch_stops_on_first_reject() -> None:
 
 
 @pytest.mark.unit
-def test_account_adjustment_policy_passes_with_mutations() -> None:
+def test_pre_trade_passes_with_mutations() -> None:
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
-        .account_adjustment_policy(policy=MutatingAdjustmentPolicy())
+        .no_sync()
+        .pre_trade(policy=MutatingAdjustmentCheck())
         .build()
     )
 
@@ -177,13 +172,13 @@ def test_account_adjustment_policy_passes_with_mutations() -> None:
 
 
 @pytest.mark.unit
-def test_account_adjustment_policy_none_and_mutations_interleaved() -> None:
+def test_pre_trade_none_and_mutations_interleaved() -> None:
     """First policy returns None, second returns mutations. Batch passes."""
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
-        .account_adjustment_policy(policy=PassAdjustmentPolicy())
-        .account_adjustment_policy(policy=MutatingAdjustmentPolicy())
+        .no_sync()
+        .pre_trade(policy=PassAdjustmentCheck())
+        .pre_trade(policy=MutatingAdjustmentCheck())
         .build()
     )
 
@@ -200,9 +195,9 @@ def test_account_adjustment_mutations_do_not_prevent_reject() -> None:
     """First policy returns mutations, second rejects. Batch rejected."""
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
-        .account_adjustment_policy(policy=MutatingAdjustmentPolicy())
-        .account_adjustment_policy(policy=RejectOnPendingPolicy())
+        .no_sync()
+        .pre_trade(policy=MutatingAdjustmentCheck())
+        .pre_trade(policy=RejectOnPendingPolicy())
         .build()
     )
 
@@ -220,7 +215,7 @@ def test_account_adjustment_mutations_do_not_prevent_reject() -> None:
 def test_account_adjustment_rejects_raw_account_id_int() -> None:
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
+        .no_sync()
         .builtin(openpit.pretrade.policies.build_order_validation())
         .build()
     )
@@ -236,7 +231,7 @@ def test_account_adjustment_rejects_raw_account_id_int() -> None:
 def test_account_adjustment_rejects_raw_account_id_str() -> None:
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
+        .no_sync()
         .builtin(openpit.pretrade.policies.build_order_validation())
         .build()
     )

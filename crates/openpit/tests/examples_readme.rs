@@ -38,7 +38,7 @@ fn example_readme_quickstart() -> Result<(), Box<dyn std::error::Error>> {
 
     // 1. Build the engine builder.
     type Report = WithExecutionReportOperation<WithFinancialImpact<()>>;
-    let engine_builder = Engine::<OrderOperation, Report>::builder().with_local_sync();
+    let engine_builder = Engine::<OrderOperation, Report>::builder().no_sync();
 
     // 2. Configure policies.
     let pnl_policy = PnlBoundsKillSwitchPolicy::new(
@@ -78,10 +78,10 @@ fn example_readme_quickstart() -> Result<(), Box<dyn std::error::Error>> {
 
     // 3. Build the engine (one time at the platform initialization).
     let engine = engine_builder
-        .check_pre_trade_start_policy(OrderValidationPolicy::new())
-        .check_pre_trade_start_policy(pnl_policy)
-        .check_pre_trade_start_policy(rate_limit_policy)
-        .check_pre_trade_start_policy(size_policy)
+        .pre_trade(OrderValidationPolicy::new())
+        .pre_trade(pnl_policy)
+        .pre_trade(rate_limit_policy)
+        .pre_trade(size_policy)
         .build()?;
 
     // 3. Check an order.

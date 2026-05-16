@@ -64,15 +64,16 @@ maturin develop --release --manifest-path bindings/python/Cargo.toml
 
 The engine evaluates an order through a deterministic pre-trade pipeline:
 
-- `engine.start_pre_trade(order=...)` runs start-stage policies and makes
+- `engine.start_pre_trade(order=...)` runs start-stage checks and makes
   lightweight check policies
 - `request.execute()` runs main-stage check policies
 - `reservation.commit()` applies reserved state
 - `reservation.rollback()` reverts reserved state
 - `engine.apply_execution_report(report=...)` updates post-trade policy state
 
-Start-stage policies stop on the first reject. Main-stage policies aggregate
-rejects and run rollback mutations in reverse order when any reject is produced.
+Start-stage checks aggregate rejects from all registered policies. Main-stage
+checks aggregate rejects and run rollback mutations in reverse order when any
+reject is produced.
 
 Built-in policies currently include:
 
@@ -150,7 +151,7 @@ order_size_policy = (
 # 2. Build the engine (one time at the platform initialization).
 engine = (
     openpit.Engine.builder()
-    .with_local_sync()
+    .no_sync()
     .builtin(openpit.pretrade.policies.build_order_validation())
     .builtin(pnl_policy)
     .builtin(rate_limit_policy)
@@ -235,7 +236,7 @@ assert result.kill_switch_triggered is False
 ## Errors
 
 Policy rejects from `engine.start_pre_trade()` and `request.execute()` are
-returned as `StartPreTradeResult` and `ExecuteResult`.
+returned as `StartResult` and `ExecuteResult`.
 
 Input validation errors and API misuse still raise exceptions:
 

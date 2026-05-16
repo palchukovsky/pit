@@ -157,59 +157,24 @@ func NewPretradePoliciesPnlBoundsAccountBarrier(
 }
 
 //------------------------------------------------------------------------------
-// CheckPreTradeStartPolicy
-
-func CreatePretradeCustomCheckPreTradeStartPolicy(
-	name string,
-	checkFnAddr unsafe.Pointer,
-	applyExecutionReportFnAddr unsafe.Pointer,
-	freeUserDataFnAddr unsafe.Pointer,
-	userData unsafe.Pointer,
-) (PretradeCheckPreTradeStartPolicy, error) {
-	var outError SharedString
-	p := C.openpit_create_pretrade_custom_check_pre_trade_start_policy(
-		importString(name),
-		*(*C.OpenPitPretradeCheckPreTradeStartPolicyCheckPreTradeStartFn)(checkFnAddr),
-		*(*C.OpenPitPretradeCheckPreTradeStartPolicyApplyExecutionReportFn)(applyExecutionReportFnAddr),
-		*(*C.OpenPitPretradeCheckPreTradeStartPolicyFreeUserDataFn)(freeUserDataFnAddr),
-		userData,
-		C.OpenPitOutError(&outError), //nolint:gocritic
-	)
-	if p == nil {
-		return nil,
-			consumeSharedStringAsError(
-				outError,
-				"openpit_create_pretrade_custom_check_pre_trade_start_policy failed",
-			)
-	}
-	return p, nil
-}
-
-func DestroyPretradeCheckPreTradeStartPolicy(policy PretradeCheckPreTradeStartPolicy) {
-	C.openpit_destroy_pretrade_check_pre_trade_start_policy(policy)
-}
-
-func PretradeCheckPreTradeStartPolicyGetName(
-	policy PretradeCheckPreTradeStartPolicy,
-) StringView {
-	return newStringView(C.openpit_pretrade_check_pre_trade_start_policy_get_name(policy))
-}
-
-//------------------------------------------------------------------------------
 // PreTradePolicy
 
 func CreatePretradeCustomPreTradePolicy(
 	name string,
-	checkFnAddr unsafe.Pointer,
-	applyFnAddr unsafe.Pointer,
+	checkPreTradeStartFnAddr unsafe.Pointer,
+	performPreTradeCheckFnAddr unsafe.Pointer,
+	applyExecutionReportFnAddr unsafe.Pointer,
+	applyAccountAdjustmentFnAddr unsafe.Pointer,
 	freeUserDataFnAddr unsafe.Pointer,
 	userData unsafe.Pointer,
 ) (PretradePreTradePolicy, error) {
 	var outError SharedString
 	p := C.openpit_create_pretrade_custom_pre_trade_policy(
 		importString(name),
-		*(*C.OpenPitPretradePreTradePolicyCheckFn)(checkFnAddr),
-		*(*C.OpenPitPretradePreTradePolicyApplyExecutionReportFn)(applyFnAddr),
+		*(*C.OpenPitPretradePreTradePolicyCheckPreTradeStartFn)(checkPreTradeStartFnAddr),
+		*(*C.OpenPitPretradePreTradePolicyPerformPreTradeCheckFn)(performPreTradeCheckFnAddr),
+		*(*C.OpenPitPretradePreTradePolicyApplyExecutionReportFn)(applyExecutionReportFnAddr),
+		*(*C.OpenPitPretradePreTradePolicyApplyAccountAdjustmentFn)(applyAccountAdjustmentFnAddr),
 		*(*C.OpenPitPretradePreTradePolicyFreeUserDataFn)(freeUserDataFnAddr),
 		userData,
 		C.OpenPitOutError(&outError), //nolint:gocritic
@@ -227,38 +192,6 @@ func DestroyPretradePreTradePolicy(policy PretradePreTradePolicy) {
 
 func PretradePreTradePolicyGetName(policy PretradePreTradePolicy) StringView {
 	return newStringView(C.openpit_pretrade_pre_trade_policy_get_name(policy))
-}
-
-//------------------------------------------------------------------------------
-// AccountAdjustmentPolicy
-
-func CreateCustomAccountAdjustmentPolicy(
-	name string,
-	applyFnAddr unsafe.Pointer,
-	freeUserDataFnAddr unsafe.Pointer,
-	userData unsafe.Pointer,
-) (AccountAdjustmentPolicy, error) {
-	var outError SharedString
-	p := C.openpit_create_custom_account_adjustment_policy(
-		importString(name),
-		*(*C.OpenPitAccountAdjustmentPolicyApplyFn)(applyFnAddr),
-		*(*C.OpenPitAccountAdjustmentPolicyFreeUserDataFn)(freeUserDataFnAddr),
-		userData,
-		C.OpenPitOutError(&outError), //nolint:gocritic
-	)
-	if p == nil {
-		return nil,
-			consumeSharedStringAsError(outError, "openpit_create_custom_account_adjustment_policy failed")
-	}
-	return p, nil
-}
-
-func DestroyAccountAdjustmentPolicy(policy AccountAdjustmentPolicy) {
-	C.openpit_destroy_account_adjustment_policy(policy)
-}
-
-func AccountAdjustmentPolicyGetName(policy AccountAdjustmentPolicy) StringView {
-	return newStringView(C.openpit_account_adjustment_policy_get_name(policy))
 }
 
 //------------------------------------------------------------------------------

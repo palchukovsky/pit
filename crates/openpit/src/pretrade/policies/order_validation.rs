@@ -18,9 +18,7 @@
 use crate::core::HasTradeAmount;
 use crate::param::TradeAmount;
 use crate::pretrade::policy::request_field_access_pre_trade_reject;
-use crate::pretrade::{
-    CheckPreTradeStartPolicy, PreTradeContext, Reject, RejectCode, RejectScope, Rejects,
-};
+use crate::pretrade::{PreTradeContext, PreTradePolicy, Reject, RejectCode, RejectScope, Rejects};
 
 /// Start-stage policy for basic order field validation.
 ///
@@ -39,15 +37,16 @@ impl OrderValidationPolicy {
     }
 }
 
-impl<O, R> CheckPreTradeStartPolicy<O, R> for OrderValidationPolicy
+impl<Order, ExecutionReport, AccountAdjustment>
+    PreTradePolicy<Order, ExecutionReport, AccountAdjustment> for OrderValidationPolicy
 where
-    O: HasTradeAmount,
+    Order: HasTradeAmount,
 {
     fn name(&self) -> &str {
         Self::NAME
     }
 
-    fn check_pre_trade_start(&self, _ctx: &PreTradeContext, order: &O) -> Result<(), Rejects> {
+    fn check_pre_trade_start(&self, _ctx: &PreTradeContext, order: &Order) -> Result<(), Rejects> {
         match order
             .trade_amount()
             .map_err(|e| Rejects::from(request_field_access_pre_trade_reject(Self::NAME, &e)))?
@@ -77,7 +76,7 @@ where
         Ok(())
     }
 
-    fn apply_execution_report(&self, _report: &R) -> bool {
+    fn apply_execution_report(&self, _report: &ExecutionReport) -> bool {
         false
     }
 }
@@ -86,7 +85,7 @@ where
 mod tests {
     use crate::core::{Instrument, OrderOperation};
     use crate::param::{AccountId, Asset, Price, Quantity, Side, TradeAmount, Volume};
-    use crate::pretrade::{CheckPreTradeStartPolicy, PreTradeContext, RejectCode, RejectScope};
+    use crate::pretrade::{PreTradeContext, PreTradePolicy, RejectCode, RejectScope};
     use crate::RequestFieldAccessError;
 
     use super::OrderValidationPolicy;
@@ -105,11 +104,13 @@ mod tests {
             price: Some(Price::from_str("10").expect("price must be valid")),
         };
 
-        let reject = <OrderValidationPolicy as CheckPreTradeStartPolicy<
-            OrderOperation,
-            (),
-        >>::check_pre_trade_start(&policy, &PreTradeContext::new(), &order)
-        .expect_err("zero quantity must be rejected");
+        let reject =
+            <OrderValidationPolicy as PreTradePolicy<OrderOperation, ()>>::check_pre_trade_start(
+                &policy,
+                &PreTradeContext::new(),
+                &order,
+            )
+            .expect_err("zero quantity must be rejected");
         let reject = &reject[0];
         assert_eq!(reject.scope, RejectScope::Order);
         assert_eq!(reject.code, RejectCode::InvalidFieldValue);
@@ -131,11 +132,13 @@ mod tests {
             price: None,
         };
 
-        let reject = <OrderValidationPolicy as CheckPreTradeStartPolicy<
-            OrderOperation,
-            (),
-        >>::check_pre_trade_start(&policy, &PreTradeContext::new(), &order)
-        .expect_err("zero volume must be rejected");
+        let reject =
+            <OrderValidationPolicy as PreTradePolicy<OrderOperation, ()>>::check_pre_trade_start(
+                &policy,
+                &PreTradeContext::new(),
+                &order,
+            )
+            .expect_err("zero volume must be rejected");
         let reject = &reject[0];
         assert_eq!(reject.code, RejectCode::InvalidFieldValue);
         assert_eq!(reject.reason, "order volume must be non-zero");
@@ -157,11 +160,14 @@ mod tests {
             price: None,
         };
 
-        assert!(<OrderValidationPolicy as CheckPreTradeStartPolicy<
-            OrderOperation,
-            (),
-        >>::check_pre_trade_start(&policy, &PreTradeContext::new(), &order)
-        .is_ok());
+        assert!(
+            <OrderValidationPolicy as PreTradePolicy<OrderOperation, ()>>::check_pre_trade_start(
+                &policy,
+                &PreTradeContext::new(),
+                &order
+            )
+            .is_ok()
+        );
     }
 
     #[test]
@@ -180,11 +186,14 @@ mod tests {
             price: Some(Price::ZERO),
         };
 
-        assert!(<OrderValidationPolicy as CheckPreTradeStartPolicy<
-            OrderOperation,
-            (),
-        >>::check_pre_trade_start(&policy, &PreTradeContext::new(), &zero_price_order)
-        .is_ok());
+        assert!(
+            <OrderValidationPolicy as PreTradePolicy<OrderOperation, ()>>::check_pre_trade_start(
+                &policy,
+                &PreTradeContext::new(),
+                &zero_price_order
+            )
+            .is_ok()
+        );
 
         let negative_price_order = OrderOperation {
             instrument: Instrument::new(
@@ -199,11 +208,14 @@ mod tests {
             price: Some(Price::from_str("-5").expect("price must be valid")),
         };
 
-        assert!(<OrderValidationPolicy as CheckPreTradeStartPolicy<
-            OrderOperation,
-            (),
-        >>::check_pre_trade_start(&policy, &PreTradeContext::new(), &negative_price_order)
-        .is_ok());
+        assert!(
+            <OrderValidationPolicy as PreTradePolicy<OrderOperation, ()>>::check_pre_trade_start(
+                &policy,
+                &PreTradeContext::new(),
+                &negative_price_order
+            )
+            .is_ok()
+        );
     }
 
     #[test]
@@ -211,7 +223,7 @@ mod tests {
         let policy = OrderValidationPolicy::new();
 
         assert_eq!(
-            <OrderValidationPolicy as CheckPreTradeStartPolicy<OrderOperation, ()>>::name(&policy),
+            <OrderValidationPolicy as PreTradePolicy<OrderOperation, ()>>::name(&policy),
             OrderValidationPolicy::NAME
         );
     }
@@ -232,15 +244,18 @@ mod tests {
             price: Some(Price::from_str("10").expect("price must be valid")),
         };
 
-        assert!(!<OrderValidationPolicy as CheckPreTradeStartPolicy<
+        assert!(!<OrderValidationPolicy as PreTradePolicy<
             OrderOperation,
             (),
         >>::apply_execution_report(&policy, &()));
-        assert!(<OrderValidationPolicy as CheckPreTradeStartPolicy<
-            OrderOperation,
-            (),
-        >>::check_pre_trade_start(&policy, &PreTradeContext::new(), &order)
-        .is_ok());
+        assert!(
+            <OrderValidationPolicy as PreTradePolicy<OrderOperation, ()>>::check_pre_trade_start(
+                &policy,
+                &PreTradeContext::new(),
+                &order
+            )
+            .is_ok()
+        );
     }
 
     #[test]
@@ -254,7 +269,12 @@ mod tests {
         }
 
         let policy = OrderValidationPolicy::new();
-        let reject = <OrderValidationPolicy as CheckPreTradeStartPolicy<InvalidOrder, ()>>::check_pre_trade_start(&policy, &PreTradeContext::new(), &InvalidOrder)
+        let reject =
+            <OrderValidationPolicy as PreTradePolicy<InvalidOrder, ()>>::check_pre_trade_start(
+                &policy,
+                &PreTradeContext::new(),
+                &InvalidOrder,
+            )
             .expect_err("field access error must reject");
         let reject = &reject[0];
         assert_eq!(reject.scope, RejectScope::Order);

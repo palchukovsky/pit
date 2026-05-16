@@ -20,6 +20,7 @@ package openpit
 import (
 	"testing"
 
+	"go.openpit.dev/openpit/accountadjustment"
 	"go.openpit.dev/openpit/model"
 	"go.openpit.dev/openpit/param"
 	"go.openpit.dev/openpit/pretrade"
@@ -142,8 +143,21 @@ func (p *mutationTrackingPolicy) PerformPreTradeCheck(
 	return nil
 }
 
+func (mutationTrackingPolicy) CheckPreTradeStart(pretrade.Context, model.Order) []reject.Reject {
+	return nil
+}
+
 func (mutationTrackingPolicy) ApplyExecutionReport(model.ExecutionReport) bool {
 	return false
+}
+
+func (mutationTrackingPolicy) ApplyAccountAdjustment(
+	accountadjustment.Context,
+	param.AccountID,
+	model.AccountAdjustment,
+	tx.Mutations,
+) []reject.Reject {
+	return nil
 }
 
 func newEngineWithPreTradePolicyForNativeE2E(
@@ -152,7 +166,7 @@ func newEngineWithPreTradePolicyForNativeE2E(
 ) *Engine {
 	t.Helper()
 
-	engine, err := NewEngineBuilder().WithFullSync().PreTradePolicy(policy).Build()
+	engine, err := NewEngineBuilder().FullSync().PreTrade(policy).Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}

@@ -20,8 +20,10 @@ package custompolicy
 import (
 	"testing"
 
+	"go.openpit.dev/openpit/accountadjustment"
 	"go.openpit.dev/openpit/internal/native"
 	"go.openpit.dev/openpit/model"
+	"go.openpit.dev/openpit/param"
 	"go.openpit.dev/openpit/pretrade"
 	"go.openpit.dev/openpit/reject"
 	"go.openpit.dev/openpit/tx"
@@ -35,6 +37,13 @@ func (fakePreTradePolicy) Close() {}
 
 func (p fakePreTradePolicy) Name() string { return p.name }
 
+func (fakePreTradePolicy) CheckPreTradeStart(
+	_ pretrade.Context,
+	_ model.Order,
+) []reject.Reject {
+	return nil
+}
+
 func (fakePreTradePolicy) PerformPreTradeCheck(
 	_ pretrade.Context,
 	_ model.Order,
@@ -45,6 +54,15 @@ func (fakePreTradePolicy) PerformPreTradeCheck(
 
 func (fakePreTradePolicy) ApplyExecutionReport(_ model.ExecutionReport) bool {
 	return false
+}
+
+func (fakePreTradePolicy) ApplyAccountAdjustment(
+	_ accountadjustment.Context,
+	_ param.AccountID,
+	_ model.AccountAdjustment,
+	_ tx.Mutations,
+) []reject.Reject {
+	return nil
 }
 
 func TestStartPreTradeSuccess(t *testing.T) {

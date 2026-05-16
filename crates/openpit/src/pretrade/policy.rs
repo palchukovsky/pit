@@ -16,30 +16,41 @@
 // Please see https://github.com/openpitkit and the OWNERS file for details.
 
 use super::{PreTradeContext, Reject, RejectCode, RejectScope, Rejects};
-use crate::Mutations;
+use crate::param::AccountId;
+use crate::{AccountAdjustmentContext, Mutations};
 
-/// Main-stage pre-trade policy contract.
+/// Pre-trade policy contract.
 ///
-/// Main-stage policies run during [`crate::pretrade::PreTradeRequest::execute`] after a
-/// request has already passed start-stage checks. They are intended for work
-/// that may need to reserve or mutate engine state and therefore must
-/// participate in commit/rollback handling.
+/// Policies are registered once and can participate in any engine stage:
+/// start-stage admission, main-stage reservation, post-trade feedback, and
+/// account-adjustment validation. Stage hooks default to no-op behavior so a
+/// policy can implement only the hooks it needs.
 ///
-/// All registered policies are evaluated even when one policy already emitted a
-/// reject. If any reject is produced, the engine rolls back accumulated
-/// mutations in reverse order before returning the reject list to the caller.
+/// Start-stage hooks run in [`crate::Engine::start_pre_trade`] before the engine
+/// creates a deferred request. Main-stage hooks run during
+/// [`crate::pretrade::PreTradeRequest::execute`] after a request has already
+/// passed start-stage checks. Account-adjustment hooks run in
+/// [`crate::Engine::apply_account_adjustment`] and validate each adjustment
+/// atomically before the caller applies any external effects.
+///
+/// All registered policies are evaluated in registration order. Stage-specific
+/// rejects are merged before the engine returns to the caller.
 ///
 /// # Rollback safety
 ///
-/// Mutations registered during pre-trade checks may be committed or
-/// rolled back after external systems have already observed intermediate
-/// state (for example, a venue accepted an order based on a reserved
-/// notional). Avoid absolute-value rollback in this pipeline; prefer
-/// delta-based undo or capture the value to restore at registration
-/// time.
+/// Mutations registered during main-stage pre-trade checks may be committed or
+/// rolled back after external systems have already observed intermediate state
+/// (for example, a venue accepted an order based on a reserved notional). Avoid
+/// absolute-value rollback in this pipeline; prefer delta-based undo or capture
+/// the value to restore at registration time.
+///
+/// Account-adjustment hooks run within a single engine borrow. Intermediate
+/// state is never visible to external systems (venues, risk aggregators), so
+/// rollback by absolute value is safe there.
 ///
 /// `O` is the order contract type visible in callbacks. `R` is the
-/// execution report contract type used for post-trade updates.
+/// execution report contract type used for post-trade updates. `A` is the
+/// account-adjustment contract type visible to account-adjustment hooks.
 ///
 /// # Examples
 ///
@@ -49,31 +60,29 @@ use crate::Mutations;
 ///
 /// struct NoopPolicy;
 ///
-/// impl<O, R> PreTradePolicy<O, R> for NoopPolicy {
+/// impl<Order, ExecutionReport, AccountAdjustment>
+///     PreTradePolicy<Order, ExecutionReport, AccountAdjustment> for NoopPolicy
+/// {
 ///     fn name(&self) -> &str {
 ///         "NoopPolicy"
 ///     }
-///
-///     fn perform_pre_trade_check(
-///         &self,
-///         _ctx: &PreTradeContext,
-///         _order: &O,
-///         _mutations: &mut Mutations,
-///     ) -> Result<(), Rejects> {
-///         Ok(())
-///     }
-///
-///     fn apply_execution_report(&self, _report: &R) -> bool {
-///         false
-///     }
 /// }
 /// ```
-pub trait PreTradePolicy<O, R> {
+pub trait PreTradePolicy<Order, ExecutionReport, AccountAdjustment = ()> {
     /// Stable policy name.
     ///
     /// Policy names must be unique across all policies registered in the same
     /// engine instance.
     fn name(&self) -> &str;
+
+    /// Performs start-stage checks against an order.
+    ///
+    /// Returning `Ok(())` allows the engine to continue building the deferred
+    /// request. Returning [`Rejects`] contributes rejects to the start-stage
+    /// reject result.
+    fn check_pre_trade_start(&self, _ctx: &PreTradeContext, _order: &Order) -> Result<(), Rejects> {
+        Ok(())
+    }
 
     /// Performs main-stage checks and can emit mutations or rejects.
     ///
@@ -88,10 +97,12 @@ pub trait PreTradePolicy<O, R> {
     /// captured at registration time.
     fn perform_pre_trade_check(
         &self,
-        ctx: &PreTradeContext,
-        order: &O,
-        mutations: &mut Mutations,
-    ) -> Result<(), Rejects>;
+        _ctx: &PreTradeContext,
+        _order: &Order,
+        _mutations: &mut Mutations,
+    ) -> Result<(), Rejects> {
+        Ok(())
+    }
 
     /// Applies post-trade updates from execution reports.
     ///
@@ -99,7 +110,33 @@ pub trait PreTradePolicy<O, R> {
     /// so that a main-stage policy can maintain post-trade state.
     ///
     /// Returns `true` when this policy reports kill-switch trigger.
-    fn apply_execution_report(&self, report: &R) -> bool;
+    fn apply_execution_report(&self, _report: &ExecutionReport) -> bool {
+        false
+    }
+
+    /// Validates a single account adjustment.
+    ///
+    /// `account_id` is the identifier passed to
+    /// [`crate::Engine::apply_account_adjustment`].
+    ///
+    /// # Rollback safety
+    ///
+    /// In this account-adjustment pipeline, rollback by absolute value is
+    /// safe because validation and mutation execution happen within a single
+    /// engine borrow and no external system observes intermediate state.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Rejects`] when the adjustment violates policy constraints.
+    fn apply_account_adjustment(
+        &self,
+        _ctx: &AccountAdjustmentContext,
+        _account_id: AccountId,
+        _adjustment: &AccountAdjustment,
+        _mutations: &mut Mutations,
+    ) -> Result<(), Rejects> {
+        Ok(())
+    }
 }
 
 pub(crate) fn request_field_access_pre_trade_reject(
@@ -132,6 +169,24 @@ mod tests {
 
     struct MainPolicyNoop;
 
+    struct StartPolicyNoop;
+
+    struct AccountAdjustmentHookNoop;
+
+    impl PreTradePolicy<TestOrder, TestReport> for StartPolicyNoop {
+        fn name(&self) -> &str {
+            "StartPolicyNoop"
+        }
+
+        fn check_pre_trade_start(
+            &self,
+            _ctx: &PreTradeContext,
+            _order: &TestOrder,
+        ) -> Result<(), Rejects> {
+            Ok(())
+        }
+    }
+
     impl PreTradePolicy<TestOrder, TestReport> for MainPolicyNoop {
         fn name(&self) -> &str {
             "MainPolicyNoop"
@@ -145,9 +200,21 @@ mod tests {
         ) -> Result<(), Rejects> {
             Ok(())
         }
+    }
 
-        fn apply_execution_report(&self, _report: &TestReport) -> bool {
-            false
+    impl PreTradePolicy<TestOrder, TestReport> for AccountAdjustmentHookNoop {
+        fn name(&self) -> &str {
+            "AccountAdjustmentHookNoop"
+        }
+
+        fn apply_account_adjustment(
+            &self,
+            _ctx: &crate::AccountAdjustmentContext,
+            _account_id: AccountId,
+            _adjustment: &(),
+            _mutations: &mut Mutations,
+        ) -> Result<(), Rejects> {
+            Ok(())
         }
     }
 
@@ -175,6 +242,29 @@ mod tests {
     }
 
     #[test]
+    fn apply_execution_report_hook_returns_false_for_noop_start_policy() {
+        let report = WithExecutionReportOperation {
+            inner: WithFinancialImpact {
+                inner: (),
+                financial_impact: FinancialImpact {
+                    pnl: Pnl::from_str("0").expect("pnl must be valid"),
+                    fee: Fee::ZERO,
+                },
+            },
+            operation: ExecutionReportOperation {
+                instrument: crate::Instrument::new(
+                    Asset::new("AAPL").expect("asset code must be valid"),
+                    Asset::new("USD").expect("asset code must be valid"),
+                ),
+                account_id: AccountId::from_u64(99224416),
+                side: Side::Buy,
+            },
+        };
+
+        assert!(!StartPolicyNoop.apply_execution_report(&report));
+    }
+
+    #[test]
     fn required_trait_methods_can_be_invoked_without_side_effects() {
         let order = OrderOperation {
             instrument: crate::Instrument::new(
@@ -193,6 +283,45 @@ mod tests {
         assert_eq!(MainPolicyNoop.name(), "MainPolicyNoop");
         let result =
             MainPolicyNoop.perform_pre_trade_check(&PreTradeContext::new(), &order, &mut mutations);
+        assert!(mutations.is_empty());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn required_start_trait_methods_can_be_invoked_without_side_effects() {
+        let order = OrderOperation {
+            instrument: crate::Instrument::new(
+                Asset::new("AAPL").expect("asset code must be valid"),
+                Asset::new("USD").expect("asset code must be valid"),
+            ),
+            account_id: AccountId::from_u64(99224416),
+            side: Side::Buy,
+            trade_amount: TradeAmount::Quantity(
+                Quantity::from_str("1").expect("quantity must be valid"),
+            ),
+            price: None,
+        };
+
+        assert_eq!(StartPolicyNoop.name(), "StartPolicyNoop");
+        assert!(StartPolicyNoop
+            .check_pre_trade_start(&PreTradeContext::new(), &order)
+            .is_ok());
+    }
+
+    #[test]
+    fn required_account_adjustment_trait_methods_can_be_invoked_without_side_effects() {
+        let mut mutations = Mutations::new();
+
+        assert_eq!(
+            AccountAdjustmentHookNoop.name(),
+            "AccountAdjustmentHookNoop"
+        );
+        let result = AccountAdjustmentHookNoop.apply_account_adjustment(
+            &crate::AccountAdjustmentContext::new(),
+            AccountId::from_u64(99224416),
+            &(),
+            &mut mutations,
+        );
         assert!(mutations.is_empty());
         assert!(result.is_ok());
     }

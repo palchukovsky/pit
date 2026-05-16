@@ -23,8 +23,7 @@ import decimal
 import typing
 
 from . import param
-from .account_adjustment import AccountAdjustmentPolicy
-from .pretrade import CheckPreTradeStartPolicy, PreTradePolicy
+from .pretrade import Policy
 
 _ROUNDING_STRATEGY_DEFAULT: str
 _ROUNDING_STRATEGY_BANKER: str
@@ -756,7 +755,7 @@ class ExecutionReportFillDetails:
         *,
         last_trade: Trade | None = None,
         leaves_quantity: param.Quantity | None = None,
-        lock: PreTradeLock,
+        lock: Lock,
         is_final: bool | None = None,
     ) -> None:
         """Create a fill details group."""
@@ -775,11 +774,11 @@ class ExecutionReportFillDetails:
     @leaves_quantity.setter
     def leaves_quantity(self, value: param.Quantity | None) -> None: ...
     @property
-    def lock(self) -> PreTradeLock:
+    def lock(self) -> Lock:
         """Order lock payload."""
 
     @lock.setter
-    def lock(self, value: PreTradeLock) -> None: ...
+    def lock(self, value: Lock) -> None: ...
     @property
     def is_final(self) -> bool | None:
         """Whether this report closes the order's report stream.
@@ -1115,7 +1114,7 @@ class AccountAdjustment:
     @bounds.setter
     def bounds(self, value: AccountAdjustmentBounds | None) -> None: ...
 
-class PreTradeRequest:
+class Request:
     """
     Deferred main-stage request handle produced by ``Engine.start_pre_trade``.
 
@@ -1126,7 +1125,7 @@ class PreTradeRequest:
     def execute(self) -> ExecuteResult:
         """Run main-stage pre-trade checks."""
 
-class PreTradeLock:
+class Lock:
     """Pre-trade lock payload."""
 
     def __init__(self, price: param.Price | None = None) -> None:
@@ -1136,7 +1135,7 @@ class PreTradeLock:
     def price(self) -> param.Price | None:
         """Optional locked price."""
 
-class PreTradeReservation:
+class Reservation:
     """
     Single-use reservation handle returned by successful main-stage execution.
 
@@ -1144,7 +1143,7 @@ class PreTradeReservation:
     reserved state.
     """
 
-    def lock(self) -> PreTradeLock:
+    def lock(self) -> Lock:
         """Current reservation lock payload."""
 
     def commit(self) -> None:
@@ -1153,12 +1152,12 @@ class PreTradeReservation:
     def rollback(self) -> None:
         """Finalize reservation as rolled back."""
 
-class StartPreTradeResult:
+class StartResult:
     """
     Result of ``Engine.start_pre_trade``.
 
     On success it exposes a deferred request handle; on failure it exposes the
-    merged reject list from all rejecting start-stage policies.
+    merged reject list from all rejecting start-stage checks.
     """
 
     @property
@@ -1166,7 +1165,7 @@ class StartPreTradeResult:
         """Whether start-stage checks passed."""
 
     @property
-    def request(self) -> PreTradeRequest | None:
+    def request(self) -> Request | None:
         """Request handle when checks pass."""
 
     @property
@@ -1178,9 +1177,9 @@ class StartPreTradeResult:
 
 class ExecuteResult:
     """
-    Result of ``PreTradeRequest.execute``.
+    Result of ``Request.execute``.
 
-    This object reports whether main-stage policies accepted the request and,
+    This object reports whether main-stage checks accepted the request and,
     on success, carries the single-use reservation handle that must later be
     committed or rolled back.
     """
@@ -1190,7 +1189,7 @@ class ExecuteResult:
         """Whether main-stage checks passed."""
 
     @property
-    def reservation(self) -> PreTradeReservation | None:
+    def reservation(self) -> Reservation | None:
         """Reservation when checks pass."""
 
     @property
@@ -1230,7 +1229,7 @@ class PostTradeResult:
     def kill_switch_triggered(self) -> bool:
         """Whether any policy reported an active kill switch."""
 
-class PreTradeContext:
+class Context:
     """Context of the current pre-trade operation."""
 
 class AccountAdjustmentContext:
@@ -1252,53 +1251,31 @@ class SyncedEngineBuilder:
     """Second stage of the engine builder (sync policy already chosen). Add at least one
     policy to obtain a ReadyEngineBuilder."""
 
-    def check_pre_trade_start_policy(
+    def pre_trade(
         self,
-        policy: CheckPreTradeStartPolicy,
+        policy: Policy,
     ) -> ReadyEngineBuilder:
-        """Register a start-stage policy."""
+        """Register a pre-trade policy."""
         _ = policy
 
-    def pre_trade_policy(self, policy: PreTradePolicy) -> ReadyEngineBuilder:
-        """Register a main-stage policy."""
-        _ = policy
-
-    def account_adjustment_policy(
-        self,
-        policy: AccountAdjustmentPolicy,
-    ) -> ReadyEngineBuilder:
-        """Register an account-adjustment policy."""
-        _ = policy
-
-    def builtin(self, builtinReadyBuilder: typing.Any) -> ReadyEngineBuilder:
+    def builtin(self, builtin_ready_builder: typing.Any) -> ReadyEngineBuilder:
         """Register a built-in policy via its ready builder."""
-        _ = builtinReadyBuilder
+        _ = builtin_ready_builder
 
 class ReadyEngineBuilder:
     """Third stage of the engine builder (at least one policy registered). Accepts more
     policies and builds the engine."""
 
-    def check_pre_trade_start_policy(
+    def pre_trade(
         self,
-        policy: CheckPreTradeStartPolicy,
+        policy: Policy,
     ) -> ReadyEngineBuilder:
-        """Register an additional start-stage policy."""
+        """Register an additional pre-trade policy."""
         _ = policy
 
-    def pre_trade_policy(self, policy: PreTradePolicy) -> ReadyEngineBuilder:
-        """Register an additional main-stage policy."""
-        _ = policy
-
-    def account_adjustment_policy(
-        self,
-        policy: AccountAdjustmentPolicy,
-    ) -> ReadyEngineBuilder:
-        """Register an additional account-adjustment policy."""
-        _ = policy
-
-    def builtin(self, builtinReadyBuilder: typing.Any) -> ReadyEngineBuilder:
+    def builtin(self, builtin_ready_builder: typing.Any) -> ReadyEngineBuilder:
         """Register a built-in policy via its ready builder."""
-        _ = builtinReadyBuilder
+        _ = builtin_ready_builder
 
     def build(self) -> Engine:
         """Build an engine instance."""
@@ -1310,7 +1287,7 @@ class Engine:
     def builder() -> EngineBuilder:
         """Create a new EngineBuilder."""
 
-    def start_pre_trade(self, order: object) -> StartPreTradeResult: ...
+    def start_pre_trade(self, order: object) -> StartResult: ...
     def execute_pre_trade(self, order: object) -> ExecuteResult: ...
     def apply_execution_report(self, report: object) -> PostTradeResult: ...
     def apply_account_adjustment(
@@ -1322,13 +1299,12 @@ class Engine:
 class EngineBuilder:
     """First stage of the engine builder."""
 
-    def with_full_sync(self) -> SyncedEngineBuilder:
+    def full_sync(self) -> SyncedEngineBuilder:
         """Use full synchronization (concurrent cross-thread calls safe)."""
 
-    def with_local_sync(self) -> SyncedEngineBuilder:
-        """Use local synchronization (zero overhead; handle stays on creating
-        thread)."""
+    def no_sync(self) -> SyncedEngineBuilder:
+        """Use no synchronization (zero overhead; handle stays on creating thread)."""
 
-    def with_account_sync(self) -> SyncedEngineBuilder:
+    def account_sync(self) -> SyncedEngineBuilder:
         """Use account synchronization (concurrent when caller pins each account to one
         chain)."""

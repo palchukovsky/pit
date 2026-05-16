@@ -21,9 +21,11 @@ import (
 	"runtime/cgo"
 	"testing"
 
+	"go.openpit.dev/openpit/accountadjustment"
 	"go.openpit.dev/openpit/internal/callback"
 	"go.openpit.dev/openpit/internal/native"
 	"go.openpit.dev/openpit/model"
+	"go.openpit.dev/openpit/param"
 	"go.openpit.dev/openpit/reject"
 	"go.openpit.dev/openpit/tx"
 )
@@ -38,8 +40,8 @@ type clientPayloadTestReport struct {
 	VenueExecID string
 }
 
-func TestSafeClientPolicyRejectsMissingOrderPayload(t *testing.T) {
-	wrapped := NewSafeClientCheckPreTradeStartPolicy(&clientPayloadTestPolicy{})
+func TestSafeClientPreTradePolicyCheckPreTradeStartRejectsMissingOrderPayload(t *testing.T) {
+	wrapped := NewSafeClientPreTradePolicy(&clientPayloadTestPolicy{})
 
 	rejects := wrapped.CheckPreTradeStart(Context{}, model.NewOrder())
 	if len(rejects) != 1 {
@@ -50,48 +52,10 @@ func TestSafeClientPolicyRejectsMissingOrderPayload(t *testing.T) {
 	}
 }
 
-func TestSafeClientPolicyIgnoresMissingReportPayload(t *testing.T) {
-	wrapped := NewSafeClientCheckPreTradeStartPolicy(&clientPayloadTestPolicy{killSwitch: true})
-
-	if wrapped.ApplyExecutionReport(model.NewExecutionReport()) {
-		t.Fatal("ApplyExecutionReport() = true, want false")
-	}
-}
-
-func TestSafeClientPolicyCastsOrderPayload(t *testing.T) {
+func TestSafeClientPreTradePolicyCheckPreTradeStartCastsOrderPayload(t *testing.T) {
 	policy := &clientPayloadTestPolicy{}
-	wrapped := NewSafeClientCheckPreTradeStartPolicy(policy)
+	wrapped := NewSafeClientPreTradePolicy(policy)
 	order := clientPayloadTestOrder{Order: model.NewOrder(), Route: "dark-pool"}
-
-	rejects := wrapped.CheckPreTradeStart(Context{}, orderWithPayload(t, order))
-	if len(rejects) != 0 {
-		t.Fatalf("CheckPreTradeStart() rejects = %v, want none", rejects)
-	}
-	if policy.order.Route != order.Route {
-		t.Fatalf("order route = %q, want %q", policy.order.Route, order.Route)
-	}
-}
-
-func TestSafeClientPolicyCastsReportPayload(t *testing.T) {
-	policy := &clientPayloadTestPolicy{killSwitch: true}
-	wrapped := NewSafeClientCheckPreTradeStartPolicy(policy)
-	report := clientPayloadTestReport{
-		ExecutionReport: model.NewExecutionReport(),
-		VenueExecID:     "venue-fill-1",
-	}
-
-	if !wrapped.ApplyExecutionReport(reportWithPayload(t, report)) {
-		t.Fatal("ApplyExecutionReport() = false, want true")
-	}
-	if policy.report.VenueExecID != report.VenueExecID {
-		t.Fatalf("report venue id = %q, want %q", policy.report.VenueExecID, report.VenueExecID)
-	}
-}
-
-func TestUnsafeFastClientPolicyCastsOrderPayload(t *testing.T) {
-	policy := &clientPayloadTestPolicy{}
-	wrapped := NewUnsafeFastClientCheckPreTradeStartPolicy(policy)
-	order := clientPayloadTestOrder{Order: model.NewOrder(), Route: "fast-lane"}
 
 	rejects := wrapped.CheckPreTradeStart(Context{}, orderWithPayload(t, order))
 	if len(rejects) != 0 {
@@ -139,6 +103,38 @@ func TestSafeClientPreTradePolicyApplyExecutionReportIgnoresMissingPayload(t *te
 	}
 }
 
+func TestSafeClientPreTradePolicyApplyAccountAdjustmentIsForwarded(t *testing.T) {
+	policy := &clientPayloadTestPolicy{}
+	wrapped := NewSafeClientPreTradePolicy(policy)
+
+	rejects := wrapped.ApplyAccountAdjustment(
+		accountadjustment.Context{},
+		param.NewAccountIDFromInt(1),
+		model.NewAccountAdjustment(),
+		tx.Mutations{},
+	)
+	if len(rejects) != 0 {
+		t.Fatalf("ApplyAccountAdjustment() rejects = %v, want none", rejects)
+	}
+	if !policy.accountAdjustmentCalled {
+		t.Fatal("ApplyAccountAdjustment() not called on policy")
+	}
+}
+
+func TestUnsafeFastClientPreTradePolicyCheckPreTradeStartCastsOrderPayload(t *testing.T) {
+	policy := &clientPayloadTestPolicy{}
+	wrapped := NewUnsafeFastClientPreTradePolicy(policy)
+	order := clientPayloadTestOrder{Order: model.NewOrder(), Route: "fast-lane"}
+
+	rejects := wrapped.CheckPreTradeStart(Context{}, orderWithPayload(t, order))
+	if len(rejects) != 0 {
+		t.Fatalf("CheckPreTradeStart() rejects = %v, want none", rejects)
+	}
+	if policy.order.Route != order.Route {
+		t.Fatalf("order route = %q, want %q", policy.order.Route, order.Route)
+	}
+}
+
 func TestUnsafeFastClientPreTradePolicyCastsOrderPayload(t *testing.T) {
 	policy := &clientPayloadTestPolicy{}
 	wrapped := NewUnsafeFastClientPreTradePolicy(policy)
@@ -169,45 +165,21 @@ func TestUnsafeFastClientPreTradePolicyApplyExecutionReportCastsReport(t *testin
 	}
 }
 
-func TestUnsafeFastClientCheckPreTradeStartPolicyApplyExecutionReportCastsReport(t *testing.T) {
-	policy := &clientPayloadTestPolicy{killSwitch: true}
-	wrapped := NewUnsafeFastClientCheckPreTradeStartPolicy(policy)
-	report := clientPayloadTestReport{
-		ExecutionReport: model.NewExecutionReport(),
-		VenueExecID:     "unsafe-start-report",
-	}
-
-	if !wrapped.ApplyExecutionReport(reportWithPayload(t, report)) {
-		t.Fatal("ApplyExecutionReport() = false, want true")
-	}
-	if policy.report.VenueExecID != report.VenueExecID {
-		t.Fatalf("report venue id = %q, want %q", policy.report.VenueExecID, report.VenueExecID)
-	}
-}
-
-func TestSafeClientCheckPreTradeStartPolicyNameAndClose(t *testing.T) {
+func TestUnsafeFastClientPreTradePolicyApplyAccountAdjustmentIsForwarded(t *testing.T) {
 	policy := &clientPayloadTestPolicy{}
-	wrapped := NewSafeClientCheckPreTradeStartPolicy(policy)
+	wrapped := NewUnsafeFastClientPreTradePolicy(policy)
 
-	if got := wrapped.Name(); got != policy.Name() {
-		t.Fatalf("Name() = %q, want %q", got, policy.Name())
+	rejects := wrapped.ApplyAccountAdjustment(
+		accountadjustment.Context{},
+		param.NewAccountIDFromInt(1),
+		model.NewAccountAdjustment(),
+		tx.Mutations{},
+	)
+	if len(rejects) != 0 {
+		t.Fatalf("ApplyAccountAdjustment() rejects = %v, want none", rejects)
 	}
-	wrapped.Close()
-	if policy.closeCalls != 1 {
-		t.Fatalf("closeCalls = %d, want 1", policy.closeCalls)
-	}
-}
-
-func TestUnsafeFastClientCheckPreTradeStartPolicyNameAndClose(t *testing.T) {
-	policy := &clientPayloadTestPolicy{}
-	wrapped := NewUnsafeFastClientCheckPreTradeStartPolicy(policy)
-
-	if got := wrapped.Name(); got != policy.Name() {
-		t.Fatalf("Name() = %q, want %q", got, policy.Name())
-	}
-	wrapped.Close()
-	if policy.closeCalls != 1 {
-		t.Fatalf("closeCalls = %d, want 1", policy.closeCalls)
+	if !policy.accountAdjustmentCalled {
+		t.Fatal("ApplyAccountAdjustment() not called on policy")
 	}
 }
 
@@ -260,10 +232,11 @@ func TestSafeClientPreTradePolicyApplyExecutionReportReturnsFalseOnMismatchedPay
 }
 
 type clientPayloadTestPolicy struct {
-	order      clientPayloadTestOrder
-	report     clientPayloadTestReport
-	killSwitch bool
-	closeCalls int
+	order                   clientPayloadTestOrder
+	report                  clientPayloadTestReport
+	killSwitch              bool
+	closeCalls              int
+	accountAdjustmentCalled bool
 }
 
 func (p *clientPayloadTestPolicy) Close() { p.closeCalls++ }
@@ -292,6 +265,16 @@ func (p *clientPayloadTestPolicy) PerformPreTradeCheck(
 func (p *clientPayloadTestPolicy) ApplyExecutionReport(report clientPayloadTestReport) bool {
 	p.report = report
 	return p.killSwitch
+}
+
+func (p *clientPayloadTestPolicy) ApplyAccountAdjustment(
+	_ accountadjustment.Context,
+	_ param.AccountID,
+	_ model.AccountAdjustment,
+	_ tx.Mutations,
+) []reject.Reject {
+	p.accountAdjustmentCalled = true
+	return nil
 }
 
 func orderWithPayload(t *testing.T, order clientPayloadTestOrder) model.Order {

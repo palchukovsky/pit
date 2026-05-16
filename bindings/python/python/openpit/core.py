@@ -47,10 +47,10 @@ from .param import (
 )
 
 if typing.TYPE_CHECKING:
-    from .pretrade import PreTradeLock
+    from .pretrade import Lock
 
 AccountAdjustmentContext.__doc__ = """
-Opaque context object passed to account-adjustment policy callbacks.
+Opaque context object passed to account-adjustment check callbacks.
 
 The object identifies the current account-adjustment evaluation context. Treat
 it as read-only and do not instantiate it directly.
@@ -462,7 +462,7 @@ class ExecutionReportFillDetails(_ExecutionReportFillDetails):
         *,
         last_trade: Trade | None = None,
         leaves_quantity: Quantity | None = None,
-        lock: PreTradeLock,
+        lock: Lock,
         is_final: bool | None = None,
     ) -> None:
         _ExecutionReportFillDetails.last_trade.__set__(self, last_trade)
@@ -487,13 +487,13 @@ class ExecutionReportFillDetails(_ExecutionReportFillDetails):
 
     # @typing.override
     @property
-    def lock(self) -> PreTradeLock:
+    def lock(self) -> Lock:
         """Order lock payload."""
         # Lazy import avoids runtime import cycles between core and pretrade modules.
-        from .pretrade import PreTradeLock as _PythonPreTradeLock
+        from .pretrade import Lock as _PythonLock
 
         value = _ExecutionReportFillDetails.lock.__get__(self, type(self))
-        return _PythonPreTradeLock(price=value.price)
+        return _PythonLock(price=value.price)
 
     # @typing.override
     @property
@@ -619,26 +619,35 @@ class ExecutionReport(_ExecutionReport):
 
 
 def __getattr__(name: str) -> typing.Any:
-    if name in {
-        "AccountAdjustment",
-        "AccountAdjustmentAmount",
-        "AccountAdjustmentBalanceOperation",
-        "AccountAdjustmentBounds",
-        "AccountAdjustmentPositionOperation",
-    }:
+    account_adjustment_names = {
+        "AccountAdjustment": "Adjustment",
+        "AccountAdjustmentAmount": "Amount",
+        "AccountAdjustmentBalanceOperation": "BalanceOperation",
+        "AccountAdjustmentBounds": "Bounds",
+        "AccountAdjustmentPositionOperation": "PositionOperation",
+    }
+    if name in account_adjustment_names:
         from . import account_adjustment
 
-        return getattr(account_adjustment, name)
+        return getattr(account_adjustment, account_adjustment_names[name])
     raise AttributeError(name)
 
 
 if typing.TYPE_CHECKING:
     from .account_adjustment import (
-        AccountAdjustment,
-        AccountAdjustmentAmount,
-        AccountAdjustmentBalanceOperation,
-        AccountAdjustmentBounds,
-        AccountAdjustmentPositionOperation,
+        Adjustment as AccountAdjustment,
+    )
+    from .account_adjustment import (
+        Amount as AccountAdjustmentAmount,
+    )
+    from .account_adjustment import (
+        BalanceOperation as AccountAdjustmentBalanceOperation,
+    )
+    from .account_adjustment import (
+        Bounds as AccountAdjustmentBounds,
+    )
+    from .account_adjustment import (
+        PositionOperation as AccountAdjustmentPositionOperation,
     )
 
 __all__ = [

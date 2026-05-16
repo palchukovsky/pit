@@ -68,46 +68,10 @@ func EngineBuilderBuild(builder EngineBuilder) (Engine, error) {
 	return e, nil
 }
 
-func EngineBuilderAddCheckPreTradeStartPolicy(
-	builder EngineBuilder,
-	policy PretradeCheckPreTradeStartPolicy,
-) error {
-	var outError SharedString
-	if !C.openpit_engine_builder_add_check_pre_trade_start_policy(
-		builder,
-		policy,
-		C.OpenPitOutError(&outError), //nolint:gocritic
-	) {
-		return consumeSharedStringAsError(
-			outError,
-			"openpit_engine_builder_add_check_pre_trade_start_policy failed",
-		)
-	}
-	return nil
-}
-
 func EngineBuilderAddPreTradePolicy(builder EngineBuilder, policy PretradePreTradePolicy) error {
 	var outError SharedString
 	if !C.openpit_engine_builder_add_pre_trade_policy(builder, policy, C.OpenPitOutError(&outError)) { //nolint:gocritic
 		return consumeSharedStringAsError(outError, "openpit_engine_builder_add_pre_trade_policy failed")
-	}
-	return nil
-}
-
-func EngineBuilderAddAccountAdjustmentPolicy(
-	builder EngineBuilder,
-	policy AccountAdjustmentPolicy,
-) error {
-	var outError SharedString
-	if !C.openpit_engine_builder_add_account_adjustment_policy(
-		builder,
-		policy,
-		C.OpenPitOutError(&outError), //nolint:gocritic
-	) {
-		return consumeSharedStringAsError(
-			outError,
-			"openpit_engine_builder_add_account_adjustment_policy failed",
-		)
 	}
 	return nil
 }

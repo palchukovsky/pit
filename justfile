@@ -47,7 +47,7 @@ lint-go:
     cd bindings/go && golangci-lint run ./...
 
 # Run all tests.
-test-all: test-rust test-python test-go test-go-race
+test-all: test-rust test-python test-go test-go-race test-c-examples
 
 # Rust tests.
 test-rust:
@@ -90,6 +90,11 @@ test-go-race:
 test-go-cov:
     just _go "go test -coverprofile=coverage.out -coverpkg=./... ./..."
     cd bindings/go && go tool cover -func=coverage.out | grep -v '100.0%'
+
+# Compile C examples embedded in public README files.
+test-c-examples:
+    awk 'BEGIN { in_block = 0; first_block = 1 } /^```c$/ { in_block = 1; if (!first_block) print ""; first_block = 0; next } /^```$/ && in_block { in_block = 0; next } in_block { print }' bindings/c/README.md > /tmp/openpit_readme_example.c
+    cc -std=c11 -fsyntax-only -I bindings/c /tmp/openpit_readme_example.c
 
 # Format all.
 fmt-all: fmt-rust fmt-python fmt-go

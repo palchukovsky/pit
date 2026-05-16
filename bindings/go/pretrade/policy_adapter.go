@@ -21,9 +21,11 @@ import (
 	"fmt"
 	"unsafe"
 
+	"go.openpit.dev/openpit/accountadjustment"
 	"go.openpit.dev/openpit/internal/callback"
 	"go.openpit.dev/openpit/internal/native"
 	"go.openpit.dev/openpit/model"
+	"go.openpit.dev/openpit/param"
 	"go.openpit.dev/openpit/reject"
 	"go.openpit.dev/openpit/tx"
 )
@@ -45,53 +47,22 @@ type ClientExecutionReport interface {
 	EngineExecutionReport() model.ExecutionReport
 }
 
-// ClientCheckPreTradeStartPolicy is a start-stage policy written against
-// client-owned order and execution report types.
-type ClientCheckPreTradeStartPolicy[Order ClientOrder, Report ClientExecutionReport] interface {
-	Close()
-	Name() string
-	CheckPreTradeStart(Context, Order) []reject.Reject
-	ApplyExecutionReport(Report) bool
-}
-
-// ClientPreTradePolicy is a main pre-trade policy written against client-owned
+// ClientPreTradePolicy is a pre-trade policy written against client-owned
 // order and execution report types.
+//
+// Account adjustments use the standard SDK model type because the adjustment
+// payload routing does not carry a client-typed wrapper through the engine
+// callback path.
 type ClientPreTradePolicy[Order ClientOrder, Report ClientExecutionReport] interface {
 	Close()
 	Name() string
+	CheckPreTradeStart(Context, Order) []reject.Reject
 	PerformPreTradeCheck(Context, Order, tx.Mutations) []reject.Reject
 	ApplyExecutionReport(Report) bool
+	ApplyAccountAdjustment(accountadjustment.Context, param.AccountID, model.AccountAdjustment, tx.Mutations) []reject.Reject
 }
 
-// NewSafeClientCheckPreTradeStartPolicy adapts a client typed start policy to
-// the standard policy interface with payload validation.
-//
-// Missing or mismatched order payloads become an order-scoped reject. Missing
-// or mismatched report payloads return false.
-func NewSafeClientCheckPreTradeStartPolicy[
-	Order ClientOrder,
-	Report ClientExecutionReport,
-](
-	policy ClientCheckPreTradeStartPolicy[Order, Report],
-) CheckStartPolicy {
-	return &safeClientCheckPreTradeStartPolicy[Order, Report]{policy: policy}
-}
-
-// NewUnsafeFastClientCheckPreTradeStartPolicy adapts a client typed start
-// policy without payload validation.
-//
-// It is intended for SDK-controlled paths such as ClientEngine. A missing or
-// wrong payload panics.
-func NewUnsafeFastClientCheckPreTradeStartPolicy[
-	Order ClientOrder,
-	Report ClientExecutionReport,
-](
-	policy ClientCheckPreTradeStartPolicy[Order, Report],
-) CheckStartPolicy {
-	return &unsafeFastClientCheckPreTradeStartPolicy[Order, Report]{policy: policy}
-}
-
-// NewSafeClientPreTradePolicy adapts a client typed main pre-trade policy to
+// NewSafeClientPreTradePolicy adapts a client typed pre-trade policy to
 // the standard policy interface with payload validation.
 //
 // Missing or mismatched order payloads become an order-scoped reject. Missing
@@ -105,7 +76,7 @@ func NewSafeClientPreTradePolicy[
 	return &safeClientPreTradePolicy[Order, Report]{policy: policy}
 }
 
-// NewUnsafeFastClientPreTradePolicy adapts a client typed main pre-trade policy
+// NewUnsafeFastClientPreTradePolicy adapts a client typed pre-trade policy
 // without payload validation.
 //
 // It is intended for SDK-controlled paths such as ClientEngine. A missing or
@@ -117,42 +88,6 @@ func NewUnsafeFastClientPreTradePolicy[
 	policy ClientPreTradePolicy[Order, Report],
 ) Policy {
 	return &unsafeFastClientPreTradePolicy[Order, Report]{policy: policy}
-}
-
-type safeClientCheckPreTradeStartPolicy[
-	Order ClientOrder,
-	Report ClientExecutionReport,
-] struct {
-	policy ClientCheckPreTradeStartPolicy[Order, Report]
-}
-
-func (p *safeClientCheckPreTradeStartPolicy[Order, Report]) Close() {
-	p.policy.Close()
-}
-
-func (p *safeClientCheckPreTradeStartPolicy[Order, Report]) Name() string {
-	return p.policy.Name()
-}
-
-func (p *safeClientCheckPreTradeStartPolicy[Order, Report]) CheckPreTradeStart(
-	ctx Context,
-	engineOrder model.Order,
-) []reject.Reject {
-	order, ok := safeOrderPayload[Order](engineOrder)
-	if !ok {
-		return clientPayloadMismatchReject[Order](p.Name())
-	}
-	return p.policy.CheckPreTradeStart(ctx, order)
-}
-
-func (p *safeClientCheckPreTradeStartPolicy[Order, Report]) ApplyExecutionReport(
-	engineReport model.ExecutionReport,
-) bool {
-	report, ok := safeReportPayload[Report](engineReport)
-	if !ok {
-		return false
-	}
-	return p.policy.ApplyExecutionReport(report)
 }
 
 type safeClientPreTradePolicy[
@@ -168,6 +103,17 @@ func (p *safeClientPreTradePolicy[Order, Report]) Close() {
 
 func (p *safeClientPreTradePolicy[Order, Report]) Name() string {
 	return p.policy.Name()
+}
+
+func (p *safeClientPreTradePolicy[Order, Report]) CheckPreTradeStart(
+	ctx Context,
+	engineOrder model.Order,
+) []reject.Reject {
+	order, ok := safeOrderPayload[Order](engineOrder)
+	if !ok {
+		return clientPayloadMismatchReject[Order](p.Name())
+	}
+	return p.policy.CheckPreTradeStart(ctx, order)
 }
 
 func (p *safeClientPreTradePolicy[Order, Report]) PerformPreTradeCheck(
@@ -192,32 +138,13 @@ func (p *safeClientPreTradePolicy[Order, Report]) ApplyExecutionReport(
 	return p.policy.ApplyExecutionReport(report)
 }
 
-type unsafeFastClientCheckPreTradeStartPolicy[
-	Order ClientOrder,
-	Report ClientExecutionReport,
-] struct {
-	policy ClientCheckPreTradeStartPolicy[Order, Report]
-}
-
-func (p *unsafeFastClientCheckPreTradeStartPolicy[Order, Report]) Close() {
-	p.policy.Close()
-}
-
-func (p *unsafeFastClientCheckPreTradeStartPolicy[Order, Report]) Name() string {
-	return p.policy.Name()
-}
-
-func (p *unsafeFastClientCheckPreTradeStartPolicy[Order, Report]) CheckPreTradeStart(
-	ctx Context,
-	engineOrder model.Order,
+func (p *safeClientPreTradePolicy[Order, Report]) ApplyAccountAdjustment(
+	ctx accountadjustment.Context,
+	accountID param.AccountID,
+	adjustment model.AccountAdjustment,
+	mutations tx.Mutations,
 ) []reject.Reject {
-	return p.policy.CheckPreTradeStart(ctx, unsafeFastOrderPayload[Order](engineOrder))
-}
-
-func (p *unsafeFastClientCheckPreTradeStartPolicy[Order, Report]) ApplyExecutionReport(
-	engineReport model.ExecutionReport,
-) bool {
-	return p.policy.ApplyExecutionReport(unsafeFastReportPayload[Report](engineReport))
+	return p.policy.ApplyAccountAdjustment(ctx, accountID, adjustment, mutations)
 }
 
 type unsafeFastClientPreTradePolicy[
@@ -235,6 +162,13 @@ func (p *unsafeFastClientPreTradePolicy[Order, Report]) Name() string {
 	return p.policy.Name()
 }
 
+func (p *unsafeFastClientPreTradePolicy[Order, Report]) CheckPreTradeStart(
+	ctx Context,
+	engineOrder model.Order,
+) []reject.Reject {
+	return p.policy.CheckPreTradeStart(ctx, unsafeFastOrderPayload[Order](engineOrder))
+}
+
 func (p *unsafeFastClientPreTradePolicy[Order, Report]) PerformPreTradeCheck(
 	ctx Context,
 	engineOrder model.Order,
@@ -247,6 +181,15 @@ func (p *unsafeFastClientPreTradePolicy[Order, Report]) ApplyExecutionReport(
 	engineReport model.ExecutionReport,
 ) bool {
 	return p.policy.ApplyExecutionReport(unsafeFastReportPayload[Report](engineReport))
+}
+
+func (p *unsafeFastClientPreTradePolicy[Order, Report]) ApplyAccountAdjustment(
+	ctx accountadjustment.Context,
+	accountID param.AccountID,
+	adjustment model.AccountAdjustment,
+	mutations tx.Mutations,
+) []reject.Reject {
+	return p.policy.ApplyAccountAdjustment(ctx, accountID, adjustment, mutations)
 }
 
 func safeOrderPayload[Order ClientOrder](order model.Order) (value Order, ok bool) {

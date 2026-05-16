@@ -22,13 +22,12 @@
 // that invoked it. The engine handle's threading capability depends on the sync
 // policy selected at builder time:
 //
-//   - WithFullSync - concurrent invocation of public methods on the same handle
-//     is safe. Sequential cross-thread invocation is also safe.
-//   - WithLocalSync - the handle must stay on the OS thread that created the
-//     engine.
-//   - WithAccountSync - concurrent invocation on the same handle is safe when
-//     the caller pins each account to a single chain (one queue or one worker
-//     at a time), so calls for the same account are never concurrent.
+//   - FullSync - concurrent invocation of public methods on the same handle is
+// 	   safe. Sequential cross-thread invocation is also safe.
+//   - NoSync - the handle must stay on the OS thread that created the engine.
+//   - AccountSync - concurrent invocation on the same handle is safe when the
+//     caller pins each account to a single chain (one queue or one worker at a
+//     time), so calls for the same account are never concurrent.
 //
 // Goroutine migration between OS threads during one SDK call is supported.
 // Callbacks invoked by the SDK back into Go may run on a different OS thread
@@ -41,7 +40,6 @@ import (
 	"fmt"
 	"runtime"
 
-	"go.openpit.dev/openpit/accountadjustment"
 	"go.openpit.dev/openpit/internal/custompolicy"
 	"go.openpit.dev/openpit/internal/loader"
 	"go.openpit.dev/openpit/internal/native"
@@ -189,44 +187,44 @@ func (e *Engine) ApplyAccountAdjustment(
 // EngineBuilder
 
 // EngineBuilder is the initial stage of the engine builder. It only exposes
-// sync-policy selection methods. Call one of With*Sync to advance to
-// SyncedEngineBuilder where policies can be registered.
+// sync-policy selection methods. Call FullSync, NoSync, or AccountSync to
+// advance to SyncedEngineBuilder where policies can be registered.
 type EngineBuilder struct {
 	err error
 }
 
 // NewEngineBuilder returns a new engine builder.
-// Call WithFullSync, WithLocalSync, or WithAccountSync to obtain a
+// Call FullSync, NoSync, or AccountSync to obtain a
 // SyncedEngineBuilder on which policies can be registered.
 func NewEngineBuilder() *EngineBuilder {
 	return &EngineBuilder{err: loader.EnsureRuntimeLoaded()}
 }
 
-// WithFullSync configures full thread-safety synchronization and returns a
+// FullSync configures full thread-safety synchronization and returns a
 // SyncedEngineBuilder ready to accept policies. The resulting engine handle is
 // safe for concurrent invocation from multiple goroutines as well as sequential
 // cross-thread access. Use this when the engine is shared across multiple
 // goroutines or when goroutine migration patterns make sequential thread
 // pinning impractical.
-func (b *EngineBuilder) WithFullSync() *SyncedEngineBuilder {
+func (b *EngineBuilder) FullSync() *SyncedEngineBuilder {
 	return &SyncedEngineBuilder{syncPolicy: native.SyncPolicyFull, err: b.err}
 }
 
-// WithLocalSync configures single-thread synchronization and returns a
+// NoSync configures single-thread synchronization and returns a
 // SyncedEngineBuilder ready to accept policies. The resulting engine handle
 // must stay on the OS thread that created it; calls from any other OS thread
 // are undefined behavior. Use this for single-threaded embeddings where
 // synchronization overhead must be zero.
-func (b *EngineBuilder) WithLocalSync() *SyncedEngineBuilder {
+func (b *EngineBuilder) NoSync() *SyncedEngineBuilder {
 	return &SyncedEngineBuilder{syncPolicy: native.SyncPolicyLocal, err: b.err}
 }
 
-// WithAccountSync configures account-sharded synchronization and returns a
+// AccountSync configures account-sharded synchronization and returns a
 // SyncedEngineBuilder ready to accept policies. The resulting engine handle is
 // safe for concurrent invocation when the caller pins each account to a single
 // processing chain (one queue or one worker at a time), so calls for the same
 // account are never concurrent.
-func (b *EngineBuilder) WithAccountSync() *SyncedEngineBuilder {
+func (b *EngineBuilder) AccountSync() *SyncedEngineBuilder {
 	return &SyncedEngineBuilder{syncPolicy: native.SyncPolicyAccount, err: b.err}
 }
 
@@ -234,37 +232,17 @@ func (b *EngineBuilder) WithAccountSync() *SyncedEngineBuilder {
 // SyncedEngineBuilder
 
 // SyncedEngineBuilder is the second stage of the engine builder chain,
-// returned by EngineBuilder.With*Sync. Add at least one policy to advance to
-// ReadyEngineBuilder where Build is available.
+// returned by EngineBuilder.FullSync, NoSync, or AccountSync. Add at least one
+// policy to advance to ReadyEngineBuilder where Build is available.
 type SyncedEngineBuilder struct {
 	syncPolicy native.SyncPolicy
 	err        error
 }
 
-func (b *SyncedEngineBuilder) CheckPreTradeStartPolicy(
-	policy ...pretrade.CheckStartPolicy,
-) *ReadyEngineBuilder {
-	rb := newReadyEngineBuilder(b)
-	for _, p := range policy {
-		rb.addCheckPreTradeStartPolicy(p)
-	}
-	return rb
-}
-
-func (b *SyncedEngineBuilder) PreTradePolicy(policy ...pretrade.Policy) *ReadyEngineBuilder {
+func (b *SyncedEngineBuilder) PreTrade(policy ...pretrade.Policy) *ReadyEngineBuilder {
 	rb := newReadyEngineBuilder(b)
 	for _, p := range policy {
 		rb.addPreTradePolicy(p)
-	}
-	return rb
-}
-
-func (b *SyncedEngineBuilder) AccountAdjustmentPolicy(
-	policy ...accountadjustment.Policy,
-) *ReadyEngineBuilder {
-	rb := newReadyEngineBuilder(b)
-	for _, p := range policy {
-		rb.addAccountAdjustmentPolicy(p)
 	}
 	return rb
 }
@@ -331,45 +309,13 @@ func (b *ReadyEngineBuilder) Build() (*Engine, error) {
 	return newEngineFromHandle(handle), nil
 }
 
-func (b *ReadyEngineBuilder) CheckPreTradeStartPolicy(
-	policy ...pretrade.CheckStartPolicy,
-) *ReadyEngineBuilder {
-	for _, p := range policy {
-		// Every policy must go through addPolicy even after a previous failure
-		// so that the builder takes responsibility for releasing it.
-		b.addCheckPreTradeStartPolicy(p)
-	}
-	return b
-}
-
-func (b *ReadyEngineBuilder) PreTradePolicy(policy ...pretrade.Policy) *ReadyEngineBuilder {
+func (b *ReadyEngineBuilder) PreTrade(policy ...pretrade.Policy) *ReadyEngineBuilder {
 	for _, p := range policy {
 		// Every policy must go through addPolicy even after a previous failure
 		// so that the builder takes responsibility for releasing it.
 		b.addPreTradePolicy(p)
 	}
 	return b
-}
-
-func (b *ReadyEngineBuilder) AccountAdjustmentPolicy(
-	policy ...accountadjustment.Policy,
-) *ReadyEngineBuilder {
-	for _, p := range policy {
-		// Every policy must go through addPolicy even after a previous failure
-		// so that the builder takes responsibility for releasing it.
-		b.addAccountAdjustmentPolicy(p)
-	}
-	return b
-}
-
-func (b *ReadyEngineBuilder) addCheckPreTradeStartPolicy(policy pretrade.CheckStartPolicy) {
-	addPolicy(
-		b,
-		policy,
-		custompolicy.StartCheckPreTradeStart,
-		native.DestroyPretradeCheckPreTradeStartPolicy,
-		native.EngineBuilderAddCheckPreTradeStartPolicy,
-	)
 }
 
 // Builtin registers a built-in entity on the builder.
@@ -384,51 +330,19 @@ func (b *ReadyEngineBuilder) Builtin(builtinReadyBuilder builtinReadyBuilder) *R
 }
 
 func (b *ReadyEngineBuilder) addPreTradePolicy(policy pretrade.Policy) {
-	addPolicy(
-		b,
-		policy,
-		custompolicy.StartPreTrade,
-		native.DestroyPretradePreTradePolicy,
-		native.EngineBuilderAddPreTradePolicy,
-	)
-}
+	scheduleClose := func() {
+		b.unfinished = append(b.unfinished, policy)
+	}
 
-func (b *ReadyEngineBuilder) addAccountAdjustmentPolicy(policy accountadjustment.Policy) {
-	addPolicy(
-		b,
-		policy,
-		custompolicy.StartAccountAdjustment,
-		native.DestroyAccountAdjustmentPolicy,
-		native.EngineBuilderAddAccountAdjustmentPolicy,
-	)
-}
-
-func (b *ReadyEngineBuilder) scheduleClose(entity interface{ Close() }) {
-	b.unfinished = append(b.unfinished, entity)
-}
-
-func addPolicy[
-	Policy interface {
-		Name() string
-		Close()
-	},
-	Handle any,
-](
-	builder *ReadyEngineBuilder,
-	policy Policy,
-	startCustomPolicy func(Policy) (Handle, error),
-	destroyPolicyHandle func(Handle),
-	add func(native.EngineBuilder, Handle) error,
-) {
-	if builder.err != nil {
-		builder.scheduleClose(policy)
+	if b.err != nil {
+		scheduleClose()
 		return
 	}
 
-	handle, err := startCustomPolicy(policy)
+	handle, err := custompolicy.StartPreTrade(policy)
 	if err != nil {
-		builder.err = newEngineBuilderPolicyAddError(err, policy.Name())
-		builder.scheduleClose(policy)
+		b.err = newEngineBuilderPolicyAddError(err, policy.Name())
+		scheduleClose()
 		return
 	}
 	// The caller-owned reference must always be released. On success, the
@@ -436,13 +350,13 @@ func addPolicy[
 	// on Stop. On failure, dropping this last reference destroys the policy
 	// immediately and, for custom policies, triggers free_user_data, which in
 	// turn closes the user-provided implementation.
-	defer destroyPolicyHandle(handle)
+	defer native.DestroyPretradePreTradePolicy(handle)
 
-	if err := add(builder.handle, handle); err != nil {
+	if err := native.EngineBuilderAddPreTradePolicy(b.handle, handle); err != nil {
 		// No scheduleClose is needed here: the deferred release above drops
 		// the last reference to the policy and the native Drop path takes
 		// care of closing the user implementation via free_user_data.
-		builder.err = newEngineBuilderPolicyAddError(err, policy.Name())
+		b.err = newEngineBuilderPolicyAddError(err, policy.Name())
 	}
 }
 

@@ -142,47 +142,19 @@ pub struct OpenPitAccountAdjustmentBatchError {
 
 //--------------------------------------------------------------------------------------------------
 
-pub(crate) fn add_check_pre_trade_start_policy_to_builder(
-    builder: &mut OpenPitEngineBuilder,
-    policy: impl openpit::pretrade::CheckPreTradeStartPolicy<Order, ExecutionReport> + Send + 'static,
-) -> Result<(), String> {
-    let state = builder
-        .inner
-        .take()
-        .ok_or_else(|| "engine builder is no longer available".to_string())?;
-    builder.inner = Some(match state {
-        BuilderState::Synced(b) => BuilderState::Ready(b.check_pre_trade_start_policy(policy)),
-        BuilderState::Ready(b) => BuilderState::Ready(b.check_pre_trade_start_policy(policy)),
-    });
-    Ok(())
-}
-
 pub(crate) fn add_pre_trade_policy_to_builder(
     builder: &mut OpenPitEngineBuilder,
-    policy: impl openpit::pretrade::PreTradePolicy<Order, ExecutionReport> + Send + 'static,
+    policy: impl openpit::pretrade::PreTradePolicy<Order, ExecutionReport, AccountAdjustment>
+        + Send
+        + 'static,
 ) -> Result<(), String> {
     let state = builder
         .inner
         .take()
         .ok_or_else(|| "engine builder is no longer available".to_string())?;
     builder.inner = Some(match state {
-        BuilderState::Synced(b) => BuilderState::Ready(b.pre_trade_policy(policy)),
-        BuilderState::Ready(b) => BuilderState::Ready(b.pre_trade_policy(policy)),
-    });
-    Ok(())
-}
-
-pub(crate) fn add_account_adjustment_policy_to_builder(
-    builder: &mut OpenPitEngineBuilder,
-    policy: impl openpit::AccountAdjustmentPolicy<AccountAdjustment> + Send + 'static,
-) -> Result<(), String> {
-    let state = builder
-        .inner
-        .take()
-        .ok_or_else(|| "engine builder is no longer available".to_string())?;
-    builder.inner = Some(match state {
-        BuilderState::Synced(b) => BuilderState::Ready(b.account_adjustment_policy(policy)),
-        BuilderState::Ready(b) => BuilderState::Ready(b.account_adjustment_policy(policy)),
+        BuilderState::Synced(b) => BuilderState::Ready(b.pre_trade(policy)),
+        BuilderState::Ready(b) => BuilderState::Ready(b.pre_trade(policy)),
     });
     Ok(())
 }
@@ -250,7 +222,7 @@ pub extern "C" fn openpit_create_engine_builder(
     };
 
     let state =
-        BuilderState::Synced(Engine::builder().with_sync(openpit_interop::SyncPolicy::new(mode)));
+        BuilderState::Synced(Engine::builder().sync(openpit_interop::SyncPolicy::new(mode)));
     Box::into_raw(Box::new(OpenPitEngineBuilder { inner: Some(state) }))
 }
 
@@ -865,7 +837,7 @@ pub extern "C" fn openpit_engine_apply_account_adjustment(
 mod tests {
     use std::ffi::c_void;
 
-    use openpit::pretrade::{CheckPreTradeStartPolicy, Reject, RejectCode, RejectScope, Rejects};
+    use openpit::pretrade::{PreTradePolicy, Reject, RejectCode, RejectScope, Rejects};
     use openpit::EngineBuildError;
 
     use crate::account_adjustment::OpenPitAccountAdjustment;
@@ -878,12 +850,12 @@ mod tests {
     };
     use crate::order::OpenPitOrder;
     use crate::policy::{
-        openpit_create_custom_account_adjustment_policy,
-        openpit_create_pretrade_custom_check_pre_trade_start_policy,
-        openpit_destroy_account_adjustment_policy,
-        openpit_destroy_pretrade_check_pre_trade_start_policy,
-        openpit_engine_builder_add_account_adjustment_policy,
-        openpit_engine_builder_add_check_pre_trade_start_policy,
+        openpit_create_pretrade_custom_pre_trade_policy, openpit_destroy_pretrade_pre_trade_policy,
+        openpit_engine_builder_add_pre_trade_policy, OpenPitPretradePreTradePolicy,
+        OpenPitPretradePreTradePolicyApplyAccountAdjustmentFn,
+        OpenPitPretradePreTradePolicyApplyExecutionReportFn,
+        OpenPitPretradePreTradePolicyCheckPreTradeStartFn,
+        OpenPitPretradePreTradePolicyFreeUserDataFn,
     };
     use crate::reject::{
         openpit_create_reject_list, openpit_destroy_reject_list, openpit_reject_list_get,
@@ -908,8 +880,12 @@ mod tests {
 
     struct AlwaysRejectStart;
 
-    impl CheckPreTradeStartPolicy<crate::order::Order, crate::execution_report::ExecutionReport>
-        for AlwaysRejectStart
+    impl
+        PreTradePolicy<
+            crate::order::Order,
+            crate::execution_report::ExecutionReport,
+            crate::account_adjustment::AccountAdjustment,
+        > for AlwaysRejectStart
     {
         fn name(&self) -> &str {
             "always.reject.start"
@@ -1015,12 +991,55 @@ mod tests {
 
     unsafe extern "C" fn noop_free_user_data(_user_data: *mut c_void) {}
 
+    unsafe fn create_pre_trade_policy_with_start_hook(
+        name: OpenPitStringView,
+        check_fn: OpenPitPretradePreTradePolicyCheckPreTradeStartFn,
+        apply_execution_report_fn: OpenPitPretradePreTradePolicyApplyExecutionReportFn,
+        free_user_data_fn: OpenPitPretradePreTradePolicyFreeUserDataFn,
+        user_data: *mut c_void,
+        out_error: crate::last_error::OpenPitOutError,
+    ) -> *mut OpenPitPretradePreTradePolicy {
+        unsafe {
+            openpit_create_pretrade_custom_pre_trade_policy(
+                name,
+                Some(check_fn),
+                None,
+                Some(apply_execution_report_fn),
+                None,
+                free_user_data_fn,
+                user_data,
+                out_error,
+            )
+        }
+    }
+
+    unsafe fn create_pre_trade_policy_with_account_adjustment_hook(
+        name: OpenPitStringView,
+        apply_fn: OpenPitPretradePreTradePolicyApplyAccountAdjustmentFn,
+        free_user_data_fn: OpenPitPretradePreTradePolicyFreeUserDataFn,
+        user_data: *mut c_void,
+        out_error: crate::last_error::OpenPitOutError,
+    ) -> *mut OpenPitPretradePreTradePolicy {
+        unsafe {
+            openpit_create_pretrade_custom_pre_trade_policy(
+                name,
+                None,
+                None,
+                None,
+                Some(apply_fn),
+                free_user_data_fn,
+                user_data,
+                out_error,
+            )
+        }
+    }
+
     fn build_engine_with_reject_policy() -> *mut super::OpenPitEngine {
         let builder =
             openpit_create_engine_builder(OpenPitSyncPolicy::Full as u8, std::ptr::null_mut());
         let policy_name = OpenPitStringView::from_utf8("test_policy");
         let policy = unsafe {
-            openpit_create_custom_account_adjustment_policy(
+            create_pre_trade_policy_with_account_adjustment_hook(
                 policy_name,
                 always_reject_apply,
                 noop_free_user_data,
@@ -1029,13 +1048,9 @@ mod tests {
             )
         };
         assert!(!policy.is_null(), "failed to create policy");
-        let ok = openpit_engine_builder_add_account_adjustment_policy(
-            builder,
-            policy,
-            std::ptr::null_mut(),
-        );
+        let ok = openpit_engine_builder_add_pre_trade_policy(builder, policy, std::ptr::null_mut());
         assert!(ok, "failed to add policy");
-        openpit_destroy_account_adjustment_policy(policy);
+        openpit_destroy_pretrade_pre_trade_policy(policy);
         let engine = openpit_engine_builder_build(builder, std::ptr::null_mut());
         assert!(!engine.is_null(), "engine build failed");
         engine
@@ -1048,8 +1063,10 @@ mod tests {
         let policy = unsafe {
             crate::policy::openpit_create_pretrade_custom_pre_trade_policy(
                 name,
-                always_reject_pre_trade,
-                always_false_apply_report,
+                None,
+                Some(always_reject_pre_trade),
+                Some(always_false_apply_report),
+                None,
                 noop_free_user_data,
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
@@ -1073,7 +1090,7 @@ mod tests {
             openpit_create_engine_builder(OpenPitSyncPolicy::Full as u8, std::ptr::null_mut());
         let name = OpenPitStringView::from_utf8("start.reject");
         let policy = unsafe {
-            openpit_create_pretrade_custom_check_pre_trade_start_policy(
+            create_pre_trade_policy_with_start_hook(
                 name,
                 always_reject_start_check,
                 always_false_apply_report,
@@ -1083,13 +1100,9 @@ mod tests {
             )
         };
         assert!(!policy.is_null(), "failed to create policy");
-        let ok = openpit_engine_builder_add_check_pre_trade_start_policy(
-            builder,
-            policy,
-            std::ptr::null_mut(),
-        );
+        let ok = openpit_engine_builder_add_pre_trade_policy(builder, policy, std::ptr::null_mut());
         assert!(ok, "failed to add policy");
-        openpit_destroy_pretrade_check_pre_trade_start_policy(policy);
+        openpit_destroy_pretrade_pre_trade_policy(policy);
         let engine = openpit_engine_builder_build(builder, std::ptr::null_mut());
         assert!(!engine.is_null(), "engine build failed");
         engine
@@ -1100,7 +1113,7 @@ mod tests {
             openpit_create_engine_builder(OpenPitSyncPolicy::Full as u8, std::ptr::null_mut());
         let name = OpenPitStringView::from_utf8("start.pass");
         let policy = unsafe {
-            openpit_create_pretrade_custom_check_pre_trade_start_policy(
+            create_pre_trade_policy_with_start_hook(
                 name,
                 always_pass_start_check,
                 always_false_apply_report,
@@ -1110,13 +1123,9 @@ mod tests {
             )
         };
         assert!(!policy.is_null(), "failed to create policy");
-        let ok = openpit_engine_builder_add_check_pre_trade_start_policy(
-            builder,
-            policy,
-            std::ptr::null_mut(),
-        );
+        let ok = openpit_engine_builder_add_pre_trade_policy(builder, policy, std::ptr::null_mut());
         assert!(ok, "failed to add policy");
-        openpit_destroy_pretrade_check_pre_trade_start_policy(policy);
+        openpit_destroy_pretrade_pre_trade_policy(policy);
         let engine = openpit_engine_builder_build(builder, std::ptr::null_mut());
         assert!(!engine.is_null(), "engine build failed");
         engine
@@ -1127,7 +1136,7 @@ mod tests {
             openpit_create_engine_builder(OpenPitSyncPolicy::Full as u8, std::ptr::null_mut());
         let name = OpenPitStringView::from_utf8("passthrough");
         let policy = unsafe {
-            openpit_create_pretrade_custom_check_pre_trade_start_policy(
+            create_pre_trade_policy_with_start_hook(
                 name,
                 always_pass_start_check,
                 always_false_apply_report,
@@ -1138,14 +1147,10 @@ mod tests {
         };
         assert!(!policy.is_null(), "failed to create passthrough policy");
         assert!(
-            openpit_engine_builder_add_check_pre_trade_start_policy(
-                builder,
-                policy,
-                std::ptr::null_mut()
-            ),
+            openpit_engine_builder_add_pre_trade_policy(builder, policy, std::ptr::null_mut()),
             "failed to add passthrough policy"
         );
-        openpit_destroy_pretrade_check_pre_trade_start_policy(policy);
+        openpit_destroy_pretrade_pre_trade_policy(policy);
         let engine = openpit_engine_builder_build(builder, std::ptr::null_mut());
         assert!(!engine.is_null(), "engine build failed");
         engine
@@ -1213,7 +1218,7 @@ mod tests {
             openpit_create_engine_builder(OpenPitSyncPolicy::Full as u8, std::ptr::null_mut());
         let pass_name = OpenPitStringView::from_utf8("pass.build");
         let pass_policy = unsafe {
-            openpit_create_pretrade_custom_check_pre_trade_start_policy(
+            create_pre_trade_policy_with_start_hook(
                 pass_name,
                 always_pass_start_check,
                 always_false_apply_report,
@@ -1222,12 +1227,12 @@ mod tests {
                 std::ptr::null_mut(),
             )
         };
-        assert!(openpit_engine_builder_add_check_pre_trade_start_policy(
+        assert!(openpit_engine_builder_add_pre_trade_policy(
             builder,
             pass_policy,
             std::ptr::null_mut()
         ));
-        openpit_destroy_pretrade_check_pre_trade_start_policy(pass_policy);
+        openpit_destroy_pretrade_pre_trade_policy(pass_policy);
         let built = openpit_engine_builder_build(builder, std::ptr::null_mut());
         assert!(!built.is_null());
         openpit_destroy_engine(built);
@@ -1239,7 +1244,7 @@ mod tests {
             openpit_create_engine_builder(OpenPitSyncPolicy::Full as u8, std::ptr::null_mut());
         let dup_name = OpenPitStringView::from_utf8("dup.start");
         let first = unsafe {
-            openpit_create_pretrade_custom_check_pre_trade_start_policy(
+            create_pre_trade_policy_with_start_hook(
                 dup_name,
                 always_pass_start_check,
                 always_false_apply_report,
@@ -1249,7 +1254,7 @@ mod tests {
             )
         };
         let second = unsafe {
-            openpit_create_pretrade_custom_check_pre_trade_start_policy(
+            create_pre_trade_policy_with_start_hook(
                 dup_name,
                 always_pass_start_check,
                 always_false_apply_report,
@@ -1259,18 +1264,18 @@ mod tests {
             )
         };
         assert!(!first.is_null() && !second.is_null());
-        assert!(openpit_engine_builder_add_check_pre_trade_start_policy(
+        assert!(openpit_engine_builder_add_pre_trade_policy(
             dup_builder,
             first,
             std::ptr::null_mut()
         ));
-        assert!(openpit_engine_builder_add_check_pre_trade_start_policy(
+        assert!(openpit_engine_builder_add_pre_trade_policy(
             dup_builder,
             second,
             std::ptr::null_mut()
         ));
-        openpit_destroy_pretrade_check_pre_trade_start_policy(first);
-        openpit_destroy_pretrade_check_pre_trade_start_policy(second);
+        openpit_destroy_pretrade_pre_trade_policy(first);
+        openpit_destroy_pretrade_pre_trade_policy(second);
 
         let invalid = openpit_engine_builder_build(dup_builder, std::ptr::null_mut());
         assert!(invalid.is_null());
@@ -1283,7 +1288,7 @@ mod tests {
             openpit_create_engine_builder(OpenPitSyncPolicy::Full as u8, std::ptr::null_mut());
         let pass_name = OpenPitStringView::from_utf8("pass.consumed");
         let pass_policy = unsafe {
-            openpit_create_pretrade_custom_check_pre_trade_start_policy(
+            create_pre_trade_policy_with_start_hook(
                 pass_name,
                 always_pass_start_check,
                 always_false_apply_report,
@@ -1292,19 +1297,19 @@ mod tests {
                 std::ptr::null_mut(),
             )
         };
-        assert!(openpit_engine_builder_add_check_pre_trade_start_policy(
+        assert!(openpit_engine_builder_add_pre_trade_policy(
             builder,
             pass_policy,
             std::ptr::null_mut()
         ));
-        openpit_destroy_pretrade_check_pre_trade_start_policy(pass_policy);
+        openpit_destroy_pretrade_pre_trade_policy(pass_policy);
         let engine = openpit_engine_builder_build(builder, std::ptr::null_mut());
         assert!(!engine.is_null());
         openpit_destroy_engine(engine);
 
         let name = OpenPitStringView::from_utf8("consumed.builder");
         let policy = unsafe {
-            openpit_create_pretrade_custom_check_pre_trade_start_policy(
+            create_pre_trade_policy_with_start_hook(
                 name,
                 always_pass_start_check,
                 always_false_apply_report,
@@ -1314,13 +1319,9 @@ mod tests {
             )
         };
         assert!(!policy.is_null());
-        let ok = openpit_engine_builder_add_check_pre_trade_start_policy(
-            builder,
-            policy,
-            std::ptr::null_mut(),
-        );
+        let ok = openpit_engine_builder_add_pre_trade_policy(builder, policy, std::ptr::null_mut());
         assert!(!ok);
-        openpit_destroy_pretrade_check_pre_trade_start_policy(policy);
+        openpit_destroy_pretrade_pre_trade_policy(policy);
         openpit_destroy_engine_builder(builder);
     }
 
@@ -1951,8 +1952,8 @@ mod tests {
             crate::execution_report::ExecutionReport,
             crate::account_adjustment::AccountAdjustment,
         >::builder()
-        .with_local_sync()
-        .check_pre_trade_start_policy(AlwaysRejectStart)
+        .no_sync()
+        .pre_trade(AlwaysRejectStart)
         .build()
         .expect("engine");
 

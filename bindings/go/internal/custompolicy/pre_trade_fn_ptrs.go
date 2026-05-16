@@ -21,7 +21,12 @@ package custompolicy
 #cgo CFLAGS: -I${SRCDIR}/../native
 #include "openpit.h"
 
-extern OpenPitRejectList* pitPretradePreTradePolicyCheckPreTrade(
+extern OpenPitRejectList* pitPretradePreTradePolicyCheckPreTradeStart(
+    const OpenPitPretradeContext* ctx,
+    const OpenPitOrder* order,
+    void* user_data);
+
+extern OpenPitRejectList* pitPretradePreTradePolicyPerformPreTradeCheck(
     const OpenPitPretradeContext* ctx,
     const OpenPitOrder* order,
     OpenPitMutations* mutations,
@@ -31,23 +36,44 @@ extern bool pitPretradePreTradePolicyApplyExecutionReport(
     const OpenPitExecutionReport* report,
     void* user_data);
 
+extern OpenPitRejectList* pitPretradePreTradePolicyApplyAccountAdjustment(
+    const OpenPitAccountAdjustmentContext* ctx,
+    OpenPitParamAccountId account_id,
+    const OpenPitAccountAdjustment* adjustment,
+    OpenPitMutations* mutations,
+    void* user_data);
+
 extern void pitPretradePreTradePolicyClose(void* user_data);
 
-static OpenPitPretradePreTradePolicyCheckFn
-    openpit_pretrade_pre_trade_policy_check_fn = pitPretradePreTradePolicyCheckPreTrade;
+static OpenPitPretradePreTradePolicyCheckPreTradeStartFn
+    openpit_pretrade_pre_trade_policy_check_pre_trade_start_fn = pitPretradePreTradePolicyCheckPreTradeStart;
+
+static OpenPitPretradePreTradePolicyPerformPreTradeCheckFn
+    openpit_pretrade_pre_trade_policy_perform_pre_trade_check_fn = pitPretradePreTradePolicyPerformPreTradeCheck;
 
 static OpenPitPretradePreTradePolicyApplyExecutionReportFn
     openpit_pretrade_pre_trade_policy_apply_execution_report_fn = pitPretradePreTradePolicyApplyExecutionReport;
 
+static OpenPitPretradePreTradePolicyApplyAccountAdjustmentFn
+    openpit_pretrade_pre_trade_policy_apply_account_adjustment_fn = pitPretradePreTradePolicyApplyAccountAdjustment;
+
 static OpenPitPretradePreTradePolicyFreeUserDataFn
     openpit_pretrade_pre_trade_policy_free_user_data_fn = pitPretradePreTradePolicyClose;
 
-static void* pitPretradePreTradePolicyCheckFnAddr(void) {
-    return &openpit_pretrade_pre_trade_policy_check_fn;
+static void* pitPretradePreTradePolicyCheckPreTradeStartFnAddr(void) {
+    return &openpit_pretrade_pre_trade_policy_check_pre_trade_start_fn;
+}
+
+static void* pitPretradePreTradePolicyPerformPreTradeCheckFnAddr(void) {
+    return &openpit_pretrade_pre_trade_policy_perform_pre_trade_check_fn;
 }
 
 static void* pitPretradePreTradePolicyApplyReportFnAddr(void) {
     return &openpit_pretrade_pre_trade_policy_apply_execution_report_fn;
+}
+
+static void* pitPretradePreTradePolicyApplyAccountAdjustmentFnAddr(void) {
+    return &openpit_pretrade_pre_trade_policy_apply_account_adjustment_fn;
 }
 
 static void* pitPretradePreTradePolicyFreeUserDataFnAddr(void) {
@@ -57,22 +83,41 @@ static void* pitPretradePreTradePolicyFreeUserDataFnAddr(void) {
 import "C"
 import "unsafe"
 
-// PreTradePolicyCheckFnAddr returns the address of a
-// OpenPitPretradePreTradePolicyCheckFn variable holding the check callback.
+// PreTradePolicyCheckPreTradeStartFnAddr returns the address of a
+// OpenPitPretradePreTradePolicyCheckPreTradeStartFn variable holding the
+// check-pre-trade-start callback.
 // Pass the result to native.CreatePretradeCustomPreTradePolicy.
-func PreTradePolicyCheckFnAddr() unsafe.Pointer {
-	return C.pitPretradePreTradePolicyCheckFnAddr()
+func PreTradePolicyCheckPreTradeStartFnAddr() unsafe.Pointer {
+	return C.pitPretradePreTradePolicyCheckPreTradeStartFnAddr()
+}
+
+// PreTradePolicyPerformPreTradeCheckFnAddr returns the address of a
+// OpenPitPretradePreTradePolicyPerformPreTradeCheckFn variable holding the
+// perform-pre-trade-check callback.
+// Pass the result to native.CreatePretradeCustomPreTradePolicy.
+func PreTradePolicyPerformPreTradeCheckFnAddr() unsafe.Pointer {
+	return C.pitPretradePreTradePolicyPerformPreTradeCheckFnAddr()
 }
 
 // PreTradePolicyApplyReportFnAddr returns the address of a
-// OpenPitPretradePreTradePolicyApplyExecutionReportFn variable holding the apply callback.
+// OpenPitPretradePreTradePolicyApplyExecutionReportFn variable holding the
+// apply callback.
 // Pass the result to native.CreatePretradeCustomPreTradePolicy.
 func PreTradePolicyApplyReportFnAddr() unsafe.Pointer {
 	return C.pitPretradePreTradePolicyApplyReportFnAddr()
 }
 
+// PreTradePolicyApplyAccountAdjustmentFnAddr returns the address of a
+// OpenPitPretradePreTradePolicyApplyAccountAdjustmentFn variable holding the
+// apply-account-adjustment callback.
+// Pass the result to native.CreatePretradeCustomPreTradePolicy.
+func PreTradePolicyApplyAccountAdjustmentFnAddr() unsafe.Pointer {
+	return C.pitPretradePreTradePolicyApplyAccountAdjustmentFnAddr()
+}
+
 // PreTradePolicyFreeUserDataFnAddr returns the address of a
-// OpenPitPretradePreTradePolicyFreeUserDataFn variable holding the free callback.
+// OpenPitPretradePreTradePolicyFreeUserDataFn variable holding the free
+// callback.
 // Pass the result to native.CreatePretradeCustomPreTradePolicy.
 func PreTradePolicyFreeUserDataFnAddr() unsafe.Pointer {
 	return C.pitPretradePreTradePolicyFreeUserDataFnAddr()

@@ -93,8 +93,14 @@ import dataclasses
 import typing
 
 if typing.TYPE_CHECKING:
-    from .. import ExecutionReport, Order
-from .._openpit import PreTradeContext
+    from .. import (
+        AccountAdjustment,
+        AccountAdjustmentContext,
+        ExecutionReport,
+        Order,
+    )
+    from ..param import AccountId
+from .._openpit import Context
 from ..core import Mutation
 from ._enum import RejectScope
 
@@ -179,18 +185,19 @@ class PolicyDecision:
         return cls(rejects=tuple(rejects), mutations=tuple(mutations))
 
 
-class CheckPreTradeStartPolicy(abc.ABC):
+class Policy(abc.ABC):
     """
-    Interface for start-stage Python policies.
+    Unified Python pre-trade policy interface.
 
     Stage semantics:
-    - called during ``engine.start_pre_trade(order=...)``
-    - all configured start policies are evaluated; reject lists are merged
-    - no rollback support for this stage
+    - ``check_pre_trade_start`` is called during ``engine.start_pre_trade``
+    - ``perform_pre_trade_check`` is called during ``request.execute()``
+    - ``apply_execution_report`` applies post-trade feedback
+    - ``apply_account_adjustment`` validates account-adjustment batches
 
     Implementation rule:
-    - return a tuple/list of :class:`PolicyReject` for normal risk rejects
-    - return an empty tuple/list for success
+    - override the methods needed by the registration path used by the policy
+    - return :class:`PolicyDecision` for main-stage and adjustment outcomes
     - raise exceptions only for programming/runtime failures
     """
 
@@ -204,10 +211,9 @@ class CheckPreTradeStartPolicy(abc.ABC):
         """
         raise NotImplementedError("name is not implemented")
 
-    @abc.abstractmethod
     def check_pre_trade_start(
         self,
-        ctx: PreTradeContext,
+        ctx: Context,
         order: Order,
     ) -> collections.abc.Iterable[PolicyReject]:
         """
@@ -223,52 +229,11 @@ class CheckPreTradeStartPolicy(abc.ABC):
                 - empty iterable if the order passes this policy
                 - one or more :class:`PolicyReject` if this policy rejects
         """
-        raise NotImplementedError("check_pre_trade_start is not implemented")
+        return ()
 
-    @abc.abstractmethod
-    def apply_execution_report(self, report: ExecutionReport) -> bool:
-        """
-        Apply post-trade feedback to policy state.
-
-        Args:
-            report: Execution report produced after fill/close.
-
-        Returns:
-            bool:
-                ``True`` if this policy considers kill-switch triggered after
-                processing the report, otherwise ``False``.
-        """
-        raise NotImplementedError("apply_execution_report is not implemented")
-
-
-class PreTradePolicy(abc.ABC):
-    """
-    Interface for main-stage Python policies.
-
-    Stage semantics:
-    - called during ``request.execute()``
-    - all configured policies are evaluated, even if one rejects
-    - mutations are applied/rolled back by the engine according to outcome
-
-    Implementation rule:
-    - return :class:`PolicyDecision` for business outcome
-    - raise exceptions only for programming/runtime failures
-    """
-
-    @property
-    @abc.abstractmethod
-    def name(self) -> str:
-        """
-        Return a stable, unique policy name.
-
-        The name must be non-empty and unique within one engine config.
-        """
-        raise NotImplementedError("name is not implemented")
-
-    @abc.abstractmethod
     def perform_pre_trade_check(
         self,
-        ctx: PreTradeContext,
+        ctx: Context,
         order: Order,
     ) -> PolicyDecision:
         """
@@ -283,9 +248,8 @@ class PreTradePolicy(abc.ABC):
                 - use ``PolicyDecision.accept(...)`` for pass path
                 - use ``PolicyDecision.reject(...)`` for business rejects
         """
-        raise NotImplementedError("perform_pre_trade_check is not implemented")
+        return PolicyDecision.accept()
 
-    @abc.abstractmethod
     def apply_execution_report(self, report: ExecutionReport) -> bool:
         """
         Apply post-trade feedback to policy state.
@@ -298,4 +262,30 @@ class PreTradePolicy(abc.ABC):
                 ``True`` if this policy considers kill-switch triggered after
                 processing the report, otherwise ``False``.
         """
-        raise NotImplementedError("apply_execution_report is not implemented")
+        return False
+
+    def apply_account_adjustment(
+        self,
+        ctx: AccountAdjustmentContext,
+        account_id: AccountId,
+        adjustment: AccountAdjustment,
+    ) -> (
+        PolicyDecision
+        | collections.abc.Iterable[PolicyReject]
+        | tuple[Mutation, ...]
+        | None
+    ):
+        """
+        Evaluate one account adjustment from an atomic batch.
+
+        Args:
+            ctx: Read-only engine context for the current batch operation.
+            account_id: Account affected by the batch.
+            adjustment: Current adjustment item.
+
+        Returns:
+            ``None`` or ``PolicyDecision.accept()`` for success, an iterable of
+            ``PolicyReject`` objects for business rejection, or a tuple of
+            ``Mutation`` objects to register rollback work.
+        """
+        return None

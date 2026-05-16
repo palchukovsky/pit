@@ -41,15 +41,15 @@ use openpit::pretrade::policies::{
     RateLimitBrokerBarrier, RateLimitPolicy,
 };
 use openpit::pretrade::{
-    CheckPreTradeStartPolicy, PreTradeContext, PreTradeLock, PreTradePolicy, PreTradeRequest,
-    PreTradeReservation, Reject, RejectCode, RejectScope, Rejects,
+    PreTradeContext, PreTradeLock, PreTradePolicy, PreTradeRequest, PreTradeReservation, Reject,
+    RejectCode, RejectScope, Rejects,
 };
 use openpit::storage::StorageBuilder;
+use openpit::AccountAdjustmentContext;
 use openpit::{
     AccountAdjustmentBalanceOperation, AccountAdjustmentPositionOperation, Engine,
     EngineBuildError, Instrument, Mutation, Mutations, PostTradeResult,
 };
-use openpit::{AccountAdjustmentContext, AccountAdjustmentPolicy};
 use openpit_interop::{
     AccountAdjustmentAmountAccess, AccountAdjustmentBoundsAccess, AccountAdjustmentOperationAccess,
     ExecutionReportFillAccess, ExecutionReportOperationAccess, ExecutionReportPositionImpactAccess,
@@ -306,7 +306,7 @@ impl PyReject {
     }
 }
 
-#[pyclass(name = "StartPreTradeResult", module = "openpit.pretrade")]
+#[pyclass(name = "StartResult", module = "openpit.pretrade")]
 struct PyStartPreTradeResult {
     request: Option<Py<PyRequest>>,
     rejects: Vec<PyReject>,
@@ -335,12 +335,9 @@ impl PyStartPreTradeResult {
 
     fn __repr__(&self) -> String {
         if self.rejects.is_empty() {
-            "StartPreTradeResult(ok=True)".to_owned()
+            "StartResult(ok=True)".to_owned()
         } else {
-            format!(
-                "StartPreTradeResult(ok=False, rejects={})",
-                self.rejects.len()
-            )
+            format!("StartResult(ok=False, rejects={})", self.rejects.len())
         }
     }
 }
@@ -421,7 +418,7 @@ impl PyAccountAdjustmentBatchResult {
     }
 }
 
-#[pyclass(name = "PreTradeContext", module = "openpit.pretrade", frozen)]
+#[pyclass(name = "Context", module = "openpit.pretrade", frozen)]
 struct PyPreTradeContext;
 
 #[pyclass(name = "AccountAdjustmentContext", module = "openpit", frozen)]
@@ -439,35 +436,17 @@ impl From<&AccountAdjustmentContext> for PyAccountAdjustmentContext {
     }
 }
 
-struct BoxedStartPolicy {
-    inner: Box<dyn CheckPreTradeStartPolicy<Order, ExecutionReport> + Send>,
+struct BoxedPreTradePolicy {
+    inner: Box<dyn PreTradePolicy<Order, ExecutionReport, AccountAdjustment> + Send>,
 }
 
-struct BoxedMainPolicy {
-    inner: Box<dyn PreTradePolicy<Order, ExecutionReport> + Send>,
-}
-
-struct BoxedAccountAdjustmentPolicy {
-    inner: Box<dyn AccountAdjustmentPolicy<AccountAdjustment> + Send>,
-}
-
-impl CheckPreTradeStartPolicy<Order, ExecutionReport> for BoxedStartPolicy {
+impl PreTradePolicy<Order, ExecutionReport, AccountAdjustment> for BoxedPreTradePolicy {
     fn name(&self) -> &str {
         self.inner.name()
     }
 
     fn check_pre_trade_start(&self, ctx: &PreTradeContext, order: &Order) -> Result<(), Rejects> {
         self.inner.check_pre_trade_start(ctx, order)
-    }
-
-    fn apply_execution_report(&self, report: &ExecutionReport) -> bool {
-        self.inner.apply_execution_report(report)
-    }
-}
-
-impl PreTradePolicy<Order, ExecutionReport> for BoxedMainPolicy {
-    fn name(&self) -> &str {
-        self.inner.name()
     }
 
     fn perform_pre_trade_check(
@@ -482,12 +461,6 @@ impl PreTradePolicy<Order, ExecutionReport> for BoxedMainPolicy {
     fn apply_execution_report(&self, report: &ExecutionReport) -> bool {
         self.inner.apply_execution_report(report)
     }
-}
-
-impl AccountAdjustmentPolicy<AccountAdjustment> for BoxedAccountAdjustmentPolicy {
-    fn name(&self) -> &str {
-        self.inner.name()
-    }
 
     fn apply_account_adjustment(
         &self,
@@ -501,22 +474,12 @@ impl AccountAdjustmentPolicy<AccountAdjustment> for BoxedAccountAdjustmentPolicy
     }
 }
 
-struct PythonStartPolicyAdapter {
+struct PythonPreTradePolicyAdapter {
     name: String,
     policy: Py<PyAny>,
 }
 
-struct PythonMainPolicyAdapter {
-    name: String,
-    policy: Py<PyAny>,
-}
-
-struct PythonAccountAdjustmentPolicyAdapter {
-    name: String,
-    policy: Py<PyAny>,
-}
-
-impl CheckPreTradeStartPolicy<Order, ExecutionReport> for PythonStartPolicyAdapter {
+impl PreTradePolicy<Order, ExecutionReport, AccountAdjustment> for PythonPreTradePolicyAdapter {
     fn name(&self) -> &str {
         &self.name
     }
@@ -549,43 +512,6 @@ impl CheckPreTradeStartPolicy<Order, ExecutionReport> for PythonStartPolicyAdapt
                 Err(Rejects::from(rejects))
             }
         })
-    }
-
-    fn apply_execution_report(&self, report: &ExecutionReport) -> bool {
-        Python::with_gil(|py| {
-            let kwargs = PyDict::new_bound(py);
-            if let Err(error) = kwargs.set_item("report", report.payload.clone_ref(py)) {
-                set_python_callback_error(error);
-                return false;
-            }
-
-            let result =
-                match self
-                    .policy
-                    .bind(py)
-                    .call_method("apply_execution_report", (), Some(&kwargs))
-                {
-                    Ok(result) => result,
-                    Err(error) => {
-                        set_python_callback_error(error);
-                        return false;
-                    }
-                };
-
-            match result.extract::<bool>() {
-                Ok(value) => value,
-                Err(error) => {
-                    set_python_callback_error(error);
-                    false
-                }
-            }
-        })
-    }
-}
-
-impl PreTradePolicy<Order, ExecutionReport> for PythonMainPolicyAdapter {
-    fn name(&self) -> &str {
-        &self.name
     }
 
     fn perform_pre_trade_check(
@@ -655,12 +581,6 @@ impl PreTradePolicy<Order, ExecutionReport> for PythonMainPolicyAdapter {
                 }
             }
         })
-    }
-}
-
-impl AccountAdjustmentPolicy<AccountAdjustment> for PythonAccountAdjustmentPolicyAdapter {
-    fn name(&self) -> &str {
-        &self.name
     }
 
     fn apply_account_adjustment(
@@ -1275,15 +1195,15 @@ struct PyEngineBuilder;
 
 #[pymethods]
 impl PyEngineBuilder {
-    fn with_full_sync(&self) -> PySyncedEngineBuilder {
+    fn full_sync(&self) -> PySyncedEngineBuilder {
         PySyncedEngineBuilder::synced(PySyncPolicy::Full)
     }
 
-    fn with_local_sync(&self) -> PySyncedEngineBuilder {
+    fn no_sync(&self) -> PySyncedEngineBuilder {
         PySyncedEngineBuilder::synced(PySyncPolicy::Local)
     }
 
-    fn with_account_sync(&self) -> PySyncedEngineBuilder {
+    fn account_sync(&self) -> PySyncedEngineBuilder {
         PySyncedEngineBuilder::synced(PySyncPolicy::Account)
     }
 }
@@ -1302,29 +1222,9 @@ impl PySyncedEngineBuilder {
 #[pymethods]
 impl PySyncedEngineBuilder {
     #[pyo3(signature = (policy))]
-    fn check_pre_trade_start_policy(
-        &self,
-        policy: &Bound<'_, PyAny>,
-    ) -> PyResult<PyReadyEngineBuilder> {
+    fn pre_trade(&self, policy: &Bound<'_, PyAny>) -> PyResult<PyReadyEngineBuilder> {
         let rb = PyReadyEngineBuilder::new(self.sync_policy);
-        rb.push_start_policy(policy)?;
-        Ok(rb)
-    }
-
-    #[pyo3(signature = (policy))]
-    fn pre_trade_policy(&self, policy: &Bound<'_, PyAny>) -> PyResult<PyReadyEngineBuilder> {
-        let rb = PyReadyEngineBuilder::new(self.sync_policy);
-        rb.push_main_policy(policy)?;
-        Ok(rb)
-    }
-
-    #[pyo3(signature = (policy))]
-    fn account_adjustment_policy(
-        &self,
-        policy: &Bound<'_, PyAny>,
-    ) -> PyResult<PyReadyEngineBuilder> {
-        let rb = PyReadyEngineBuilder::new(self.sync_policy);
-        rb.push_account_adjustment_policy(policy)?;
+        rb.push_policy(policy)?;
         Ok(rb)
     }
 
@@ -1349,7 +1249,7 @@ impl PyReadyEngineBuilder {
         PyReadyEngineBuilder {
             state: RefCell::new(Some(PyBuilderState::Synced(
                 Engine::<Order, ExecutionReport, AccountAdjustment>::builder()
-                    .with_sync(openpit_interop::SyncPolicy::new(sync_policy)),
+                    .sync(openpit_interop::SyncPolicy::new(sync_policy)),
             ))),
         }
     }
@@ -1364,34 +1264,16 @@ impl PyReadyEngineBuilder {
         Ok(())
     }
 
-    fn add_start_policy(&self, policy: BoxedStartPolicy) -> PyResult<()> {
+    fn add_policy(&self, policy: BoxedPreTradePolicy) -> PyResult<()> {
         self.with_state(|state| {
             PyBuilderState::Ready(match state {
-                PyBuilderState::Synced(builder) => builder.check_pre_trade_start_policy(policy),
-                PyBuilderState::Ready(builder) => builder.check_pre_trade_start_policy(policy),
+                PyBuilderState::Synced(builder) => builder.pre_trade(policy),
+                PyBuilderState::Ready(builder) => builder.pre_trade(policy),
             })
         })
     }
 
-    fn add_main_policy(&self, policy: BoxedMainPolicy) -> PyResult<()> {
-        self.with_state(|state| {
-            PyBuilderState::Ready(match state {
-                PyBuilderState::Synced(builder) => builder.pre_trade_policy(policy),
-                PyBuilderState::Ready(builder) => builder.pre_trade_policy(policy),
-            })
-        })
-    }
-
-    fn add_account_adjustment_policy(&self, policy: BoxedAccountAdjustmentPolicy) -> PyResult<()> {
-        self.with_state(|state| {
-            PyBuilderState::Ready(match state {
-                PyBuilderState::Synced(builder) => builder.account_adjustment_policy(policy),
-                PyBuilderState::Ready(builder) => builder.account_adjustment_policy(policy),
-            })
-        })
-    }
-
-    fn push_start_policy(&self, policy: &Bound<'_, PyAny>) -> PyResult<()> {
+    fn push_policy(&self, policy: &Bound<'_, PyAny>) -> PyResult<()> {
         let name = policy
             .getattr("name")?
             .extract::<String>()
@@ -1400,44 +1282,11 @@ impl PyReadyEngineBuilder {
             return Err(PyValueError::new_err("policy.name must not be empty"));
         }
         ensure_callable_method(policy, "check_pre_trade_start")?;
-        ensure_callable_method(policy, "apply_execution_report")?;
-        self.add_start_policy(BoxedStartPolicy {
-            inner: Box::new(PythonStartPolicyAdapter {
-                name,
-                policy: policy.clone().unbind(),
-            }),
-        })
-    }
-
-    fn push_main_policy(&self, policy: &Bound<'_, PyAny>) -> PyResult<()> {
-        let name = policy
-            .getattr("name")?
-            .extract::<String>()
-            .map_err(|_| PyValueError::new_err("policy.name must be a string"))?;
-        if name.trim().is_empty() {
-            return Err(PyValueError::new_err("policy.name must not be empty"));
-        }
         ensure_callable_method(policy, "perform_pre_trade_check")?;
         ensure_callable_method(policy, "apply_execution_report")?;
-        self.add_main_policy(BoxedMainPolicy {
-            inner: Box::new(PythonMainPolicyAdapter {
-                name,
-                policy: policy.clone().unbind(),
-            }),
-        })
-    }
-
-    fn push_account_adjustment_policy(&self, policy: &Bound<'_, PyAny>) -> PyResult<()> {
-        let name = policy
-            .getattr("name")?
-            .extract::<String>()
-            .map_err(|_| PyValueError::new_err("policy.name must be a string"))?;
-        if name.trim().is_empty() {
-            return Err(PyValueError::new_err("policy.name must not be empty"));
-        }
         ensure_callable_method(policy, "apply_account_adjustment")?;
-        self.add_account_adjustment_policy(BoxedAccountAdjustmentPolicy {
-            inner: Box::new(PythonAccountAdjustmentPolicyAdapter {
+        self.add_policy(BoxedPreTradePolicy {
+            inner: Box::new(PythonPreTradePolicyAdapter {
                 name,
                 policy: policy.clone().unbind(),
             }),
@@ -1448,29 +1297,11 @@ impl PyReadyEngineBuilder {
 #[pymethods]
 impl PyReadyEngineBuilder {
     #[pyo3(signature = (policy))]
-    fn check_pre_trade_start_policy<'py>(
+    fn pre_trade<'py>(
         slf: PyRef<'py, Self>,
         policy: &Bound<'_, PyAny>,
     ) -> PyResult<PyRef<'py, Self>> {
-        slf.push_start_policy(policy)?;
-        Ok(slf)
-    }
-
-    #[pyo3(signature = (policy))]
-    fn pre_trade_policy<'py>(
-        slf: PyRef<'py, Self>,
-        policy: &Bound<'_, PyAny>,
-    ) -> PyResult<PyRef<'py, Self>> {
-        slf.push_main_policy(policy)?;
-        Ok(slf)
-    }
-
-    #[pyo3(signature = (policy))]
-    fn account_adjustment_policy<'py>(
-        slf: PyRef<'py, Self>,
-        policy: &Bound<'_, PyAny>,
-    ) -> PyResult<PyRef<'py, Self>> {
-        slf.push_account_adjustment_policy(policy)?;
+        slf.push_policy(policy)?;
         Ok(slf)
     }
 
@@ -1489,7 +1320,7 @@ impl PyReadyEngineBuilder {
                 .as_ref()
                 .ok_or_else(|| PyValueError::new_err("engine builder is no longer available"))?
                 .storage_builder();
-            make_rate_limit_start_policy(
+            make_rate_limit_start_check(
                 storage_builder,
                 broker,
                 asset_barriers,
@@ -1497,7 +1328,7 @@ impl PyReadyEngineBuilder {
                 account_asset_barriers,
             )?
         };
-        slf.add_start_policy(policy)?;
+        slf.add_policy(policy)?;
         Ok(slf)
     }
 
@@ -1509,8 +1340,8 @@ impl PyReadyEngineBuilder {
         account_asset_barriers: Vec<(PyRef<'_, PyOrderSizeLimit>, u64, String)>,
     ) -> PyResult<PyRef<'py, Self>> {
         let policy =
-            make_order_size_limit_start_policy(broker, asset_barriers, account_asset_barriers)?;
-        slf.add_start_policy(policy)?;
+            make_order_size_limit_start_check(broker, asset_barriers, account_asset_barriers)?;
+        slf.add_policy(policy)?;
         Ok(slf)
     }
 
@@ -1526,15 +1357,15 @@ impl PyReadyEngineBuilder {
                 .as_ref()
                 .ok_or_else(|| PyValueError::new_err("engine builder is no longer available"))?
                 .storage_builder();
-            make_pnl_killswitch_start_policy(storage_builder, broker_barriers, account_barriers)?
+            make_pnl_killswitch_start_check(storage_builder, broker_barriers, account_barriers)?
         };
-        slf.add_start_policy(policy)?;
+        slf.add_policy(policy)?;
         Ok(slf)
     }
 
     #[pyo3(name = "_add_builtin_order_validation")]
     fn add_builtin_order_validation<'py>(slf: PyRef<'py, Self>) -> PyResult<PyRef<'py, Self>> {
-        slf.add_start_policy(make_order_validation_start_policy())?;
+        slf.add_policy(make_order_validation_start_check())?;
         Ok(slf)
     }
 
@@ -1646,13 +1477,13 @@ fn parse_rate_limit_barriers(
     Ok((broker_barrier, asset, account, account_asset))
 }
 
-fn make_rate_limit_start_policy(
+fn make_rate_limit_start_check(
     storage_builder: &StorageBuilder<openpit_interop::sync_policy::StorageLockingPolicyFactory>,
     broker: Option<(usize, u64)>,
     asset_barriers: Vec<(String, usize, u64)>,
     account_barriers: Vec<(u64, usize, u64)>,
     account_asset_barriers: Vec<(u64, String, usize, u64)>,
-) -> PyResult<BoxedStartPolicy> {
+) -> PyResult<BoxedPreTradePolicy> {
     let (broker_barrier, asset, account, account_asset) = parse_rate_limit_barriers(
         broker,
         asset_barriers,
@@ -1667,16 +1498,16 @@ fn make_rate_limit_start_policy(
         storage_builder,
     )
     .map_err(|e| PyValueError::new_err(e.to_string()))?;
-    Ok(BoxedStartPolicy {
+    Ok(BoxedPreTradePolicy {
         inner: Box::new(policy),
     })
 }
 
-fn make_order_size_limit_start_policy(
+fn make_order_size_limit_start_check(
     broker: Option<PyRef<'_, PyOrderSizeLimit>>,
     asset_barriers: Vec<(PyRef<'_, PyOrderSizeLimit>, String)>,
     account_asset_barriers: Vec<(PyRef<'_, PyOrderSizeLimit>, u64, String)>,
-) -> PyResult<BoxedStartPolicy> {
+) -> PyResult<BoxedPreTradePolicy> {
     use openpit::param::AccountId;
 
     let broker_barrier = broker
@@ -1719,7 +1550,7 @@ fn make_order_size_limit_start_policy(
 
     let policy = OrderSizeLimitPolicy::new(broker_barrier, asset, account_asset)
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
-    Ok(BoxedStartPolicy {
+    Ok(BoxedPreTradePolicy {
         inner: Box::new(policy),
     })
 }
@@ -1774,22 +1605,22 @@ fn parse_pnl_killswitch_barriers<'py>(
     Ok((brokers, accounts))
 }
 
-fn make_pnl_killswitch_start_policy(
+fn make_pnl_killswitch_start_check(
     storage_builder: &StorageBuilder<openpit_interop::sync_policy::StorageLockingPolicyFactory>,
     broker_barriers: Vec<Bound<'_, PyAny>>,
     account_barriers: Vec<Bound<'_, PyAny>>,
-) -> PyResult<BoxedStartPolicy> {
+) -> PyResult<BoxedPreTradePolicy> {
     let (brokers, accounts) = parse_pnl_killswitch_barriers(&broker_barriers, &account_barriers)?;
     let policy =
         PnlBoundsKillSwitchPolicy::new(brokers.into_iter(), accounts.into_iter(), storage_builder)
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
-    Ok(BoxedStartPolicy {
+    Ok(BoxedPreTradePolicy {
         inner: Box::new(policy),
     })
 }
 
-fn make_order_validation_start_policy() -> BoxedStartPolicy {
-    BoxedStartPolicy {
+fn make_order_validation_start_check() -> BoxedPreTradePolicy {
+    BoxedPreTradePolicy {
         inner: Box::new(OrderValidationPolicy::new()),
     }
 }
@@ -3818,7 +3649,7 @@ impl PyAccountAdjustment {
     }
 }
 
-#[pyclass(name = "PreTradeRequest", module = "openpit.pretrade", unsendable)]
+#[pyclass(name = "Request", module = "openpit.pretrade", unsendable)]
 struct PyRequest {
     inner: RefCell<Option<PreTradeRequest<Order>>>,
 }
@@ -3861,12 +3692,12 @@ impl PyRequest {
     }
 }
 
-#[pyclass(name = "PreTradeReservation", module = "openpit.pretrade", unsendable)]
+#[pyclass(name = "Reservation", module = "openpit.pretrade", unsendable)]
 struct PyReservation {
     inner: RefCell<Option<PreTradeReservation>>,
 }
 
-#[pyclass(name = "PreTradeLock", module = "openpit.pretrade", subclass)]
+#[pyclass(name = "Lock", module = "openpit.pretrade", subclass)]
 #[derive(Clone)]
 struct PyPreTradeLock {
     inner: PreTradeLock,
@@ -3914,7 +3745,7 @@ impl PyPreTradeLock {
 
     fn __repr__(&self) -> String {
         format!(
-            "PreTradeLock(price={:?})",
+            "Lock(price={:?})",
             self.price().map(|price| price.inner.to_string())
         )
     }
@@ -5075,19 +4906,28 @@ mod field_access_tests {
                 r#"
 from types import SimpleNamespace
 
-class StartPolicy:
+class StartCheck:
     def __init__(self):
-        self.name = "PythonStartPolicy"
+        self.name = "PythonAdmissionCheck"
 
     def check_pre_trade_start(self, ctx, order):
         return None
 
+    def perform_pre_trade_check(self, ctx, order):
+        return SimpleNamespace(rejects=[], mutations=[])
+
     def apply_execution_report(self, *, report):
         return False
 
-class MainPolicy:
+    def apply_account_adjustment(self, ctx, account_id, adjustment):
+        return None
+
+class ExecutionCheck:
     def __init__(self):
-        self.name = "PythonMainPolicy"
+        self.name = "PythonExecutionCheck"
+
+    def check_pre_trade_start(self, ctx, order):
+        return None
 
     def perform_pre_trade_check(self, ctx, order):
         mutation = SimpleNamespace(commit=lambda: None, rollback=lambda: None)
@@ -5096,9 +4936,21 @@ class MainPolicy:
     def apply_execution_report(self, *, report):
         return False
 
-class AdjustmentPolicy:
+    def apply_account_adjustment(self, ctx, account_id, adjustment):
+        return None
+
+class AdjustmentCheck:
     def __init__(self):
-        self.name = "PythonAdjustmentPolicy"
+        self.name = "PythonAccountCheck"
+
+    def check_pre_trade_start(self, ctx, order):
+        return None
+
+    def perform_pre_trade_check(self, ctx, order):
+        return SimpleNamespace(rejects=[], mutations=[])
+
+    def apply_execution_report(self, *, report):
+        return False
 
     def apply_account_adjustment(self, ctx, account_id, adjustment):
         return None
@@ -5107,14 +4959,14 @@ class AdjustmentPolicy:
                 "test_python_policies",
             )?;
 
-            let start_policy = policy_module.getattr("StartPolicy")?.call0()?;
-            let main_policy = policy_module.getattr("MainPolicy")?.call0()?;
-            let adjustment_policy = policy_module.getattr("AdjustmentPolicy")?.call0()?;
+            let start_check = policy_module.getattr("StartCheck")?.call0()?;
+            let execution_check = policy_module.getattr("ExecutionCheck")?.call0()?;
+            let adjustment_check = policy_module.getattr("AdjustmentCheck")?.call0()?;
 
             let builder = PyReadyEngineBuilder::new(PySyncPolicy::Local);
 
-            let ov_policy = make_order_validation_start_policy();
-            builder.add_start_policy(ov_policy)?;
+            let ov_policy = make_order_validation_start_check();
+            builder.add_policy(ov_policy)?;
 
             let ns_module = PyModule::from_code_bound(
                 py,
@@ -5139,9 +4991,9 @@ class AdjustmentPolicy:
                     .as_ref()
                     .expect("builder must be available")
                     .storage_builder();
-                make_pnl_killswitch_start_policy(storage_builder, vec![pnl_barrier_obj], vec![])?
+                make_pnl_killswitch_start_check(storage_builder, vec![pnl_barrier_obj], vec![])?
             };
-            builder.add_start_policy(pnl_policy)?;
+            builder.add_policy(pnl_policy)?;
 
             let rl_policy = {
                 let state = builder.state.borrow();
@@ -5149,7 +5001,7 @@ class AdjustmentPolicy:
                     .as_ref()
                     .expect("builder must be available")
                     .storage_builder();
-                make_rate_limit_start_policy(
+                make_rate_limit_start_check(
                     storage_builder,
                     Some((100, 1_000)),
                     vec![],
@@ -5157,22 +5009,22 @@ class AdjustmentPolicy:
                     vec![],
                 )?
             };
-            builder.add_start_policy(rl_policy)?;
+            builder.add_policy(rl_policy)?;
 
             let size_limit = PyOrderSizeLimit {
                 max_quantity: "1000".to_owned(),
                 max_notional: "1000000".to_owned(),
             };
             let size_limit_py = Py::new(py, size_limit)?;
-            let sl_policy = make_order_size_limit_start_policy(
+            let sl_policy = make_order_size_limit_start_check(
                 None,
                 vec![(size_limit_py.bind(py).borrow(), "USD".to_owned())],
                 vec![],
             )?;
-            builder.add_start_policy(sl_policy)?;
-            builder.push_start_policy(&start_policy)?;
-            builder.push_main_policy(&main_policy)?;
-            builder.push_account_adjustment_policy(&adjustment_policy)?;
+            builder.add_policy(sl_policy)?;
+            builder.push_policy(&start_check)?;
+            builder.push_policy(&execution_check)?;
+            builder.push_policy(&adjustment_check)?;
 
             let engine = builder.build()?;
 

@@ -3,16 +3,16 @@ import openpit
 import pytest
 
 
-class BlockAllStartPolicy(openpit.pretrade.CheckPreTradeStartPolicy):
+class BlockAllStartCheck(openpit.pretrade.Policy):
     # @typing.override
     @property
     def name(self) -> str:
-        return "BlockAllStartPolicy"
+        return "BlockAllStartCheck"
 
     # @typing.override
     def check_pre_trade_start(
         self,
-        ctx: openpit.pretrade.PreTradeContext,
+        ctx: openpit.pretrade.Context,
         order: openpit.Order,
     ) -> tuple[openpit.pretrade.PolicyReject, ...]:
         del ctx, order
@@ -20,7 +20,7 @@ class BlockAllStartPolicy(openpit.pretrade.CheckPreTradeStartPolicy):
             openpit.pretrade.PolicyReject(
                 code=openpit.pretrade.RejectCode.COMPLIANCE_RESTRICTION,
                 reason="blocked by policy",
-                details="test start policy reject",
+                details="test start check reject",
                 scope=openpit.pretrade.RejectScope.ACCOUNT,
             ),
         )
@@ -35,16 +35,16 @@ class BlockAllStartPolicy(openpit.pretrade.CheckPreTradeStartPolicy):
         return False
 
 
-class ReportHookStartPolicy(openpit.pretrade.CheckPreTradeStartPolicy):
+class ReportHookStartCheck(openpit.pretrade.Policy):
     # @typing.override
     @property
     def name(self) -> str:
-        return "ReportHookStartPolicy"
+        return "ReportHookStartCheck"
 
     # @typing.override
     def check_pre_trade_start(
         self,
-        ctx: openpit.pretrade.PreTradeContext,
+        ctx: openpit.pretrade.Context,
         order: openpit.Order,
     ) -> tuple[openpit.pretrade.PolicyReject, ...]:
         del ctx, order
@@ -88,27 +88,27 @@ def test_policy_decision_and_mutation_factories() -> None:
 
 
 @pytest.mark.unit
-def test_custom_start_policy_reject_is_returned_as_result() -> None:
+def test_custom_start_check_reject_is_returned_as_result() -> None:
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
-        .check_pre_trade_start_policy(policy=BlockAllStartPolicy())
+        .no_sync()
+        .pre_trade(policy=BlockAllStartCheck())
         .build()
     )
 
     result = engine.start_pre_trade(order=conftest.make_order())
     assert not result.ok
     assert len(result.rejects) == 1
-    assert result.rejects[0].policy == "BlockAllStartPolicy"
+    assert result.rejects[0].policy == "BlockAllStartCheck"
     assert result.rejects[0].scope == "account"
 
 
 @pytest.mark.unit
-def test_custom_start_policy_post_trade_hook_is_supported() -> None:
+def test_custom_start_check_post_trade_hook_is_supported() -> None:
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
-        .check_pre_trade_start_policy(policy=ReportHookStartPolicy())
+        .no_sync()
+        .pre_trade(policy=ReportHookStartCheck())
         .build()
     )
 

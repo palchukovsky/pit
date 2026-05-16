@@ -23,7 +23,7 @@
 //! [`AccountKeyConstraint`] adapts that marker to the storage layer's
 //! [`IndexKeyBound`](crate::storage::IndexKeyBound) interface so that the
 //! engine builder's
-//! [`with_account_sync`](crate::EngineBuilder::with_account_sync) entry
+//! [`account_sync`](crate::EngineBuilder::account_sync) entry
 //! point can pin its storages to keys that satisfy [`AccountKey`] at
 //! compile time.
 
@@ -35,15 +35,15 @@ use crate::storage::IndexKeyBound;
 /// Implemented automatically for [`AccountId`] and tuples whose first
 /// element is [`AccountId`] up to a reasonable arity. Custom storage keys
 /// must implement this trait explicitly to be usable under
-/// [`with_account_sync`](crate::EngineBuilder::with_account_sync).
+/// [`account_sync`](crate::EngineBuilder::account_sync).
 ///
 /// The trait's only method, [`AccountKey::account_id`], reports the
 /// account the key belongs to. Implementations are expected to be
 /// constant-time.
 #[diagnostic::on_unimplemented(
-    message = "engine is in account-sync mode (`with_account_sync`), but the storage key `{Self}` does not identify an account",
+    message = "engine is in account-sync mode (`account_sync`), but the storage key `{Self}` does not identify an account",
     label = "this key cannot be sharded by account",
-    note = "include `AccountId` in the storage key (e.g. `(AccountId, ...)`), implement `AccountKey` for your custom key, or switch to `with_full_sync` / `with_local_sync`"
+    note = "include `AccountId` in the storage key (e.g. `(AccountId, ...)`), implement `AccountKey` for your custom key, or switch to `full_sync` / `no_sync`"
 )]
 pub trait AccountKey {
     /// Returns the account this key belongs to.
@@ -84,7 +84,7 @@ impl<T1, T2, T3> AccountKey for (AccountId, T1, T2, T3) {
 /// Used as the `KeyBound` parameter of
 /// [`IndexLocking`](crate::storage::IndexLocking) under
 /// [`AccountSyncPolicy`](crate::AccountSyncPolicy). Storages built through
-/// the [`with_account_sync`](crate::EngineBuilder::with_account_sync) flow
+/// the [`account_sync`](crate::EngineBuilder::account_sync) flow
 /// inherit this bound, which forces every key type used by registered
 /// trading policies to satisfy [`AccountKey`] at compile time.
 ///
@@ -94,7 +94,7 @@ impl<T1, T2, T3> AccountKey for (AccountId, T1, T2, T3) {
 /// use openpit::param::{AccountId, Asset};
 /// use openpit::Engine;
 ///
-/// let builder = Engine::<()>::builder().with_account_sync();
+/// let builder = Engine::<()>::builder().account_sync();
 /// let _ = builder.storage_builder().create::<AccountId, u64>();
 /// let _ = builder.storage_builder().create::<(AccountId, Asset), u64>();
 /// ```
@@ -108,7 +108,7 @@ impl<T1, T2, T3> AccountKey for (AccountId, T1, T2, T3) {
 ///
 /// // `u32` does not implement `AccountKey`, so account-sync mode
 /// // refuses to create a storage keyed by it.
-/// let builder = Engine::<()>::builder().with_account_sync();
+/// let builder = Engine::<()>::builder().account_sync();
 /// let _ = builder.storage_builder().create::<u32, u64>();
 /// ```
 #[derive(Debug, Default, Clone, Copy)]

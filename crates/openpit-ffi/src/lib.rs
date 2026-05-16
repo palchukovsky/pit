@@ -31,7 +31,12 @@ pub mod string;
 pub use account_adjustment::AccountAdjustment;
 pub use execution_report::ExecutionReport;
 pub use order::Order;
-pub use policy::{OpenPitAccountAdjustmentPolicy, OpenPitAccountAdjustmentPolicyApplyFn};
+pub use policy::{
+    OpenPitPretradePreTradePolicy, OpenPitPretradePreTradePolicyApplyAccountAdjustmentFn,
+    OpenPitPretradePreTradePolicyApplyExecutionReportFn,
+    OpenPitPretradePreTradePolicyCheckPreTradeStartFn, OpenPitPretradePreTradePolicyFreeUserDataFn,
+    OpenPitPretradePreTradePolicyPerformPreTradeCheckFn,
+};
 
 use string::OpenPitStringView;
 

@@ -29,12 +29,12 @@ use super::reservation::PreTradeReservation;
 ///
 /// The request does not expose the underlying order to the caller;
 /// those values are visible only to the engine and the policies.
-pub struct PreTradeRequest<O> {
-    inner: Box<dyn RequestHandle<O>>,
+pub struct PreTradeRequest<Order> {
+    inner: Box<dyn RequestHandle<Order>>,
 }
 
 /// Internal capability interface used by [`PreTradeRequest`].
-pub(crate) trait RequestHandle<O> {
+pub(crate) trait RequestHandle<Order> {
     /// Executes deferred main-stage pre-trade checks.
     fn execute(self: Box<Self>) -> Result<PreTradeReservation, Rejects>;
 }
@@ -45,7 +45,7 @@ impl<O> std::fmt::Debug for PreTradeRequest<O> {
     }
 }
 
-impl<O> PreTradeRequest<O> {
+impl<Order> PreTradeRequest<Order> {
     /// Executes deferred pre-trade checks.
     ///
     /// The call is single-use by type semantics because `self` is consumed.
@@ -61,8 +61,8 @@ impl<O> PreTradeRequest<O> {
     ///
     /// use openpit::pretrade::policies::OrderValidationPolicy;
     /// let engine = Engine::<OrderOperation>::builder()
-    ///     .with_local_sync()
-    ///     .check_pre_trade_start_policy(OrderValidationPolicy::new())
+    ///     .no_sync()
+    ///     .pre_trade(OrderValidationPolicy::new())
     ///     .build()?;
     /// let order = OrderOperation {
     ///     instrument: Instrument::new(
@@ -92,7 +92,7 @@ impl<O> PreTradeRequest<O> {
         self.inner.execute()
     }
 
-    pub(crate) fn from_handle(inner: Box<dyn RequestHandle<O>>) -> Self {
+    pub(crate) fn from_handle(inner: Box<dyn RequestHandle<Order>>) -> Self {
         Self { inner }
     }
 }

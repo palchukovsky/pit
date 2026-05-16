@@ -3,7 +3,7 @@ import openpit
 import pytest
 
 
-class AcceptPolicy(openpit.pretrade.PreTradePolicy):
+class AcceptPolicy(openpit.pretrade.Policy):
     # @typing.override
     @property
     def name(self) -> str:
@@ -12,7 +12,7 @@ class AcceptPolicy(openpit.pretrade.PreTradePolicy):
     # @typing.override
     def perform_pre_trade_check(
         self,
-        ctx: openpit.pretrade.PreTradeContext,
+        ctx: openpit.pretrade.Context,
         order: openpit.Order,
     ) -> openpit.pretrade.PolicyDecision:
         del ctx, order
@@ -28,7 +28,7 @@ class AcceptPolicy(openpit.pretrade.PreTradePolicy):
         return False
 
 
-class NamedRejectPolicy(openpit.pretrade.PreTradePolicy):
+class NamedRejectPolicy(openpit.pretrade.Policy):
     # @typing.override
     def __init__(self, *, policy_name: str) -> None:
         self._policy_name = policy_name
@@ -41,7 +41,7 @@ class NamedRejectPolicy(openpit.pretrade.PreTradePolicy):
     # @typing.override
     def perform_pre_trade_check(
         self,
-        ctx: openpit.pretrade.PreTradeContext,
+        ctx: openpit.pretrade.Context,
         order: openpit.Order,
     ) -> openpit.pretrade.PolicyDecision:
         del ctx, order
@@ -95,9 +95,9 @@ class MissingPriceOrder(openpit.Order):
 def test_engine_builder_supports_chaining_and_main_stage_policy() -> None:
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
+        .no_sync()
         .builtin(openpit.pretrade.policies.build_order_validation())
-        .pre_trade_policy(policy=AcceptPolicy())
+        .pre_trade(policy=AcceptPolicy())
         .build()
     )
 
@@ -113,21 +113,16 @@ def test_builder_rejects_duplicate_policy_names() -> None:
     with pytest.raises(ValueError, match="duplicate policy name"):
         (
             openpit.Engine.builder()
-            .with_local_sync()
-            .pre_trade_policy(policy=NamedRejectPolicy(policy_name="dup"))
-            .pre_trade_policy(policy=NamedRejectPolicy(policy_name="dup"))
+            .no_sync()
+            .pre_trade(policy=NamedRejectPolicy(policy_name="dup"))
+            .pre_trade(policy=NamedRejectPolicy(policy_name="dup"))
             .build()
         )
 
 
 @pytest.mark.unit
 def test_engine_start_pre_trade_accepts_order_subclass() -> None:
-    engine = (
-        openpit.Engine.builder()
-        .with_local_sync()
-        .pre_trade_policy(policy=AcceptPolicy())
-        .build()
-    )
+    engine = openpit.Engine.builder().no_sync().pre_trade(policy=AcceptPolicy()).build()
 
     order = TaggedOrder(strategy_tag="alpha-1")
     start_result = engine.start_pre_trade(order=order)
@@ -141,12 +136,7 @@ def test_engine_start_pre_trade_accepts_order_subclass() -> None:
 
 @pytest.mark.unit
 def test_engine_start_pre_trade_rejects_plain_python_object() -> None:
-    engine = (
-        openpit.Engine.builder()
-        .with_local_sync()
-        .pre_trade_policy(policy=AcceptPolicy())
-        .build()
-    )
+    engine = openpit.Engine.builder().no_sync().pre_trade(policy=AcceptPolicy()).build()
 
     with pytest.raises(TypeError, match="order must inherit from openpit.Order"):
         engine.start_pre_trade(order=object())
@@ -154,12 +144,7 @@ def test_engine_start_pre_trade_rejects_plain_python_object() -> None:
 
 @pytest.mark.unit
 def test_engine_start_pre_trade_accepts_order_subclass_without_price() -> None:
-    engine = (
-        openpit.Engine.builder()
-        .with_local_sync()
-        .pre_trade_policy(policy=AcceptPolicy())
-        .build()
-    )
+    engine = openpit.Engine.builder().no_sync().pre_trade(policy=AcceptPolicy()).build()
 
     start_result = engine.start_pre_trade(order=MissingPriceOrder())
     assert start_result.ok

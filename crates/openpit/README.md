@@ -55,9 +55,9 @@ The engine evaluates an order through a deterministic pre-trade pipeline:
 - dropping `PreTradeReservation` rolls state back automatically
 - `apply_execution_report(report)` updates post-trade policy state
 
-Start-stage policies stop on the first reject. Main-stage policies aggregate
-rejects and roll back registered mutations in reverse order when any reject is
-produced.
+Start-stage policies aggregate rejects from all registered policies. Main-stage
+policies aggregate rejects and roll back registered mutations in reverse order
+when any reject is produced.
 
 Built-in start-stage policies currently include:
 
@@ -121,7 +121,7 @@ use openpit::{Engine, Instrument};
 let usd = Asset::new("USD")?;
 
 // 1. Configure policies.
-let builder = Engine::builder().with_local_sync();
+let builder = Engine::builder().no_sync();
 
 let pnl_policy = PnlBoundsKillSwitchPolicy::new(
     [PnlBoundsBrokerBarrier {
@@ -160,10 +160,10 @@ let size_policy = OrderSizeLimitPolicy::new(
 
 // 2. Build the engine (one time at the platform initialization).
 let engine = builder
-    .check_pre_trade_start_policy(OrderValidationPolicy::new())
-    .check_pre_trade_start_policy(pnl_policy)
-    .check_pre_trade_start_policy(rate_limit_policy)
-    .check_pre_trade_start_policy(size_policy)
+    .pre_trade(OrderValidationPolicy::new())
+    .pre_trade(pnl_policy)
+    .pre_trade(rate_limit_policy)
+    .pre_trade(size_policy)
     .build()?;
 
 // 3. Check an order.

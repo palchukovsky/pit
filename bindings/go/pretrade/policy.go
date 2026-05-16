@@ -18,12 +18,14 @@
 package pretrade
 
 import (
+	"go.openpit.dev/openpit/accountadjustment"
 	"go.openpit.dev/openpit/model"
+	"go.openpit.dev/openpit/param"
 	"go.openpit.dev/openpit/reject"
 	"go.openpit.dev/openpit/tx"
 )
 
-type CheckStartPolicy interface {
+type Policy interface {
 	// Close releases any resources held by the policy.
 	Close()
 
@@ -35,34 +37,15 @@ type CheckStartPolicy interface {
 
 	// CheckPreTradeStart performs start-stage checks against an order.
 	//
-	// Returning empty reject list allows the engine to continue building the
-	// deferred request. Returning non-empty reject list aborts the start stage
-	// immediately.
+	// Returning a non-empty reject list contributes rejects to the start-stage
+	// reject result. All registered policies are evaluated in registration
+	// order and their reject lists are merged before the engine returns to the
+	// caller.
 	//
 	// Implementations must not let panics escape this method. A panic raised
 	// here may propagate across the SDK boundary and terminate the process;
 	// recovering from such panics is the implementer's responsibility.
 	CheckPreTradeStart(Context, model.Order) []reject.Reject
-
-	// ApplyExecutionReport applies post-trade updates from execution reports.
-	//
-	// Returns `true` when this policy reports kill-switch trigger.
-	//
-	// Implementations must not let panics escape this method. A panic raised
-	// here may propagate across the SDK boundary and terminate the process;
-	// recovering from such panics is the implementer's responsibility.
-	ApplyExecutionReport(model.ExecutionReport) bool
-}
-
-type Policy interface {
-	// Close releases any resources held by the policy.
-	Close()
-
-	// Name returns the stable policy name.
-	//
-	// Policy names must be unique across all policies registered in the same
-	// engine instance.
-	Name() string
 
 	// PerformPreTradeCheck performs main-stage checks and can emit mutations
 	// or rejects.
@@ -90,4 +73,19 @@ type Policy interface {
 	// here may propagate across the SDK boundary and terminate the process;
 	// recovering from such panics is the implementer's responsibility.
 	ApplyExecutionReport(model.ExecutionReport) bool
+
+	// ApplyAccountAdjustment validates one account adjustment.
+	//
+	// Returns zero or more rejects when an adjustment violates policy
+	// constraints. Empty list means accept.
+	//
+	// Implementations must not let panics escape this method. A panic raised
+	// here may propagate across the SDK boundary and terminate the process;
+	// recovering from such panics is the implementer's responsibility.
+	ApplyAccountAdjustment(
+		accountadjustment.Context,
+		param.AccountID,
+		model.AccountAdjustment,
+		tx.Mutations,
+	) []reject.Reject
 }

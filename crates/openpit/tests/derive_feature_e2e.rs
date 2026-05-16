@@ -125,7 +125,7 @@ fn derive_feature_reexport_builds_wrappers_and_engine_smoke_path() {
         Ok(Fee::from_str("-1").expect("must be valid"))
     );
 
-    let builder = Engine::<DerivedOrder, DerivedReport>::builder().with_local_sync();
+    let builder = Engine::<DerivedOrder, DerivedReport>::builder().no_sync();
     let pnl_policy = PnlBoundsKillSwitchPolicy::new(
         [PnlBoundsBrokerBarrier {
             settlement_asset: Asset::new("USD").expect("must be valid"),
@@ -137,7 +137,7 @@ fn derive_feature_reexport_builds_wrappers_and_engine_smoke_path() {
     )
     .expect("must build policy");
     let engine = builder
-        .check_pre_trade_start_policy(pnl_policy)
+        .pre_trade(pnl_policy)
         .build()
         .expect("must build engine");
 

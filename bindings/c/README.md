@@ -93,14 +93,15 @@ The engine evaluates an order through a deterministic pre-trade pipeline:
 
 - `openpit_engine_start_pre_trade(...)` runs start-stage policies and creates a
   deferred request
-- `openpit_pretrade_request_execute(...)` runs main-stage check policies
-- `openpit_pretrade_reservation_commit(...)` applies reserved state
-- `openpit_pretrade_reservation_rollback(...)` reverts reserved state
+- `openpit_pretrade_pre_trade_request_execute(...)` runs main-stage check
+  policies
+- `openpit_pretrade_pre_trade_reservation_commit(...)` applies reserved state
+- `openpit_pretrade_pre_trade_reservation_rollback(...)` reverts reserved state
 - `openpit_engine_apply_execution_report(...)` updates post-trade policy state
 
-Start-stage policies stop on the first reject. Main-stage policies aggregate
-rejects and run rollback mutations in reverse order when any reject is
-produced.
+Start-stage policies aggregate rejects from all registered policies. Main-stage
+policies aggregate rejects and run rollback mutations in reverse order when any
+reject is produced.
 
 Built-in policies currently include:
 
@@ -134,12 +135,11 @@ only for the threading contract on the SDK handle.
 #include "openpit.h"
 
 static int report_last_error(const char *context) {
-    const char *message = openpit_get_last_error();
-    fprintf(stderr, "%s: %s\n", context, message != NULL ? message : "<no error>");
+    fprintf(stderr, "%s failed\n", context);
     return 1;
 }
 
-/* Prints the error message from a OpenPitSharedString, then destroys the handle. */
+/* Prints the error message, then destroys the handle. */
 static int report_out_error(const char *context, OpenPitSharedString *error) {
     char buf[512];
     OpenPitStringView view = openpit_shared_string_view(error);
@@ -170,7 +170,11 @@ static int make_quantity(
     return 0;
 }
 
-static int make_volume(int64_t mantissa, int32_t scale, OpenPitParamVolume *out) {
+static int make_volume(
+    int64_t mantissa,
+    int32_t scale,
+    OpenPitParamVolume *out
+) {
     if (!openpit_create_param_volume(
             (OpenPitParamDecimal){
                 .mantissa_lo = mantissa,
@@ -249,19 +253,19 @@ static void print_reject(const OpenPitReject *reject) {
     fprintf(
         stderr,
         "%s [%u]: %s: %s\n",
-        view_to_cstr(openpit_reject_get_policy(reject), policy, sizeof(policy)),
-        (unsigned)openpit_reject_get_code(reject),
-        view_to_cstr(openpit_reject_get_reason(reject), reason, sizeof(reason)),
-        view_to_cstr(openpit_reject_get_details(reject), details, sizeof(details)));
+        view_to_cstr(reject->policy, policy, sizeof(policy)),
+        (unsigned)reject->code,
+        view_to_cstr(reject->reason, reason, sizeof(reason)),
+        view_to_cstr(reject->details, details, sizeof(details)));
 }
 
 static void print_reject_list(const OpenPitRejectList *rejects) {
     size_t i = 0;
     size_t len = openpit_reject_list_len(rejects);
     for (i = 0; i < len; ++i) {
-        const OpenPitReject *item = openpit_reject_list_get(rejects, i);
-        if (item != NULL) {
-            print_reject(item);
+        OpenPitReject item = {0};
+        if (openpit_reject_list_get(rejects, i, &item)) {
+            print_reject(&item);
         }
     }
 }
@@ -273,11 +277,8 @@ int main(void) {
 
     /* 1. Configure policies. */
     OpenPitPretradePoliciesPnlBoundsBarrier pnl_barrier = {0};
-    OpenPitPretradePoliciesOrderSizeLimitParam order_size_limit = {0};
-    OpenPitPretradeCheckPreTradeStartPolicy *validation_policy = NULL;
-    OpenPitPretradeCheckPreTradeStartPolicy *pnl_policy = NULL;
-    OpenPitPretradeCheckPreTradeStartPolicy *rate_limit_policy = NULL;
-    OpenPitPretradeCheckPreTradeStartPolicy *order_size_policy = NULL;
+    OpenPitPretradePoliciesRateLimitBrokerBarrier rate_limit = {0};
+    OpenPitPretradePoliciesOrderSizeBrokerBarrier order_size_limit = {0};
     OpenPitEngineBuilder *builder = NULL;
     OpenPitEngine *engine = NULL;
     OpenPitPretradePreTradeRequest *request = NULL;
@@ -288,89 +289,58 @@ int main(void) {
     OpenPitOrder order = {0};
     OpenPitExecutionReport report = {0};
 
-    pnl_barrier.settlement_asset = "USD";
+    pnl_barrier.settlement_asset = make_string_view("USD");
     if (make_pnl(-1000, 0, &pnl_barrier.lower_bound.value) != 0) {
         goto cleanup;
     }
     pnl_barrier.lower_bound.is_set = true;
-    if (make_pnl(0, 0, &pnl_barrier.initial_pnl) != 0) {
-        goto cleanup;
-    }
 
-    order_size_limit.settlement_asset = "USD";
-    if (make_quantity(500, 0, &order_size_limit.max_quantity) != 0) {
-        goto cleanup;
-    }
-    if (make_volume(100000, 0, &order_size_limit.max_notional) != 0) {
-        goto cleanup;
-    }
+    rate_limit.max_orders = 100;
+    rate_limit.window_nanoseconds = 1000000000;
 
-    validation_policy = openpit_create_pretrade_order_validation_policy();
-    if (validation_policy == NULL) {
-        report_last_error("openpit_create_pretrade_order_validation_policy");
+    if (make_quantity(500, 0, &order_size_limit.limit.max_quantity) != 0) {
         goto cleanup;
     }
-
-    pnl_policy =
-        openpit_create_pretrade_policies_pnl_bounds_killswitch_policy(
-            &pnl_barrier, 1, &error);
-    if (pnl_policy == NULL) {
-        report_out_error(
-            "openpit_create_pretrade_policies_pnl_bounds_killswitch_policy", error);
-        error = NULL;
-        goto cleanup;
-    }
-
-    rate_limit_policy = openpit_create_pretrade_rate_limit_policy(100, 1);
-    if (rate_limit_policy == NULL) {
-        report_last_error("openpit_create_pretrade_rate_limit_policy");
-        goto cleanup;
-    }
-
-    order_size_policy = openpit_create_pretrade_order_size_limit_policy(
-        &order_size_limit, 1, &error);
-    if (order_size_policy == NULL) {
-        report_out_error(
-            "openpit_create_pretrade_order_size_limit_policy", error);
-        error = NULL;
+    if (make_volume(100000, 0, &order_size_limit.limit.max_notional) != 0) {
         goto cleanup;
     }
 
     /* 2. Build the engine once during platform initialization. */
-    builder = openpit_create_engine_builder();
+    builder = openpit_create_engine_builder(OpenPitSyncPolicy_Full, &error);
     if (builder == NULL) {
-        report_last_error("openpit_create_engine_builder");
+        report_out_error("openpit_create_engine_builder", error);
+        error = NULL;
         goto cleanup;
     }
 
-    if (!openpit_engine_builder_add_check_pre_trade_start_policy(
-            builder, validation_policy, &error)) {
+    if (!openpit_engine_builder_add_builtin_order_validation_policy(
+            builder, &error)) {
         report_out_error(
-            "openpit_engine_builder_add_check_pre_trade_start_policy (validation)",
+            "openpit_engine_builder_add_builtin_order_validation_policy",
             error);
         error = NULL;
         goto cleanup;
     }
-    if (!openpit_engine_builder_add_check_pre_trade_start_policy(
-            builder, pnl_policy, &error)) {
+    if (!openpit_engine_builder_add_builtin_pnl_bounds_killswitch_policy(
+            builder, &pnl_barrier, 1, NULL, 0, &error)) {
         report_out_error(
-            "openpit_engine_builder_add_check_pre_trade_start_policy (pnl)",
+            "openpit_engine_builder_add_builtin_pnl_bounds_killswitch_policy",
             error);
         error = NULL;
         goto cleanup;
     }
-    if (!openpit_engine_builder_add_check_pre_trade_start_policy(
-            builder, rate_limit_policy, &error)) {
+    if (!openpit_engine_builder_add_builtin_rate_limit_policy(
+            builder, &rate_limit, NULL, 0, NULL, 0, NULL, 0, &error)) {
         report_out_error(
-            "openpit_engine_builder_add_check_pre_trade_start_policy (rate limit)",
+            "openpit_engine_builder_add_builtin_rate_limit_policy",
             error);
         error = NULL;
         goto cleanup;
     }
-    if (!openpit_engine_builder_add_check_pre_trade_start_policy(
-            builder, order_size_policy, &error)) {
+    if (!openpit_engine_builder_add_builtin_order_size_limit_policy(
+            builder, &order_size_limit, NULL, 0, NULL, 0, &error)) {
         report_out_error(
-            "openpit_engine_builder_add_check_pre_trade_start_policy (order size)",
+            "openpit_engine_builder_add_builtin_order_size_limit_policy",
             error);
         error = NULL;
         goto cleanup;
@@ -409,7 +379,8 @@ int main(void) {
         error = NULL;
         goto cleanup;
     }
-    if (start_status == OpenPitPretradeStatus_Rejected && start_rejects != NULL) {
+    if (start_status == OpenPitPretradeStatus_Rejected &&
+        start_rejects != NULL) {
         print_reject_list(start_rejects);
         goto cleanup;
     }
@@ -425,7 +396,8 @@ int main(void) {
         error = NULL;
         goto cleanup;
     }
-    if (exec_status == OpenPitPretradeStatus_Rejected && execute_rejects != NULL) {
+    if (exec_status == OpenPitPretradeStatus_Rejected &&
+        execute_rejects != NULL) {
         print_reject_list(execute_rejects);
         goto cleanup;
     }
@@ -488,17 +460,13 @@ cleanup:
     }
     openpit_destroy_engine(engine);
     openpit_destroy_engine_builder(builder);
-    openpit_destroy_pretrade_check_pre_trade_start_policy(order_size_policy);
-    openpit_destroy_pretrade_check_pre_trade_start_policy(rate_limit_policy);
-    openpit_destroy_pretrade_check_pre_trade_start_policy(pnl_policy);
-    openpit_destroy_pretrade_check_pre_trade_start_policy(validation_policy);
     return rc;
 }
 ```
 
 Example flow:
 
-1. create built-in policies
+1. configure built-in policies
 2. build the engine
 3. create an order as `OpenPitOrder` POD payload
 4. run start-stage checks

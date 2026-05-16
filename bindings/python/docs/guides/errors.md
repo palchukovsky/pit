@@ -6,7 +6,7 @@ OpenPit separates business rejects from API errors.
 
 Policy rejects are expected outcomes. They are returned in result objects:
 
-- `StartPreTradeResult.rejects`
+- `StartResult.rejects`
 - `ExecuteResult.rejects`
 - `AccountAdjustmentBatchResult.rejects`
 

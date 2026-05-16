@@ -27,9 +27,11 @@ import (
 	"runtime/cgo"
 	"unsafe"
 
+	"go.openpit.dev/openpit/accountadjustment"
 	"go.openpit.dev/openpit/internal/callback"
 	"go.openpit.dev/openpit/internal/native"
 	"go.openpit.dev/openpit/model"
+	"go.openpit.dev/openpit/param"
 	"go.openpit.dev/openpit/pretrade"
 	"go.openpit.dev/openpit/tx"
 )
@@ -45,8 +47,10 @@ func StartPreTrade(impl pretrade.Policy) (native.PretradePreTradePolicy, error) 
 
 	policyHandle, err := native.CreatePretradeCustomPreTradePolicy(
 		impl.Name(),
-		PreTradePolicyCheckFnAddr(),
+		PreTradePolicyCheckPreTradeStartFnAddr(),
+		PreTradePolicyPerformPreTradeCheckFnAddr(),
 		PreTradePolicyApplyReportFnAddr(),
+		PreTradePolicyApplyAccountAdjustmentFnAddr(),
 		PreTradePolicyFreeUserDataFnAddr(),
 		callback.NewUserDataFromHandle(implHandle.handle),
 	)
@@ -63,8 +67,29 @@ func (p *PreTrade) Close() {
 	p.handle.Delete()
 }
 
-//export pitPretradePreTradePolicyCheckPreTrade
-func pitPretradePreTradePolicyCheckPreTrade(
+//export pitPretradePreTradePolicyCheckPreTradeStart
+func pitPretradePreTradePolicyCheckPreTradeStart(
+	ctx *C.OpenPitPretradeContext,
+	order *C.OpenPitOrder,
+	userData unsafe.Pointer,
+) *C.OpenPitRejectList {
+	// Panics from the user implementation are deliberately allowed to propagate.
+	// A panic unwinding across the FFI boundary may terminate the process;
+	// containing it is the implementer's responsibility, as stated on the Policy
+	// interface.
+
+	return newNativeRejectListOrNil(
+		getPreTrade(userData).impl.CheckPreTradeStart(
+			pretrade.NewContextFromHandle(
+				native.PretradeContext(ctx),
+			),
+			model.NewOrderFromHandle(*(*native.Order)(unsafe.Pointer(order))),
+		),
+	)
+}
+
+//export pitPretradePreTradePolicyPerformPreTradeCheck
+func pitPretradePreTradePolicyPerformPreTradeCheck(
 	ctx *C.OpenPitPretradeContext,
 	order *C.OpenPitOrder,
 	mutations *C.OpenPitMutations,
@@ -102,6 +127,37 @@ func pitPretradePreTradePolicyApplyExecutionReport(
 		getPreTrade(userData).impl.ApplyExecutionReport(
 			model.NewExecutionReportFromHandle(
 				*(*native.ExecutionReport)(unsafe.Pointer(report)),
+			),
+		),
+	)
+}
+
+//export pitPretradePreTradePolicyApplyAccountAdjustment
+func pitPretradePreTradePolicyApplyAccountAdjustment(
+	ctx *C.OpenPitAccountAdjustmentContext,
+	accountID C.OpenPitParamAccountId,
+	adjustment *C.OpenPitAccountAdjustment,
+	mutations *C.OpenPitMutations,
+	userData unsafe.Pointer,
+) *C.OpenPitRejectList {
+	// Panics from the user implementation are deliberately allowed to propagate.
+	// A panic unwinding across the FFI boundary may terminate the process;
+	// containing it is the implementer's responsibility, as stated on the Policy
+	// interface.
+
+	return newNativeRejectListOrNil(
+		getPreTrade(userData).impl.ApplyAccountAdjustment(
+			accountadjustment.NewContextFromHandle(
+				native.AccountAdjustmentContext(ctx),
+			),
+			param.NewAccountIDFromHandle(
+				native.ParamAccountID(accountID),
+			),
+			model.NewAccountAdjustmentFromHandle(
+				*(*native.AccountAdjustment)(unsafe.Pointer(adjustment)),
+			),
+			tx.NewMutationsFromHandle(
+				native.Mutations(mutations),
 			),
 		),
 	)

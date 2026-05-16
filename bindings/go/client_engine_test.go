@@ -54,9 +54,9 @@ func TestClientEnginePassesClientOrderThroughDeferredRequest(t *testing.T) {
 		clientEngineTestReport,
 		clientEngineTestAdjustment,
 	]().
-		WithFullSync().
-		CheckPreTradeStartPolicy(startPolicy).
-		PreTradePolicy(mainPolicy).
+		FullSync().
+		PreTrade(startPolicy).
+		PreTrade(mainPolicy).
 		Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
@@ -98,8 +98,8 @@ func TestClientEnginePassesClientExecutionReport(t *testing.T) {
 		clientEngineTestReport,
 		clientEngineTestAdjustment,
 	]().
-		WithFullSync().
-		CheckPreTradeStartPolicy(policy).
+		FullSync().
+		PreTrade(policy).
 		Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
@@ -132,8 +132,8 @@ func TestClientEngineExecutePreTradeReleasesPayloadAfterCall(t *testing.T) {
 		clientEngineTestReport,
 		clientEngineTestAdjustment,
 	]().
-		WithFullSync().
-		PreTradePolicy(&clientEngineTestMainPolicy{}).
+		FullSync().
+		PreTrade(&clientEngineTestMainPolicy{}).
 		Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
@@ -152,28 +152,24 @@ func TestClientEngineExecutePreTradeReleasesPayloadAfterCall(t *testing.T) {
 	reservation.Close()
 }
 
-func TestClientEnginePassesClientAccountAdjustment(t *testing.T) {
-	policy := &clientEngineTestAccountAdjustmentPolicy{}
+func TestClientEnginePassesAccountAdjustmentThroughPreTradePolicy(t *testing.T) {
+	policy := &clientEngineTestAdjustmentPreTradePolicy{}
 	engine, err := NewClientEngineBuilder[
 		clientEngineTestOrder,
 		clientEngineTestReport,
 		clientEngineTestAdjustment,
 	]().
-		WithFullSync().
-		AccountAdjustmentPolicy(policy).
+		FullSync().
+		PreTrade(policy).
 		Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
 	defer engine.Stop()
 
-	adjustment := clientEngineTestAdjustment{
-		AccountAdjustment: model.NewAccountAdjustment(),
-		Source:            "ops-feed",
-	}
 	rejects, err := engine.ApplyAccountAdjustment(
 		param.NewAccountIDFromInt(1),
-		[]clientEngineTestAdjustment{adjustment},
+		[]clientEngineTestAdjustment{{AccountAdjustment: model.NewAccountAdjustment(), Source: "ops-feed"}},
 	)
 	if err != nil {
 		t.Fatalf("ApplyAccountAdjustment() error = %v", err)
@@ -181,12 +177,8 @@ func TestClientEnginePassesClientAccountAdjustment(t *testing.T) {
 	if rejects.IsSet() {
 		t.Fatalf("ApplyAccountAdjustment() rejects = %v, want none", rejects)
 	}
-	if policy.adjustment.Source != adjustment.Source {
-		t.Fatalf(
-			"adjustment source = %q, want %q",
-			policy.adjustment.Source,
-			adjustment.Source,
-		)
+	if policy.adjustmentCallCount != 1 {
+		t.Fatalf("adjustmentCallCount = %d, want 1", policy.adjustmentCallCount)
 	}
 }
 
@@ -196,8 +188,8 @@ func TestClientEngineStartPreTradeRejectReleasesPayload(t *testing.T) {
 		clientEngineTestReport,
 		clientEngineTestAdjustment,
 	]().
-		WithFullSync().
-		CheckPreTradeStartPolicy(&clientEngineTestRejectingStartPolicy{}).
+		FullSync().
+		PreTrade(&clientEngineTestRejectingStartPolicy{}).
 		Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
@@ -235,8 +227,8 @@ func TestClientEngineExecutePreTradeRejectReleasesPayload(t *testing.T) {
 		clientEngineTestReport,
 		clientEngineTestAdjustment,
 	]().
-		WithFullSync().
-		PreTradePolicy(&clientEngineTestRejectingMainPolicy{}).
+		FullSync().
+		PreTrade(&clientEngineTestRejectingMainPolicy{}).
 		Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
@@ -258,14 +250,14 @@ func TestClientEngineExecutePreTradeRejectReleasesPayload(t *testing.T) {
 }
 
 func TestClientEngineApplyAccountAdjustmentBatchHandlesMultipleAdjustments(t *testing.T) {
-	policy := &clientEngineTestAccountAdjustmentPolicy{}
+	policy := &clientEngineTestAdjustmentPreTradePolicy{}
 	engine, err := NewClientEngineBuilder[
 		clientEngineTestOrder,
 		clientEngineTestReport,
 		clientEngineTestAdjustment,
 	]().
-		WithFullSync().
-		AccountAdjustmentPolicy(policy).
+		FullSync().
+		PreTrade(policy).
 		Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
@@ -283,25 +275,11 @@ func TestClientEngineApplyAccountAdjustmentBatchHandlesMultipleAdjustments(t *te
 	if rejects.IsSet() {
 		t.Fatalf("ApplyAccountAdjustment() rejects = %v, want none", rejects)
 	}
-	if len(policy.adjustments) != len(adjustments) {
+	if policy.adjustmentCallCount != len(adjustments) {
 		t.Fatalf(
-			"received adjustments len = %d, want %d",
-			len(policy.adjustments),
+			"adjustmentCallCount = %d, want %d",
+			policy.adjustmentCallCount,
 			len(adjustments),
-		)
-	}
-	if policy.adjustments[0].Source != adjustments[0].Source {
-		t.Fatalf(
-			"first adjustment source = %q, want %q",
-			policy.adjustments[0].Source,
-			adjustments[0].Source,
-		)
-	}
-	if policy.adjustments[1].Source != adjustments[1].Source {
-		t.Fatalf(
-			"second adjustment source = %q, want %q",
-			policy.adjustments[1].Source,
-			adjustments[1].Source,
 		)
 	}
 }
@@ -312,8 +290,8 @@ func TestClientEngineUnsafeFastPanicsOnMismatchedPayload(t *testing.T) {
 		clientEngineTestReport,
 		clientEngineTestAdjustment,
 	](UnsafeFastClientPayloadCallbacks()).
-		WithFullSync().
-		CheckPreTradeStartPolicy(&clientEngineTestStartPolicy{}).
+		FullSync().
+		PreTrade(&clientEngineTestStartPolicy{}).
 		Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
@@ -354,9 +332,26 @@ func (p *clientEngineTestStartPolicy) CheckPreTradeStart(
 	return nil
 }
 
+func (clientEngineTestStartPolicy) PerformPreTradeCheck(
+	_ pretrade.Context,
+	_ clientEngineTestOrder,
+	_ tx.Mutations,
+) []reject.Reject {
+	return nil
+}
+
 func (p *clientEngineTestStartPolicy) ApplyExecutionReport(report clientEngineTestReport) bool {
 	p.report = report
 	return p.killSwitch
+}
+
+func (clientEngineTestStartPolicy) ApplyAccountAdjustment(
+	_ accountadjustment.Context,
+	_ param.AccountID,
+	_ model.AccountAdjustment,
+	_ tx.Mutations,
+) []reject.Reject {
+	return nil
 }
 
 type clientEngineTestMainPolicy struct {
@@ -367,6 +362,13 @@ func (clientEngineTestMainPolicy) Close() {}
 
 func (clientEngineTestMainPolicy) Name() string {
 	return "client-engine-test-main"
+}
+
+func (clientEngineTestMainPolicy) CheckPreTradeStart(
+	_ pretrade.Context,
+	_ clientEngineTestOrder,
+) []reject.Reject {
+	return nil
 }
 
 func (p *clientEngineTestMainPolicy) PerformPreTradeCheck(
@@ -382,25 +384,51 @@ func (clientEngineTestMainPolicy) ApplyExecutionReport(clientEngineTestReport) b
 	return false
 }
 
-type clientEngineTestAccountAdjustmentPolicy struct {
-	adjustment  clientEngineTestAdjustment
-	adjustments []clientEngineTestAdjustment
+func (clientEngineTestMainPolicy) ApplyAccountAdjustment(
+	_ accountadjustment.Context,
+	_ param.AccountID,
+	_ model.AccountAdjustment,
+	_ tx.Mutations,
+) []reject.Reject {
+	return nil
 }
 
-func (clientEngineTestAccountAdjustmentPolicy) Close() {}
+type clientEngineTestAdjustmentPreTradePolicy struct {
+	adjustmentCallCount int
+}
 
-func (clientEngineTestAccountAdjustmentPolicy) Name() string {
+func (clientEngineTestAdjustmentPreTradePolicy) Close() {}
+
+func (clientEngineTestAdjustmentPreTradePolicy) Name() string {
 	return "client-engine-test-adjustment"
 }
 
-func (p *clientEngineTestAccountAdjustmentPolicy) ApplyAccountAdjustment(
-	_ accountadjustment.Context,
-	_ param.AccountID,
-	adjustment clientEngineTestAdjustment,
+func (clientEngineTestAdjustmentPreTradePolicy) CheckPreTradeStart(
+	_ pretrade.Context,
+	_ clientEngineTestOrder,
+) []reject.Reject {
+	return nil
+}
+
+func (clientEngineTestAdjustmentPreTradePolicy) PerformPreTradeCheck(
+	_ pretrade.Context,
+	_ clientEngineTestOrder,
 	_ tx.Mutations,
 ) []reject.Reject {
-	p.adjustment = adjustment
-	p.adjustments = append(p.adjustments, adjustment)
+	return nil
+}
+
+func (clientEngineTestAdjustmentPreTradePolicy) ApplyExecutionReport(clientEngineTestReport) bool {
+	return false
+}
+
+func (p *clientEngineTestAdjustmentPreTradePolicy) ApplyAccountAdjustment(
+	_ accountadjustment.Context,
+	_ param.AccountID,
+	_ model.AccountAdjustment,
+	_ tx.Mutations,
+) []reject.Reject {
+	p.adjustmentCallCount++
 	return nil
 }
 
@@ -425,8 +453,25 @@ func (p *clientEngineTestRejectingStartPolicy) CheckPreTradeStart(
 	)
 }
 
+func (clientEngineTestRejectingStartPolicy) PerformPreTradeCheck(
+	_ pretrade.Context,
+	_ clientEngineTestOrder,
+	_ tx.Mutations,
+) []reject.Reject {
+	return nil
+}
+
 func (clientEngineTestRejectingStartPolicy) ApplyExecutionReport(clientEngineTestReport) bool {
 	return false
+}
+
+func (clientEngineTestRejectingStartPolicy) ApplyAccountAdjustment(
+	_ accountadjustment.Context,
+	_ param.AccountID,
+	_ model.AccountAdjustment,
+	_ tx.Mutations,
+) []reject.Reject {
+	return nil
 }
 
 type clientEngineTestRejectingMainPolicy struct{}
@@ -435,6 +480,13 @@ func (clientEngineTestRejectingMainPolicy) Close() {}
 
 func (clientEngineTestRejectingMainPolicy) Name() string {
 	return "client-engine-test-reject-main"
+}
+
+func (clientEngineTestRejectingMainPolicy) CheckPreTradeStart(
+	_ pretrade.Context,
+	_ clientEngineTestOrder,
+) []reject.Reject {
+	return nil
 }
 
 func (p *clientEngineTestRejectingMainPolicy) PerformPreTradeCheck(
@@ -453,6 +505,15 @@ func (p *clientEngineTestRejectingMainPolicy) PerformPreTradeCheck(
 
 func (clientEngineTestRejectingMainPolicy) ApplyExecutionReport(clientEngineTestReport) bool {
 	return false
+}
+
+func (clientEngineTestRejectingMainPolicy) ApplyAccountAdjustment(
+	_ accountadjustment.Context,
+	_ param.AccountID,
+	_ model.AccountAdjustment,
+	_ tx.Mutations,
+) []reject.Reject {
+	return nil
 }
 
 func orderWithMismatchedPayload(t *testing.T, payload any) model.Order {
@@ -480,8 +541,8 @@ func TestClientEngineBuilderCloseIsIdempotent(t *testing.T) {
 		clientEngineTestReport,
 		clientEngineTestAdjustment,
 	]().
-		WithFullSync().
-		CheckPreTradeStartPolicy(&clientEngineTestStartPolicy{})
+		FullSync().
+		PreTrade(&clientEngineTestStartPolicy{})
 
 	builder.Close()
 	builder.Close()
@@ -491,8 +552,8 @@ func TestClientEngineBuilderCloseIsIdempotent(t *testing.T) {
 		clientEngineTestReport,
 		clientEngineTestAdjustment,
 	]().
-		WithFullSync().
-		CheckPreTradeStartPolicy(&clientEngineTestStartPolicy{})
+		FullSync().
+		PreTrade(&clientEngineTestStartPolicy{})
 	engine, err := builtBuilder.Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
@@ -509,8 +570,8 @@ func TestClientEngineBuilderBuildReturnsErrorAfterClose(t *testing.T) {
 		clientEngineTestReport,
 		clientEngineTestAdjustment,
 	]().
-		WithFullSync().
-		CheckPreTradeStartPolicy(&clientEngineTestStartPolicy{})
+		FullSync().
+		PreTrade(&clientEngineTestStartPolicy{})
 
 	builder.Close()
 	engine, err := builder.Build()
@@ -530,8 +591,8 @@ func TestClientEngineUnsafeFastPreTradePolicyUsesFastAdapter(t *testing.T) {
 		clientEngineTestReport,
 		clientEngineTestAdjustment,
 	](UnsafeFastClientPayloadCallbacks()).
-		WithFullSync().
-		PreTradePolicy(policy).
+		FullSync().
+		PreTrade(policy).
 		Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
@@ -552,28 +613,24 @@ func TestClientEngineUnsafeFastPreTradePolicyUsesFastAdapter(t *testing.T) {
 	}
 }
 
-func TestClientEngineUnsafeFastAccountAdjustmentPolicyUsesFastAdapter(t *testing.T) {
-	policy := &clientEngineTestAccountAdjustmentPolicy{}
+func TestClientEngineUnsafeFastPreTradePolicyAppliesAccountAdjustment(t *testing.T) {
+	policy := &clientEngineTestAdjustmentPreTradePolicy{}
 	engine, err := NewClientEngineBuilder[
 		clientEngineTestOrder,
 		clientEngineTestReport,
 		clientEngineTestAdjustment,
 	](UnsafeFastClientPayloadCallbacks()).
-		WithFullSync().
-		AccountAdjustmentPolicy(policy).
+		FullSync().
+		PreTrade(policy).
 		Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
 	defer engine.Stop()
 
-	adjustment := clientEngineTestAdjustment{
-		AccountAdjustment: model.NewAccountAdjustment(),
-		Source:            "unsafe-fast-adjustment",
-	}
 	rejects, err := engine.ApplyAccountAdjustment(
 		param.NewAccountIDFromInt(1),
-		[]clientEngineTestAdjustment{adjustment},
+		[]clientEngineTestAdjustment{{AccountAdjustment: model.NewAccountAdjustment(), Source: "unsafe-fast-adjustment"}},
 	)
 	if err != nil {
 		t.Fatalf("ApplyAccountAdjustment() error = %v", err)
@@ -581,8 +638,8 @@ func TestClientEngineUnsafeFastAccountAdjustmentPolicyUsesFastAdapter(t *testing
 	if rejects.IsSet() {
 		t.Fatalf("ApplyAccountAdjustment() rejects = %v, want none", rejects)
 	}
-	if policy.adjustment.Source != adjustment.Source {
-		t.Fatalf("adjustment source = %q, want %q", policy.adjustment.Source, adjustment.Source)
+	if policy.adjustmentCallCount != 1 {
+		t.Fatalf("adjustmentCallCount = %d, want 1", policy.adjustmentCallCount)
 	}
 }
 

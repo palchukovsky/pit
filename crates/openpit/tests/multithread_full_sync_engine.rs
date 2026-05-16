@@ -63,7 +63,7 @@ fn build_order(account_id: AccountId) -> OrderOperation {
 }
 
 fn build_engine(total_calls: usize) -> TestEngine {
-    let builder = openpit::Engine::<OrderOperation, ()>::builder().with_full_sync();
+    let builder = openpit::Engine::<OrderOperation, ()>::builder().full_sync();
     let policy = RateLimitPolicy::new(
         Some(RateLimitBrokerBarrier {
             limit: RateLimit {
@@ -85,7 +85,7 @@ fn build_engine(total_calls: usize) -> TestEngine {
     .expect("rate-limit policy must be configured");
 
     builder
-        .check_pre_trade_start_policy(policy)
+        .pre_trade(policy)
         .build()
         .expect("engine must build")
 }

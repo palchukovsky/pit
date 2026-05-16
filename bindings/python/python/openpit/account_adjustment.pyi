@@ -1,12 +1,7 @@
 from __future__ import annotations
 
-import abc
-import collections.abc
-
-from . import AccountAdjustmentContext
-from .core import Instrument, Mutation
+from .core import Instrument
 from .param import (
-    AccountId,
     AdjustmentAmount,
     Asset,
     Leverage,
@@ -14,26 +9,8 @@ from .param import (
     PositionSize,
     Price,
 )
-from .pretrade.policy import PolicyDecision, PolicyReject
 
-class AccountAdjustmentPolicy(abc.ABC):
-    @property
-    @abc.abstractmethod
-    def name(self) -> str: ...
-    @abc.abstractmethod
-    def apply_account_adjustment(
-        self,
-        ctx: AccountAdjustmentContext,
-        account_id: AccountId,
-        adjustment: AccountAdjustment,
-    ) -> (
-        PolicyDecision
-        | collections.abc.Iterable[PolicyReject]
-        | tuple[Mutation, ...]
-        | None
-    ): ...
-
-class AccountAdjustmentAmount:
+class Amount:
     """Grouped total/reserved/pending adjustment payload."""
 
     def __init__(
@@ -58,7 +35,7 @@ class AccountAdjustmentAmount:
     def pending(self) -> AdjustmentAmount | None:
         """Amount in-flight for incoming acquisition and not yet finalized."""
 
-class AccountAdjustmentBalanceOperation:
+class BalanceOperation:
     """Direct physical balance adjustment."""
 
     def __init__(
@@ -73,7 +50,7 @@ class AccountAdjustmentBalanceOperation:
     def average_entry_price(self) -> Price | None:
         """Optional cost basis for the adjusted physical balance."""
 
-class AccountAdjustmentPositionOperation:
+class PositionOperation:
     """Direct derivatives-like position adjustment."""
 
     def __init__(
@@ -101,7 +78,7 @@ class AccountAdjustmentPositionOperation:
     def leverage(self) -> Leverage | None:
         """Optional leverage snapshot/setting carried with the position adjustment."""
 
-class AccountAdjustmentBounds:
+class Bounds:
     """Optional post-adjustment inclusive limits."""
 
     def __init__(
@@ -138,36 +115,29 @@ class AccountAdjustmentBounds:
     def pending_lower(self) -> PositionSize | None:
         """Allowed post-adjustment inclusive lower bound for pending."""
 
-class AccountAdjustment:
+class Adjustment:
     """Extensible non-trading account-adjustment model."""
 
     def __init__(
         self,
         *,
-        operation: (
-            AccountAdjustmentBalanceOperation
-            | AccountAdjustmentPositionOperation
-            | None
-        ) = None,
-        amount: AccountAdjustmentAmount | None = None,
-        bounds: AccountAdjustmentBounds | None = None,
+        operation: BalanceOperation | PositionOperation | None = None,
+        amount: Amount | None = None,
+        bounds: Bounds | None = None,
     ) -> None: ...
     @property
     def operation(
         self,
-    ) -> (
-        AccountAdjustmentBalanceOperation | AccountAdjustmentPositionOperation | None
-    ): ...
+    ) -> BalanceOperation | PositionOperation | None: ...
     @property
-    def amount(self) -> AccountAdjustmentAmount | None: ...
+    def amount(self) -> Amount | None: ...
     @property
-    def bounds(self) -> AccountAdjustmentBounds | None: ...
+    def bounds(self) -> Bounds | None: ...
 
 __all__ = [
-    "AccountAdjustment",
-    "AccountAdjustmentAmount",
-    "AccountAdjustmentBalanceOperation",
-    "AccountAdjustmentBounds",
-    "AccountAdjustmentPolicy",
-    "AccountAdjustmentPositionOperation",
+    "Adjustment",
+    "Amount",
+    "BalanceOperation",
+    "Bounds",
+    "PositionOperation",
 ]

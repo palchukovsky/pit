@@ -38,11 +38,11 @@ use std::ops::Deref;
 /// The [`EngineBuilder`](crate::EngineBuilder) chain maps sync policies to
 /// engine-locking flavors automatically:
 ///
-/// - [`with_local_sync`](crate::EngineBuilder::with_local_sync) →
+/// - [`no_sync`](crate::EngineBuilder::no_sync) →
 ///   [`LocalEngineLocking`]
-/// - [`with_full_sync`](crate::EngineBuilder::with_full_sync) →
+/// - [`full_sync`](crate::EngineBuilder::full_sync) →
 ///   [`SyncedEngineLocking`]
-/// - [`with_account_sync`](crate::EngineBuilder::with_account_sync) →
+/// - [`account_sync`](crate::EngineBuilder::account_sync) →
 ///   [`SequentialEngineLocking`]
 ///
 /// [`LocalEngineLocking`] is the **default** for the `EngineBuilder` chain:
@@ -90,7 +90,7 @@ pub trait EngineLockingPolicy: crate::__private::Sealed + 'static {
 ///
 /// This is the **default** engine-locking policy. It is selected by:
 ///
-/// - [`EngineBuilder::with_local_sync`](crate::EngineBuilder::with_local_sync)
+/// - [`EngineBuilder::no_sync`](crate::EngineBuilder::no_sync)
 ///
 /// Registered policies are required to be `'static` only; non-Send policy
 /// state (e.g. non-atomic counters in tests) is fully supported.
@@ -104,8 +104,8 @@ pub trait EngineLockingPolicy: crate::__private::Sealed + 'static {
 /// use openpit::OrderOperation;
 ///
 /// let engine: LocalEngine<OrderOperation> = Engine::<OrderOperation>::builder()
-///     .with_local_sync()
-///     .check_pre_trade_start_policy(OrderValidationPolicy::new())
+///     .no_sync()
+///     .pre_trade(OrderValidationPolicy::new())
 ///     .build()?;
 /// # Ok(())
 /// # }
@@ -121,8 +121,8 @@ pub trait EngineLockingPolicy: crate::__private::Sealed + 'static {
 /// fn require_send<T: Send>(_: T) {}
 ///
 /// let engine = LocalEngine::<OrderOperation>::builder()
-///     .with_local_sync()
-///     .check_pre_trade_start_policy(OrderValidationPolicy::new())
+///     .no_sync()
+///     .pre_trade(OrderValidationPolicy::new())
 ///     .build()
 ///     .unwrap();
 /// require_send(engine); // compile error: LocalEngine is !Send
@@ -151,14 +151,14 @@ impl EngineLockingPolicy for LocalEngineLocking {
 
 /// Engine handle inherits `Send + Sync` from its inner state. With
 /// `FullLocking` storage (selected by
-/// [`EngineBuilder::with_full_sync`](crate::EngineBuilder::with_full_sync))
+/// [`EngineBuilder::full_sync`](crate::EngineBuilder::full_sync))
 /// the engine's internal state is `Send + Sync`, so the resulting engine
 /// supports concurrent invocation from multiple threads and can be wrapped
 /// in `Arc<Engine>` or moved between threads.
 ///
 /// This policy is selected by:
 ///
-/// - [`EngineBuilder::with_full_sync`](crate::EngineBuilder::with_full_sync)
+/// - [`EngineBuilder::full_sync`](crate::EngineBuilder::full_sync)
 ///
 /// Registered policies must be `Send + Sync + 'static`. The builder enforces
 /// this at compile time for the `SyncedEngineLocking`-flavored builder chain.
@@ -174,8 +174,8 @@ impl EngineLockingPolicy for LocalEngineLocking {
 ///
 /// let engine: Arc<SyncedEngine<OrderOperation>> = Arc::new(
 ///     Engine::<OrderOperation>::builder()
-///         .with_full_sync()
-///         .check_pre_trade_start_policy(OrderValidationPolicy::new())
+///         .full_sync()
+///         .pre_trade(OrderValidationPolicy::new())
 ///         .build()?,
 /// );
 /// # Ok(())
@@ -214,7 +214,7 @@ impl EngineLockingPolicy for SyncedEngineLocking {
 ///
 /// The same wrapper is used by `pit-interop`'s `EngineLocking` under
 /// `SyncMode::Account`; this type lives in `openpit` so pure Rust SDK
-/// clients reach the same contract through `with_account_sync()`.
+/// clients reach the same contract through `account_sync()`.
 ///
 /// # Pure Rust vs binding-layer contract
 ///
@@ -281,7 +281,7 @@ unsafe impl<T: ?Sized + Send> Send for SequentialEngineHandleWeak<T> {}
 /// Account-sharded engine-locking policy.
 ///
 /// Engine handle is `Send + !Sync`. Selected by
-/// [`EngineBuilder::with_account_sync`](crate::EngineBuilder::with_account_sync).
+/// [`EngineBuilder::account_sync`](crate::EngineBuilder::account_sync).
 ///
 /// # Pure Rust vs binding-layer contract
 ///

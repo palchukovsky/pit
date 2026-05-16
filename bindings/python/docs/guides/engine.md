@@ -12,21 +12,20 @@ import openpit.pretrade.policies
 
 engine = (
     openpit.Engine.builder()
-    .with_local_sync()
+    .no_sync()
     .builtin(
         openpit.pretrade.policies.build_order_validation(),
     )
-    .pre_trade_policy(policy=MyMainStagePolicy())
-    .account_adjustment_policy(policy=MyAccountAdjustmentPolicy())
+    .pre_trade(policy=MyMainStagePolicy())
+    .pre_trade(policy=MyAdjustmentCheck())
     .build()
 )
 ```
 
-Policy names must be unique within one engine configuration for start-stage and
-main-stage pre-trade policies.
+Policy names must be unique within one engine configuration.
 
-Use `with_full_sync()` when the same engine is called concurrently from multiple
-OS threads. Use `with_account_sync()` only when calls are serialized on one
+Use `full_sync()` when the same engine is called concurrently from multiple
+OS threads. Use `account_sync()` only when calls are serialized on one
 engine handle and each account is pinned to one processing chain.
 
 ## Run the explicit two-stage flow

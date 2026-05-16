@@ -1,25 +1,25 @@
 # Policy contracts
 
-Policies are regular Python objects that implement one of the public abstract
-interfaces. They return business decisions; they should raise exceptions only
-for programming errors or unexpected runtime failures.
+Policies are regular Python objects that implement
+`openpit.pretrade.Policy`. They return business decisions; they should
+raise exceptions only for programming errors or unexpected runtime failures.
 
-## Start-stage policies
+## Start-stage checks
 
-Implement `openpit.pretrade.CheckPreTradeStartPolicy` for fast admission checks.
+Implement `check_pre_trade_start` for fast admission checks.
 
 ```python
 import openpit
 
 
-class BlockedAccountPolicy(openpit.pretrade.CheckPreTradeStartPolicy):
+class BlockedAccountPolicy(openpit.pretrade.Policy):
     @property
     def name(self) -> str:
         return "BlockedAccountPolicy"
 
     def check_pre_trade_start(
         self,
-        ctx: openpit.pretrade.PreTradeContext,
+        ctx: openpit.pretrade.Context,
         order: openpit.Order,
     ) -> tuple[openpit.pretrade.PolicyReject, ...]:
         del ctx
@@ -43,19 +43,19 @@ class BlockedAccountPolicy(openpit.pretrade.CheckPreTradeStartPolicy):
         return False
 ```
 
-Start-stage policies return an iterable of `PolicyReject` objects. An empty
+Start-stage checks return an iterable of `PolicyReject` objects. An empty
 iterable means success.
 
-## Main-stage policies
+## Main-stage checks
 
-Implement `openpit.pretrade.PreTradePolicy` when a policy may reserve state or
+Implement `openpit.pretrade.Policy` when a policy may reserve state or
 needs to run in the main stage.
 
 ```python
 import openpit
 
 
-class NotionalCapPolicy(openpit.pretrade.PreTradePolicy):
+class NotionalCapPolicy(openpit.pretrade.Policy):
     def __init__(self, max_notional: openpit.param.Volume) -> None:
         self._max_notional = max_notional
 
@@ -65,7 +65,7 @@ class NotionalCapPolicy(openpit.pretrade.PreTradePolicy):
 
     def perform_pre_trade_check(
         self,
-        ctx: openpit.pretrade.PreTradeContext,
+        ctx: openpit.pretrade.Context,
         order: openpit.Order,
     ) -> openpit.pretrade.PolicyDecision:
         del ctx

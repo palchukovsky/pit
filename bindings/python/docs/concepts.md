@@ -10,28 +10,28 @@ reservation, and leaves external I/O to the caller.
 with `openpit.Engine.builder()`, choose a synchronization policy, and reuse it
 for the matching call pattern.
 
-`with_full_sync()` allows concurrent calls on the same engine handle.
-`with_local_sync()` keeps the handle on the OS thread that created it.
-`with_account_sync()` allows concurrent calls when the caller pins each account
+`full_sync()` allows concurrent calls on the same engine handle.
+`no_sync()` keeps the handle on the OS thread that created it.
+`account_sync()` allows concurrent calls when the caller pins each account
 to one processing chain so calls for the same account are never concurrent.
 
 ## Start stage
 
-Start-stage policies run during `engine.start_pre_trade(order=...)`. They are
+Start-stage checks run during `engine.start_pre_trade(order=...)`. They are
 for fast checks that must run before the main-stage request exists, such as
 payload validation, rate limiting, or kill switches.
 
-Start-stage policies return normal business rejects. They do not register
-rollback mutations.
+Start-stage checks return normal business rejects aggregated from all
+registered policies. They do not register rollback mutations.
 
 ## Main stage
 
-The start stage returns `openpit.pretrade.PreTradeRequest` on success. Calling
-`request.execute()` runs main-stage policies. These policies can return rejects
+The start stage returns `openpit.pretrade.Request` on success. Calling
+`request.execute()` runs main-stage checks. These policies can return rejects
 and register `openpit.Mutation` objects.
 
-If any main-stage policy rejects, the engine rolls registered mutations back.
-If all policies pass, the engine returns a `PreTradeReservation`.
+If any main-stage check rejects, the engine rolls registered mutations back.
+If all policies pass, the engine returns a `Reservation`.
 
 ## Reservation
 

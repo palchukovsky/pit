@@ -15,7 +15,7 @@ is intended to be copied into a Python file after installing `openpit`.
 | [Main-stage finalization](#main-stage-finalization) | Execute a request and commit or inspect rejects |
 | [Shortcut flow](#shortcut-flow) | Run start and main stages together |
 | [Account-adjustment batch](#account-adjustment-batch) | Apply balance and position adjustments |
-| [Account-adjustment policy](#account-adjustment-policy) | Validate account adjustments with a custom policy |
+| [Account-adjustment check](#account-adjustment-check) | Validate account adjustments with a custom policy |
 | [Rollback-safe main policy](#rollback-safe-main-policy) | Register a mutation and rely on rollback |
 | [Custom notional-cap policy](#custom-notional-cap-policy) | Reject orders above a strategy cap |
 | [Custom order models](#custom-order-models) | Preserve project metadata through callbacks |
@@ -72,7 +72,7 @@ size_policy = (
 
 engine = (
     openpit.Engine.builder()
-    .with_local_sync()
+    .no_sync()
     .builtin(openpit.pretrade.policies.build_order_validation())
     .builtin(pnl_policy)
     .builtin(rate_limit_policy)
@@ -177,7 +177,7 @@ import openpit.pretrade.policies
 
 engine = (
     openpit.Engine.builder()
-    .with_local_sync()
+    .no_sync()
     .builtin(
         openpit.pretrade.policies.build_order_validation(),
     )
@@ -291,7 +291,7 @@ assert engine.apply_account_adjustment(
 ).ok
 ```
 
-## Account-adjustment policy
+## Account-adjustment check
 
 Use this pattern when administrative account changes must obey custom limits.
 
@@ -299,7 +299,7 @@ Use this pattern when administrative account changes must obey custom limits.
 import openpit
 
 
-class CumulativeLimitPolicy(openpit.AccountAdjustmentPolicy):
+class CumulativeLimitPolicy(openpit.pretrade.Policy):
     def __init__(self, max_cumulative: openpit.param.Volume) -> None:
         self._max = max_cumulative
         self._totals: dict[str, openpit.param.Volume] = {}
@@ -338,7 +338,7 @@ class CumulativeLimitPolicy(openpit.AccountAdjustmentPolicy):
 
 
 policy = CumulativeLimitPolicy(max_cumulative=openpit.param.Volume("1000000"))
-engine = openpit.Engine.builder().account_adjustment_policy(policy=policy).build()
+engine = openpit.Engine.builder().pre_trade(policy=policy).build()
 adjustment = openpit.AccountAdjustment(
     operation=openpit.AccountAdjustmentBalanceOperation(asset="USD"),
 )
@@ -357,7 +357,7 @@ Use mutations when a policy updates state before the final outcome is known.
 import openpit
 
 
-class ReserveThenValidatePolicy(openpit.pretrade.PreTradePolicy):
+class ReserveThenValidatePolicy(openpit.pretrade.Policy):
     def __init__(self) -> None:
         self._reserved = openpit.param.Volume("0")
         self._limit = openpit.param.Volume("50")
@@ -368,7 +368,7 @@ class ReserveThenValidatePolicy(openpit.pretrade.PreTradePolicy):
 
     def perform_pre_trade_check(
         self,
-        ctx: openpit.pretrade.PreTradeContext,
+        ctx: openpit.pretrade.Context,
         order: openpit.Order,
     ) -> openpit.pretrade.PolicyDecision:
         del ctx, order
@@ -398,7 +398,7 @@ class ReserveThenValidatePolicy(openpit.pretrade.PreTradePolicy):
 
 
 policy = ReserveThenValidatePolicy()
-engine = openpit.Engine.builder().pre_trade_policy(policy=policy).build()
+engine = openpit.Engine.builder().pre_trade(policy=policy).build()
 order = openpit.Order(
     operation=openpit.OrderOperation(
         instrument=openpit.Instrument("AAPL", "USD"),
@@ -415,14 +415,14 @@ assert policy._reserved == openpit.param.Volume("0")
 
 ## Custom notional-cap policy
 
-Use a main-stage policy when the check needs complete order context and can
+Use a main-stage check when the check needs complete order context and can
 return structured rejects.
 
 ```python
 import openpit
 
 
-class NotionalCapPolicy(openpit.pretrade.PreTradePolicy):
+class NotionalCapPolicy(openpit.pretrade.Policy):
     def __init__(self, max_abs_notional: openpit.param.Volume) -> None:
         self._max_abs_notional = max_abs_notional
 
@@ -432,7 +432,7 @@ class NotionalCapPolicy(openpit.pretrade.PreTradePolicy):
 
     def perform_pre_trade_check(
         self,
-        ctx: openpit.pretrade.PreTradeContext,
+        ctx: openpit.pretrade.Context,
         order: openpit.Order,
     ) -> openpit.pretrade.PolicyDecision:
         del ctx
@@ -475,7 +475,7 @@ def make_order(quantity: str) -> openpit.Order:
 
 engine = (
     openpit.Engine.builder()
-    .pre_trade_policy(
+    .pre_trade(
         policy=NotionalCapPolicy(openpit.param.Volume("1000")),
     )
     .build()
@@ -505,14 +505,14 @@ class StrategyOrder(openpit.Order):
         self.strategy_tag = strategy_tag
 
 
-class StrategyTagPolicy(openpit.pretrade.CheckPreTradeStartPolicy):
+class StrategyTagPolicy(openpit.pretrade.Policy):
     @property
     def name(self) -> str:
         return "StrategyTagPolicy"
 
     def check_pre_trade_start(
         self,
-        ctx: openpit.pretrade.PreTradeContext,
+        ctx: openpit.pretrade.Context,
         order: openpit.Order,
     ) -> list[openpit.pretrade.PolicyReject]:
         del ctx
@@ -537,8 +537,8 @@ class StrategyTagPolicy(openpit.pretrade.CheckPreTradeStartPolicy):
 
 engine = (
     openpit.Engine.builder()
-    .with_local_sync()
-    .check_pre_trade_start_policy(policy=StrategyTagPolicy())
+    .no_sync()
+    .pre_trade(policy=StrategyTagPolicy())
     .build()
 )
 order = StrategyOrder(

@@ -131,7 +131,7 @@ def test_fill_details_requires_explicit_lock() -> None:
 def test_fill_details_happy_path_without_last_trade() -> None:
     fill = openpit.ExecutionReportFillDetails(
         leaves_quantity=openpit.param.Quantity(3),
-        lock=openpit.pretrade.PreTradeLock(price=openpit.param.Price(101)),
+        lock=openpit.pretrade.Lock(price=openpit.param.Price(101)),
     )
 
     assert str(fill.leaves_quantity) == "3"
@@ -148,7 +148,7 @@ def test_fill_details_happy_path_with_last_trade_and_final_flag() -> None:
             quantity=openpit.param.Quantity(7),
         ),
         leaves_quantity=openpit.param.Quantity(0),
-        lock=openpit.pretrade.PreTradeLock(price=openpit.param.Price(102)),
+        lock=openpit.pretrade.Lock(price=openpit.param.Price(102)),
         is_final=True,
     )
 
@@ -163,7 +163,7 @@ def test_fill_details_happy_path_with_last_trade_and_final_flag() -> None:
 @pytest.mark.unit
 def test_fill_details_happy_path_without_leaves_quantity() -> None:
     fill = openpit.ExecutionReportFillDetails(
-        lock=openpit.pretrade.PreTradeLock(price=openpit.param.Price(101)),
+        lock=openpit.pretrade.Lock(price=openpit.param.Price(101)),
     )
 
     assert fill.leaves_quantity is None
@@ -173,7 +173,7 @@ def test_fill_details_happy_path_without_leaves_quantity() -> None:
 def test_fill_details_accepts_explicit_non_final_flag() -> None:
     fill = openpit.ExecutionReportFillDetails(
         leaves_quantity=openpit.param.Quantity(3),
-        lock=openpit.pretrade.PreTradeLock(price=openpit.param.Price(101)),
+        lock=openpit.pretrade.Lock(price=openpit.param.Price(101)),
         is_final=False,
     )
 

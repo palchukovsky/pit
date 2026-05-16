@@ -28,8 +28,7 @@ use openpit::pretrade::policies::PnlBoundsKillSwitchPolicy;
 use openpit::pretrade::policies::{OrderSizeAssetBarrier, OrderSizeLimit, OrderSizeLimitPolicy};
 use openpit::pretrade::policies::{RateLimit, RateLimitBrokerBarrier, RateLimitPolicy};
 use openpit::pretrade::{
-    CheckPreTradeStartPolicy, PreTradeContext, PreTradePolicy, Reject, RejectCode, RejectScope,
-    Rejects,
+    PreTradeContext, PreTradePolicy, Reject, RejectCode, RejectScope, Rejects,
 };
 use openpit::storage::NoLocking;
 use openpit::{
@@ -78,7 +77,7 @@ impl HasFee for TestReport {
 #[test]
 fn integration_scenario_rate_limit_then_kill_switch() {
     let usd = Asset::new("USD").expect("asset code must be valid");
-    let builder = Engine::<TestOrder, TestReport>::builder().with_local_sync();
+    let builder = Engine::<TestOrder, TestReport>::builder().no_sync();
     let shared_pnl = Rc::new(
         PnlBoundsKillSwitchPolicy::new(
             [pnl_bounds_barrier(usd.clone(), Some(pnl("-500")), None)],
@@ -102,8 +101,8 @@ fn integration_scenario_rate_limit_then_kill_switch() {
     .expect("rate limit policy must be configured");
 
     let engine = builder
-        .check_pre_trade_start_policy(SharedPnlPolicy::new(Rc::clone(&shared_pnl)))
-        .check_pre_trade_start_policy(rate_policy)
+        .pre_trade(SharedPnlPolicy::new(Rc::clone(&shared_pnl)))
+        .pre_trade(rate_policy)
         .build()
         .expect("engine must build");
 
@@ -215,8 +214,8 @@ fn integration_table_order_size_limit_paths() {
         };
 
         let engine = Engine::<TestOrder, TestReport>::builder()
-            .with_local_sync()
-            .check_pre_trade_start_policy(size_limit)
+            .no_sync()
+            .pre_trade(size_limit)
             .build()
             .expect("engine must build");
 
@@ -246,8 +245,8 @@ fn integration_table_order_size_limit_paths() {
     let size_limit = OrderSizeLimitPolicy::new(None, [order_size_limit_usd("100", "1000")], [])
         .expect("valid config");
     let overflow_engine = Engine::<TestOrder, TestReport>::builder()
-        .with_local_sync()
-        .check_pre_trade_start_policy(size_limit)
+        .no_sync()
+        .pre_trade(size_limit)
         .build()
         .expect("overflow engine must build");
     let overflow_order = OrderOperation {
@@ -281,8 +280,8 @@ fn integration_table_order_size_limit_paths() {
 #[test]
 fn integration_order_validation_checks_only_provided_fields() {
     let engine = Engine::<TestOrder, TestReport>::builder()
-        .with_local_sync()
-        .check_pre_trade_start_policy(OrderValidationPolicy::new())
+        .no_sync()
+        .pre_trade(OrderValidationPolicy::new())
         .build()
         .expect("engine must build");
 
@@ -421,8 +420,8 @@ fn integration_table_main_stage_paths() {
     for case in cases {
         let journal = Rc::new(RefCell::new(Vec::new()));
         let engine = Engine::<TestOrder, TestReport>::builder()
-            .with_local_sync()
-            .pre_trade_policy(NotionalCapPolicy::new(
+            .no_sync()
+            .pre_trade(NotionalCapPolicy::new(
                 "NotionalCapPolicy",
                 volume(case.max_abs_notional),
                 Rc::clone(&journal),
@@ -478,8 +477,8 @@ fn integration_table_main_stage_paths() {
 #[test]
 fn integration_engine_builder_defaults_and_guardrails() {
     let mut reservation = Engine::<TestOrder, TestReport>::builder()
-        .with_local_sync()
-        .check_pre_trade_start_policy(OrderValidationPolicy::new())
+        .no_sync()
+        .pre_trade(OrderValidationPolicy::new())
         .build()
         .expect("builder must build")
         .start_pre_trade(order_aapl_usd("100", "1"))
@@ -489,8 +488,8 @@ fn integration_engine_builder_defaults_and_guardrails() {
     reservation.rollback();
 
     let mut reservation = Engine::<TestOrder, TestReport>::builder()
-        .with_local_sync()
-        .check_pre_trade_start_policy(OrderValidationPolicy::new())
+        .no_sync()
+        .pre_trade(OrderValidationPolicy::new())
         .build()
         .expect("builder must build")
         .start_pre_trade(order_aapl_usd("100", "1"))
@@ -499,7 +498,7 @@ fn integration_engine_builder_defaults_and_guardrails() {
         .expect("builder request must execute");
     reservation.commit();
 
-    let dup_builder = Engine::<TestOrder, TestReport>::builder().with_local_sync();
+    let dup_builder = Engine::<TestOrder, TestReport>::builder().no_sync();
     let first_duplicate_policy = PnlBoundsKillSwitchPolicy::new(
         [pnl_bounds_barrier(
             Asset::new("USD").expect("asset code must be valid"),
@@ -521,8 +520,8 @@ fn integration_engine_builder_defaults_and_guardrails() {
     )
     .expect("policy config must be valid");
     let duplicate_start = dup_builder
-        .check_pre_trade_start_policy(first_duplicate_policy)
-        .check_pre_trade_start_policy(second_duplicate_policy)
+        .pre_trade(first_duplicate_policy)
+        .pre_trade(second_duplicate_policy)
         .build();
     assert!(matches!(
         duplicate_start,
@@ -530,13 +529,13 @@ fn integration_engine_builder_defaults_and_guardrails() {
     ));
 
     let duplicate_main = Engine::<TestOrder, TestReport>::builder()
-        .with_local_sync()
-        .pre_trade_policy(NotionalCapPolicy::new(
+        .no_sync()
+        .pre_trade(NotionalCapPolicy::new(
             "MainDup",
             volume("1000"),
             Rc::new(RefCell::new(Vec::new())),
         ))
-        .pre_trade_policy(NotionalCapPolicy::new(
+        .pre_trade(NotionalCapPolicy::new(
             "MainDup",
             volume("2000"),
             Rc::new(RefCell::new(Vec::new())),
@@ -548,8 +547,8 @@ fn integration_engine_builder_defaults_and_guardrails() {
     ));
 
     let engine = Engine::<TestOrder, TestReport>::builder()
-        .with_local_sync()
-        .pre_trade_policy(NotionalCapPolicy::new(
+        .no_sync()
+        .pre_trade(NotionalCapPolicy::new(
             "MainDefault",
             volume("1000000"),
             Rc::new(RefCell::new(Vec::new())),
@@ -560,8 +559,8 @@ fn integration_engine_builder_defaults_and_guardrails() {
     assert!(!post_trade.kill_switch_triggered);
 
     let overflow_engine = Engine::<TestOrder, TestReport>::builder()
-        .with_local_sync()
-        .check_pre_trade_start_policy(OrderValidationPolicy::new())
+        .no_sync()
+        .pre_trade(OrderValidationPolicy::new())
         .build()
         .expect("overflow engine must build");
     let overflow_order = OrderOperation {
@@ -583,7 +582,7 @@ fn integration_engine_builder_defaults_and_guardrails() {
         .expect("without rejecting policies the request must execute");
     reservation.rollback();
 
-    let misc_builder = Engine::<TestOrder, TestReport>::builder().with_local_sync();
+    let misc_builder = Engine::<TestOrder, TestReport>::builder().no_sync();
     let pnl_policy: TestPnlPolicy = PnlBoundsKillSwitchPolicy::new(
         [pnl_bounds_barrier(
             Asset::new("EUR").expect("asset code must be valid"),
@@ -594,15 +593,14 @@ fn integration_engine_builder_defaults_and_guardrails() {
         misc_builder.storage_builder(),
     )
     .expect("policy config must be valid");
-    assert!(!<TestPnlPolicy as CheckPreTradeStartPolicy<
-        TestOrder,
-        TestReport,
-    >>::apply_execution_report(
-        &pnl_policy,
-        &execution_report_spx_usd("-10")
-    ));
+    assert!(
+        !<TestPnlPolicy as PreTradePolicy<TestOrder, TestReport>>::apply_execution_report(
+            &pnl_policy,
+            &execution_report_spx_usd("-10")
+        )
+    );
     // EUR-only policy has no barrier for USD: order passes.
-    <TestPnlPolicy as CheckPreTradeStartPolicy<TestOrder, TestReport>>::check_pre_trade_start(
+    <TestPnlPolicy as PreTradePolicy<TestOrder, TestReport>>::check_pre_trade_start(
         &pnl_policy,
         &PreTradeContext::new(),
         &order_aapl_usd("100", "1"),
@@ -631,14 +629,14 @@ fn integration_engine_builder_defaults_and_guardrails() {
         pnl: Pnl::new(Decimal::MAX),
         fee: Fee::ZERO,
     };
-    assert!(!<TestPnlPolicy as CheckPreTradeStartPolicy<
-        TestOrder,
-        TestReport,
-    >>::apply_execution_report(
-        &overflow_policy, &report_max,
-    ));
+    assert!(
+        !<TestPnlPolicy as PreTradePolicy<TestOrder, TestReport>>::apply_execution_report(
+            &overflow_policy,
+            &report_max,
+        )
+    );
     let triggered =
-        <TestPnlPolicy as CheckPreTradeStartPolicy<TestOrder, TestReport>>::apply_execution_report(
+        <TestPnlPolicy as PreTradePolicy<TestOrder, TestReport>>::apply_execution_report(
             &overflow_policy,
             &report_max,
         );
@@ -719,8 +717,8 @@ fn integration_custom_order_strategy_tag_policy() {
     }
 
     let engine = Engine::<StrategyOrder, StrategyExecutionReport>::builder()
-        .with_local_sync()
-        .pre_trade_policy(StrategyTagPolicy)
+        .no_sync()
+        .pre_trade(StrategyTagPolicy)
         .build()
         .expect("engine must build");
 
@@ -811,8 +809,8 @@ fn integration_with_order_operation_with_order_position_reduce_only_accessible()
     assert_eq!(order.inner.close_position(), Ok(false));
 
     let engine = Engine::<CompositeOrder, TestReport>::builder()
-        .with_local_sync()
-        .check_pre_trade_start_policy(OrderValidationPolicy::new())
+        .no_sync()
+        .pre_trade(OrderValidationPolicy::new())
         .build()
         .expect("engine must build");
 
@@ -947,9 +945,9 @@ impl SharedPnlPolicy {
     }
 }
 
-impl CheckPreTradeStartPolicy<TestOrder, TestReport> for SharedPnlPolicy {
+impl PreTradePolicy<TestOrder, TestReport> for SharedPnlPolicy {
     fn name(&self) -> &str {
-        <TestPnlPolicy as CheckPreTradeStartPolicy<TestOrder, TestReport>>::name(&self.inner)
+        <TestPnlPolicy as PreTradePolicy<TestOrder, TestReport>>::name(&self.inner)
     }
 
     fn check_pre_trade_start(
@@ -957,7 +955,7 @@ impl CheckPreTradeStartPolicy<TestOrder, TestReport> for SharedPnlPolicy {
         _ctx: &PreTradeContext,
         order: &TestOrder,
     ) -> Result<(), Rejects> {
-        <TestPnlPolicy as CheckPreTradeStartPolicy<TestOrder, TestReport>>::check_pre_trade_start(
+        <TestPnlPolicy as PreTradePolicy<TestOrder, TestReport>>::check_pre_trade_start(
             &self.inner,
             &PreTradeContext::new(),
             order,
@@ -965,7 +963,7 @@ impl CheckPreTradeStartPolicy<TestOrder, TestReport> for SharedPnlPolicy {
     }
 
     fn apply_execution_report(&self, report: &TestReport) -> bool {
-        <TestPnlPolicy as CheckPreTradeStartPolicy<TestOrder, TestReport>>::apply_execution_report(
+        <TestPnlPolicy as PreTradePolicy<TestOrder, TestReport>>::apply_execution_report(
             &self.inner,
             report,
         )

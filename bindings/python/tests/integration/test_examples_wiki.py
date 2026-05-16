@@ -57,7 +57,7 @@ def _aapl_usd_report(pnl: str, fee: str) -> openpit.ExecutionReport:
 # --- Policy-API: Rollback Safety Pattern ---
 
 
-class ReserveThenValidatePolicy(openpit.pretrade.PreTradePolicy):
+class ReserveThenValidatePolicy(openpit.pretrade.Policy):
     # @typing.override
     def __init__(self) -> None:
         self._reserved = openpit.param.Volume(0.0)
@@ -71,7 +71,7 @@ class ReserveThenValidatePolicy(openpit.pretrade.PreTradePolicy):
     # @typing.override
     def perform_pre_trade_check(
         self,
-        ctx: openpit.pretrade.PreTradeContext,
+        ctx: openpit.pretrade.Context,
         order: openpit.Order,
     ) -> openpit.pretrade.PolicyDecision:
         del ctx
@@ -107,10 +107,10 @@ class ReserveThenValidatePolicy(openpit.pretrade.PreTradePolicy):
         return False
 
 
-# --- Policy-API: Custom Main-Stage Policy ---
+# --- Policy-API: Custom Main-Stage Check ---
 
 
-class NotionalCapPolicy(openpit.pretrade.PreTradePolicy):
+class NotionalCapPolicy(openpit.pretrade.Policy):
     # @typing.override
     def __init__(self, max_abs_notional: openpit.param.Volume) -> None:
         # Policy-local config: reject any order above this absolute notional.
@@ -124,7 +124,7 @@ class NotionalCapPolicy(openpit.pretrade.PreTradePolicy):
     # @typing.override
     def perform_pre_trade_check(
         self,
-        ctx: openpit.pretrade.PreTradeContext,
+        ctx: openpit.pretrade.Context,
         order: openpit.Order,
     ) -> openpit.pretrade.PolicyDecision:
         del ctx
@@ -175,7 +175,7 @@ class NotionalCapPolicy(openpit.pretrade.PreTradePolicy):
 # --- Account-Adjustments: CumulativeLimitPolicy ---
 
 
-class CumulativeLimitPolicy(openpit.AccountAdjustmentPolicy):
+class CumulativeLimitPolicy(openpit.pretrade.Policy):
     """Tracks cumulative totals per asset, rejects batch on limit breach."""
 
     def __init__(self, max_cumulative: openpit.param.Volume) -> None:
@@ -286,7 +286,7 @@ def test_example_wiki_pipeline_start_stage_reject() -> None:
     # Used in: pit.wiki/Pre-trade-Pipeline.md — Handle a Start-Stage Reject
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
+        .no_sync()
         .builtin(openpit.pretrade.policies.build_order_validation())
         .build()
     )
@@ -309,10 +309,10 @@ def test_example_wiki_pipeline_start_stage_reject() -> None:
 @pytest.mark.integration
 def test_example_wiki_pipeline_main_stage_finalize() -> None:
     # Used in: pit.wiki/Pre-trade-Pipeline.md — Execute the Main Stage and Finalize the
-    # PreTradeReservation
+    # Reservation
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
+        .no_sync()
         .builtin(openpit.pretrade.policies.build_order_validation())
         .build()
     )
@@ -339,7 +339,7 @@ def test_example_wiki_pipeline_shortcut_start_and_main() -> None:
     # Used in: pit.wiki/Getting-Started.md — Shortcut for Start + Main Stages
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
+        .no_sync()
         .builtin(openpit.pretrade.policies.build_order_validation())
         .build()
     )
@@ -396,7 +396,7 @@ def test_example_wiki_account_adjustments() -> None:
     # The engine validates the whole batch atomically.
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
+        .no_sync()
         .builtin(openpit.pretrade.policies.build_order_validation())
         .build()
     )
@@ -410,12 +410,7 @@ def test_example_wiki_account_adjustments() -> None:
 def test_example_wiki_account_adjustments_cumulative_limit() -> None:
     # Used in: pit.wiki/Account-Adjustments.md — Example: Balance Limit Policy
     policy = CumulativeLimitPolicy(max_cumulative=openpit.param.Volume("1000000"))
-    engine = (
-        openpit.Engine.builder()
-        .with_local_sync()
-        .account_adjustment_policy(policy=policy)
-        .build()
-    )
+    engine = openpit.Engine.builder().no_sync().pre_trade(policy=policy).build()
 
     adjustments = [
         openpit.AccountAdjustment(
@@ -441,12 +436,7 @@ def test_example_wiki_account_adjustments_cumulative_limit() -> None:
 def test_example_wiki_policy_rollback_safety() -> None:
     # Used in: pit.wiki/Policy-API.md — Example: Rollback Safety Pattern
     reserve_policy = ReserveThenValidatePolicy()
-    engine = (
-        openpit.Engine.builder()
-        .with_local_sync()
-        .pre_trade_policy(policy=reserve_policy)
-        .build()
-    )
+    engine = openpit.Engine.builder().no_sync().pre_trade(policy=reserve_policy).build()
 
     start_result = engine.start_pre_trade(order=_aapl_usd_order("10", "25"))
     assert start_result.ok
@@ -461,11 +451,11 @@ def test_example_wiki_policy_rollback_safety() -> None:
 
 @pytest.mark.integration
 def test_example_wiki_policy_notional_cap() -> None:
-    # Used in: pit.wiki/Policy-API.md — Example: Custom Main-Stage Policy
+    # Used in: pit.wiki/Policy-API.md — Example: Custom Main-Stage Check
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
-        .pre_trade_policy(
+        .no_sync()
+        .pre_trade(
             policy=NotionalCapPolicy(
                 max_abs_notional=openpit.param.Volume("1000"),
             )
@@ -517,14 +507,14 @@ class StrategyReport(openpit.ExecutionReport):
         self.venue_exec_id = venue_exec_id
 
 
-class StrategyTagPolicy(openpit.pretrade.CheckPreTradeStartPolicy):
+class StrategyTagPolicy(openpit.pretrade.Policy):
     @property
     def name(self) -> str:
         return "StrategyTagPolicy"
 
     def check_pre_trade_start(
         self,
-        ctx: openpit.pretrade.PreTradeContext,
+        ctx: openpit.pretrade.Context,
         order: openpit.Order,
     ) -> list[openpit.pretrade.PolicyReject]:
         import typing
@@ -565,10 +555,7 @@ def _make_strategy_order(strategy_tag: str) -> StrategyOrder:
 def test_example_wiki_custom_python_models() -> None:
     # Used in: pit.wiki/Policy-API.md — Example: Python Custom Models
     engine = (
-        openpit.Engine.builder()
-        .with_local_sync()
-        .check_pre_trade_start_policy(policy=StrategyTagPolicy())
-        .build()
+        openpit.Engine.builder().no_sync().pre_trade(policy=StrategyTagPolicy()).build()
     )
 
     # Allowed order must pass both stages.
@@ -602,7 +589,7 @@ def test_example_wiki_policies_order_validation() -> None:
 
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
+        .no_sync()
         .builtin(
             openpit.pretrade.policies.build_order_validation(),
         )
@@ -626,7 +613,7 @@ def test_example_wiki_policies_rate_limit() -> None:
 
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
+        .no_sync()
         .builtin(
             openpit.pretrade.policies.build_rate_limit().broker_barrier(
                 openpit.pretrade.policies.RateLimitBrokerBarrier(
@@ -655,7 +642,7 @@ def test_example_wiki_policies_order_size_limit() -> None:
 
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
+        .no_sync()
         .builtin(
             openpit.pretrade.policies.build_order_size_limit()
             .asset_barriers(
@@ -694,7 +681,7 @@ def test_example_wiki_policies_pnl_bounds_killswitch() -> None:
 
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
+        .no_sync()
         .builtin(
             openpit.pretrade.policies.build_pnl_bounds_killswitch().broker_barriers(
                 openpit.pretrade.policies.PnlBoundsBrokerBarrier(

@@ -21,9 +21,7 @@ use std::fmt::{Display, Formatter};
 use crate::core::HasAccountId;
 use crate::param::{AccountId, Asset, Price, Quantity, TradeAmount, Volume};
 use crate::pretrade::policy::request_field_access_pre_trade_reject;
-use crate::pretrade::{
-    CheckPreTradeStartPolicy, PreTradeContext, Reject, RejectCode, RejectScope, Rejects,
-};
+use crate::pretrade::{PreTradeContext, PreTradePolicy, Reject, RejectCode, RejectScope, Rejects};
 use crate::HasInstrument;
 use crate::{HasOrderPrice, HasTradeAmount};
 
@@ -140,8 +138,8 @@ impl std::error::Error for OrderSizeLimitPolicyError {}
 /// )?;
 ///
 /// let engine = Engine::<OrderOperation>::builder()
-///     .with_local_sync()
-///     .check_pre_trade_start_policy(policy)
+///     .no_sync()
+///     .pre_trade(policy)
 ///     .build()?;
 ///
 /// let order = OrderOperation {
@@ -198,15 +196,16 @@ impl OrderSizeLimitPolicy {
     }
 }
 
-impl<O, R> CheckPreTradeStartPolicy<O, R> for OrderSizeLimitPolicy
+impl<Order, ExecutionReport, AccountAdjustment>
+    PreTradePolicy<Order, ExecutionReport, AccountAdjustment> for OrderSizeLimitPolicy
 where
-    O: HasInstrument + HasTradeAmount + HasOrderPrice + HasAccountId,
+    Order: HasInstrument + HasTradeAmount + HasOrderPrice + HasAccountId,
 {
     fn name(&self) -> &str {
         Self::NAME
     }
 
-    fn check_pre_trade_start(&self, _ctx: &PreTradeContext, order: &O) -> Result<(), Rejects> {
+    fn check_pre_trade_start(&self, _ctx: &PreTradeContext, order: &Order) -> Result<(), Rejects> {
         let instrument = order
             .instrument()
             .map_err(|e| Rejects::from(request_field_access_pre_trade_reject(Self::NAME, &e)))?;
@@ -259,7 +258,7 @@ where
         Ok(())
     }
 
-    fn apply_execution_report(&self, _report: &R) -> bool {
+    fn apply_execution_report(&self, _report: &ExecutionReport) -> bool {
         false
     }
 }
@@ -362,7 +361,7 @@ mod tests {
     use crate::core::{HasAccountId, Instrument, OrderOperation};
     use crate::param::TradeAmount;
     use crate::param::{AccountId, Asset, Price, Quantity, Side, Volume};
-    use crate::pretrade::{CheckPreTradeStartPolicy, PreTradeContext, RejectCode, RejectScope};
+    use crate::pretrade::{PreTradeContext, PreTradePolicy, RejectCode, RejectScope};
     use crate::{HasInstrument, HasOrderPrice, HasTradeAmount, RequestFieldAccessError};
     use rust_decimal::Decimal;
 
@@ -445,7 +444,7 @@ mod tests {
             OrderSizeLimitPolicy::new(None, [asset_barrier("USD", "10", "1000")], []).unwrap();
 
         let reject =
-            <OrderSizeLimitPolicy as CheckPreTradeStartPolicy<TestOrder, ()>>::check_pre_trade_start(
+            <OrderSizeLimitPolicy as PreTradePolicy<TestOrder, ()>>::check_pre_trade_start(
                 &policy,
                 &PreTradeContext::new(),
                 &order("USD", "11", "90"),
@@ -464,7 +463,7 @@ mod tests {
             OrderSizeLimitPolicy::new(None, [asset_barrier("USD", "10", "1000")], []).unwrap();
 
         let reject =
-            <OrderSizeLimitPolicy as CheckPreTradeStartPolicy<TestOrder, ()>>::check_pre_trade_start(
+            <OrderSizeLimitPolicy as PreTradePolicy<TestOrder, ()>>::check_pre_trade_start(
                 &policy,
                 &PreTradeContext::new(),
                 &order("USD", "10", "101"),
@@ -483,7 +482,7 @@ mod tests {
             OrderSizeLimitPolicy::new(None, [asset_barrier("USD", "10", "1000")], []).unwrap();
 
         let reject =
-            <OrderSizeLimitPolicy as CheckPreTradeStartPolicy<TestOrder, ()>>::check_pre_trade_start(
+            <OrderSizeLimitPolicy as PreTradePolicy<TestOrder, ()>>::check_pre_trade_start(
                 &policy,
                 &PreTradeContext::new(),
                 &order("USD", "11", "100"),
@@ -504,12 +503,11 @@ mod tests {
         let policy =
             OrderSizeLimitPolicy::new(None, [asset_barrier("EUR", "10", "1000")], []).unwrap();
 
-        let result =
-            <OrderSizeLimitPolicy as CheckPreTradeStartPolicy<TestOrder, ()>>::check_pre_trade_start(
-                &policy,
-                &PreTradeContext::new(),
-                &order("USD", "1", "1"),
-            );
+        let result = <OrderSizeLimitPolicy as PreTradePolicy<TestOrder, ()>>::check_pre_trade_start(
+            &policy,
+            &PreTradeContext::new(),
+            &order("USD", "1", "1"),
+        );
         assert!(result.is_ok());
     }
 
@@ -518,12 +516,11 @@ mod tests {
         let policy =
             OrderSizeLimitPolicy::new(None, [asset_barrier("USD", "10", "1000")], []).unwrap();
 
-        let result =
-            <OrderSizeLimitPolicy as CheckPreTradeStartPolicy<TestOrder, ()>>::check_pre_trade_start(
-                &policy,
-                &PreTradeContext::new(),
-                &order("USD", "10", "100"),
-            );
+        let result = <OrderSizeLimitPolicy as PreTradePolicy<TestOrder, ()>>::check_pre_trade_start(
+            &policy,
+            &PreTradeContext::new(),
+            &order("USD", "10", "100"),
+        );
         assert!(result.is_ok());
     }
 
@@ -535,7 +532,7 @@ mod tests {
 
         // Broker limit applies to any settlement
         let reject =
-            <OrderSizeLimitPolicy as CheckPreTradeStartPolicy<TestOrder, ()>>::check_pre_trade_start(
+            <OrderSizeLimitPolicy as PreTradePolicy<TestOrder, ()>>::check_pre_trade_start(
                 &policy,
                 &PreTradeContext::new(),
                 &order("USD", "6", "10"),
@@ -545,7 +542,7 @@ mod tests {
         assert_eq!(reject[0].code, RejectCode::OrderQtyExceedsLimit);
 
         let reject2 =
-            <OrderSizeLimitPolicy as CheckPreTradeStartPolicy<TestOrder, ()>>::check_pre_trade_start(
+            <OrderSizeLimitPolicy as PreTradePolicy<TestOrder, ()>>::check_pre_trade_start(
                 &policy,
                 &PreTradeContext::new(),
                 &order("EUR", "6", "10"),
@@ -572,7 +569,7 @@ mod tests {
         .unwrap();
 
         let reject =
-            <OrderSizeLimitPolicy as CheckPreTradeStartPolicy<TestOrder, ()>>::check_pre_trade_start(
+            <OrderSizeLimitPolicy as PreTradePolicy<TestOrder, ()>>::check_pre_trade_start(
                 &policy,
                 &PreTradeContext::new(),
                 &order("USD", "6", "10"),
@@ -596,7 +593,7 @@ mod tests {
         .unwrap();
 
         assert!(
-            <OrderSizeLimitPolicy as CheckPreTradeStartPolicy<TestOrder, ()>>::check_pre_trade_start(
+            <OrderSizeLimitPolicy as PreTradePolicy<TestOrder, ()>>::check_pre_trade_start(
                 &policy,
                 &PreTradeContext::new(),
                 &order_for_account("USD", "10", "10", AccountId::from_u64(99224416)),
@@ -605,7 +602,7 @@ mod tests {
         );
 
         let reject =
-            <OrderSizeLimitPolicy as CheckPreTradeStartPolicy<TestOrder, ()>>::check_pre_trade_start(
+            <OrderSizeLimitPolicy as PreTradePolicy<TestOrder, ()>>::check_pre_trade_start(
                 &policy,
                 &PreTradeContext::new(),
                 &order_for_account("USD", "10", "10", AccountId::from_u64(2)),
@@ -620,12 +617,11 @@ mod tests {
         let policy =
             OrderSizeLimitPolicy::new(None, [asset_barrier("EUR", "10", "1000")], []).unwrap();
 
-        let result =
-            <OrderSizeLimitPolicy as CheckPreTradeStartPolicy<TestOrder, ()>>::check_pre_trade_start(
-                &policy,
-                &PreTradeContext::new(),
-                &order("USD", "1", "1"),
-            );
+        let result = <OrderSizeLimitPolicy as PreTradePolicy<TestOrder, ()>>::check_pre_trade_start(
+            &policy,
+            &PreTradeContext::new(),
+            &order("USD", "1", "1"),
+        );
         assert!(result.is_ok());
     }
 
@@ -641,7 +637,7 @@ mod tests {
         .unwrap();
 
         let reject =
-            <OrderSizeLimitPolicy as CheckPreTradeStartPolicy<TestOrder, ()>>::check_pre_trade_start(
+            <OrderSizeLimitPolicy as PreTradePolicy<TestOrder, ()>>::check_pre_trade_start(
                 &policy,
                 &PreTradeContext::new(),
                 &order("USD", "6", "10"),
@@ -671,25 +667,30 @@ mod tests {
         )
         .unwrap();
 
-        assert!(<OrderSizeLimitPolicy as CheckPreTradeStartPolicy<TestOrder, ()>>::check_pre_trade_start(
-            &policy,
-            &PreTradeContext::new(),
-            &order("EUR", "5", "100")
-        )
-        .is_ok());
-        assert!(<OrderSizeLimitPolicy as CheckPreTradeStartPolicy<TestOrder, ()>>::check_pre_trade_start(
-            &policy,
-            &PreTradeContext::new(),
-            &order("GBP", "3", "100")
-        )
-        .is_ok());
+        assert!(
+            <OrderSizeLimitPolicy as PreTradePolicy<TestOrder, ()>>::check_pre_trade_start(
+                &policy,
+                &PreTradeContext::new(),
+                &order("EUR", "5", "100")
+            )
+            .is_ok()
+        );
+        assert!(
+            <OrderSizeLimitPolicy as PreTradePolicy<TestOrder, ()>>::check_pre_trade_start(
+                &policy,
+                &PreTradeContext::new(),
+                &order("GBP", "3", "100")
+            )
+            .is_ok()
+        );
 
-        let reject = <OrderSizeLimitPolicy as CheckPreTradeStartPolicy<TestOrder, ()>>::check_pre_trade_start(
-            &policy,
-            &PreTradeContext::new(),
-            &order("EUR", "6", "10"),
-        )
-        .expect_err("exceeding EUR limit must reject");
+        let reject =
+            <OrderSizeLimitPolicy as PreTradePolicy<TestOrder, ()>>::check_pre_trade_start(
+                &policy,
+                &PreTradeContext::new(),
+                &order("EUR", "6", "10"),
+            )
+            .expect_err("exceeding EUR limit must reject");
         assert_eq!(reject[0].code, RejectCode::OrderQtyExceedsLimit);
         assert_eq!(reject[0].details, "requested 6, max allowed: 5");
     }
@@ -701,7 +702,7 @@ mod tests {
         let policy =
             OrderSizeLimitPolicy::new(None, [asset_barrier("USD", "10", "1000")], []).unwrap();
         assert_eq!(
-            <OrderSizeLimitPolicy as CheckPreTradeStartPolicy<TestOrder, ()>>::name(&policy),
+            <OrderSizeLimitPolicy as PreTradePolicy<TestOrder, ()>>::name(&policy),
             OrderSizeLimitPolicy::NAME
         );
     }
@@ -710,10 +711,12 @@ mod tests {
     fn apply_execution_report_returns_false() {
         let policy =
             OrderSizeLimitPolicy::new(None, [asset_barrier("USD", "10", "1000")], []).unwrap();
-        assert!(!<OrderSizeLimitPolicy as CheckPreTradeStartPolicy<
-            TestOrder,
-            (),
-        >>::apply_execution_report(&policy, &()));
+        assert!(
+            !<OrderSizeLimitPolicy as PreTradePolicy<TestOrder, ()>>::apply_execution_report(
+                &policy,
+                &()
+            )
+        );
     }
 
     // ── resolve helpers ────────────────────────────────────────────────────
@@ -761,7 +764,7 @@ mod tests {
             price: None,
         };
         let reject =
-            <OrderSizeLimitPolicy as CheckPreTradeStartPolicy<TestOrder, ()>>::check_pre_trade_start(
+            <OrderSizeLimitPolicy as PreTradePolicy<TestOrder, ()>>::check_pre_trade_start(
                 &policy,
                 &PreTradeContext::new(),
                 &order_val,
@@ -820,7 +823,7 @@ mod tests {
         };
 
         let reject =
-            <OrderSizeLimitPolicy as CheckPreTradeStartPolicy<TestOrder, ()>>::check_pre_trade_start(
+            <OrderSizeLimitPolicy as PreTradePolicy<TestOrder, ()>>::check_pre_trade_start(
                 &policy,
                 &PreTradeContext::new(),
                 &order_val,
@@ -870,7 +873,7 @@ mod tests {
         let policy =
             OrderSizeLimitPolicy::new(None, [asset_barrier("USD", "10", "1000")], []).unwrap();
         let order_val = InstrumentAccessErrorOrder;
-        let reject = <OrderSizeLimitPolicy as CheckPreTradeStartPolicy<
+        let reject = <OrderSizeLimitPolicy as PreTradePolicy<
             InstrumentAccessErrorOrder,
             (),
         >>::check_pre_trade_start(&policy, &PreTradeContext::new(), &order_val)
@@ -919,7 +922,7 @@ mod tests {
                 Asset::new("USD").expect("asset code must be valid"),
             ),
         };
-        let reject = <OrderSizeLimitPolicy as CheckPreTradeStartPolicy<
+        let reject = <OrderSizeLimitPolicy as PreTradePolicy<
             TradeAmountAccessErrorOrder,
             (),
         >>::check_pre_trade_start(&policy, &PreTradeContext::new(), &order_val)
@@ -968,7 +971,7 @@ mod tests {
                 Asset::new("USD").expect("asset code must be valid"),
             ),
         };
-        let reject = <OrderSizeLimitPolicy as CheckPreTradeStartPolicy<
+        let reject = <OrderSizeLimitPolicy as PreTradePolicy<
             PriceAccessErrorOrder,
             (),
         >>::check_pre_trade_start(&policy, &PreTradeContext::new(), &order_val)

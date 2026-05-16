@@ -34,17 +34,16 @@ use crate::param::AccountId;
 use crate::pretrade::handle::{RequestHandleImpl, ReservationHandleImpl};
 use crate::pretrade::start_pre_trade_time::with_start_pre_trade_now;
 use crate::pretrade::{
-    CheckPreTradeStartPolicy, PostTradeResult, PreTradeContext, PreTradePolicy, PreTradeRequest,
-    PreTradeReservation, Reject, RejectCode, RejectScope, Rejects,
+    PostTradeResult, PreTradeContext, PreTradePolicy, PreTradeRequest, PreTradeReservation, Reject,
+    RejectCode, RejectScope, Rejects,
 };
 use crate::storage::StorageBuilder;
-use crate::{AccountAdjustmentContext, AccountAdjustmentPolicy, Mutations};
+use crate::{AccountAdjustmentContext, Mutations};
 
 // ─── Type aliases for per-EL policy Vecs ─────────────────────────────────────
 
-type CheckStartVec<EL, O, ER, AA> = Vec<Box<<EL as EnginePolicies<O, ER, AA>>::CheckStart>>;
-type PreTradeVec<EL, O, ER, AA> = Vec<Box<<EL as EnginePolicies<O, ER, AA>>::PreTrade>>;
-type AccountAdjVec<EL, O, ER, AA> = Vec<Box<<EL as EnginePolicies<O, ER, AA>>::AccountAdj>>;
+type PreTradeVec<EL, Order, ExecutionReport, AccountAdjustment> =
+    Vec<Box<<EL as EnginePolicies<Order, ExecutionReport, AccountAdjustment>>::PreTrade>>;
 
 // ─── EnginePolicies ──────────────────────────────────────────────────────────
 
@@ -60,27 +59,25 @@ type AccountAdjVec<EL, O, ER, AA> = Vec<Box<<EL as EnginePolicies<O, ER, AA>>::A
 pub trait EnginePolicies<Order: 'static, ExecutionReport: 'static, AccountAdjustment: 'static>:
     EngineLockingPolicy
 {
-    type CheckStart: CheckPreTradeStartPolicy<Order, ExecutionReport> + ?Sized + 'static;
-    type PreTrade: PreTradePolicy<Order, ExecutionReport> + ?Sized + 'static;
-    type AccountAdj: AccountAdjustmentPolicy<AccountAdjustment> + ?Sized + 'static;
+    type PreTrade: PreTradePolicy<Order, ExecutionReport, AccountAdjustment> + ?Sized + 'static;
 }
 
-impl<O: 'static, ER: 'static, AA: 'static> EnginePolicies<O, ER, AA> for LocalEngineLocking {
-    type CheckStart = dyn CheckPreTradeStartPolicy<O, ER>;
-    type PreTrade = dyn PreTradePolicy<O, ER>;
-    type AccountAdj = dyn AccountAdjustmentPolicy<AA>;
+impl<Order: 'static, ExecutionReport: 'static, AccountAdjustment: 'static>
+    EnginePolicies<Order, ExecutionReport, AccountAdjustment> for LocalEngineLocking
+{
+    type PreTrade = dyn PreTradePolicy<Order, ExecutionReport, AccountAdjustment>;
 }
 
-impl<O: 'static, ER: 'static, AA: 'static> EnginePolicies<O, ER, AA> for SyncedEngineLocking {
-    type CheckStart = dyn CheckPreTradeStartPolicy<O, ER> + Send + Sync;
-    type PreTrade = dyn PreTradePolicy<O, ER> + Send + Sync;
-    type AccountAdj = dyn AccountAdjustmentPolicy<AA> + Send + Sync;
+impl<Order: 'static, ExecutionReport: 'static, AccountAdjustment: 'static>
+    EnginePolicies<Order, ExecutionReport, AccountAdjustment> for SyncedEngineLocking
+{
+    type PreTrade = dyn PreTradePolicy<Order, ExecutionReport, AccountAdjustment> + Send + Sync;
 }
 
-impl<O: 'static, ER: 'static, AA: 'static> EnginePolicies<O, ER, AA> for SequentialEngineLocking {
-    type CheckStart = dyn CheckPreTradeStartPolicy<O, ER> + Send;
-    type PreTrade = dyn PreTradePolicy<O, ER> + Send;
-    type AccountAdj = dyn AccountAdjustmentPolicy<AA> + Send;
+impl<Order: 'static, ExecutionReport: 'static, AccountAdjustment: 'static>
+    EnginePolicies<Order, ExecutionReport, AccountAdjustment> for SequentialEngineLocking
+{
+    type PreTrade = dyn PreTradePolicy<Order, ExecutionReport, AccountAdjustment> + Send;
 }
 
 // ─── PolicyBox ───────────────────────────────────────────────────────────────
@@ -88,7 +85,7 @@ impl<O: 'static, ER: 'static, AA: 'static> EnginePolicies<O, ER, AA> for Sequent
 /// Crate-private coercion helper: converts a concrete policy into a
 /// `Box<Target>` where `Target` is the dyn type selected by [`EnginePolicies`].
 ///
-/// Three blanket impls exist for each policy category trait:
+/// Three blanket impls exist for the policy trait:
 ///
 /// - `Target = dyn Trait` — satisfied by `Policy: Trait + 'static` (no
 ///   Send/Sync required; used for `LocalEngineLocking`).
@@ -97,7 +94,7 @@ impl<O: 'static, ER: 'static, AA: 'static> EnginePolicies<O, ER, AA> for Sequent
 /// - `Target = dyn Trait + Send + Sync` — satisfied by
 ///   `Policy: Trait + Send + Sync + 'static` (used for `SyncedEngineLocking`).
 ///
-/// The builder methods carry a single `where Policy: PolicyBox<EL::CheckStart>`
+/// The builder methods carry a single `where Policy: PolicyBox<EL::PreTrade>`
 /// bound, which resolves to whichever blanket impl matches the concrete `Target`
 /// for the active `EL`. This avoids duplicate method definitions while still
 /// enforcing the right bounds per locking flavor.
@@ -106,89 +103,63 @@ pub(crate) trait PolicyBox<Target: ?Sized>: 'static {
     fn into_box(self) -> Box<Target>;
 }
 
-// ── Start-stage policies ──────────────────────────────────────────────────────
-
 #[doc(hidden)]
-impl<O: 'static, ER: 'static, P: CheckPreTradeStartPolicy<O, ER> + 'static>
-    PolicyBox<dyn CheckPreTradeStartPolicy<O, ER>> for P
+impl<
+        Order: 'static,
+        ExecutionReport: 'static,
+        AccountAdjustment: 'static,
+        PreTradePolicy: crate::pretrade::PreTradePolicy<Order, ExecutionReport, AccountAdjustment> + 'static,
+    > PolicyBox<dyn crate::pretrade::PreTradePolicy<Order, ExecutionReport, AccountAdjustment>>
+    for PreTradePolicy
 {
-    fn into_box(self) -> Box<dyn CheckPreTradeStartPolicy<O, ER>> {
+    fn into_box(
+        self,
+    ) -> Box<dyn crate::pretrade::PreTradePolicy<Order, ExecutionReport, AccountAdjustment>> {
         Box::new(self)
     }
 }
 
 #[doc(hidden)]
-impl<O: 'static, ER: 'static, P: CheckPreTradeStartPolicy<O, ER> + Send + 'static>
-    PolicyBox<dyn CheckPreTradeStartPolicy<O, ER> + Send> for P
+impl<
+        Order: 'static,
+        ExecutionReport: 'static,
+        AccountAdjustment: 'static,
+        PreTradePolicy: crate::pretrade::PreTradePolicy<Order, ExecutionReport, AccountAdjustment> + Send + 'static,
+    >
+    PolicyBox<dyn crate::pretrade::PreTradePolicy<Order, ExecutionReport, AccountAdjustment> + Send>
+    for PreTradePolicy
 {
-    fn into_box(self) -> Box<dyn CheckPreTradeStartPolicy<O, ER> + Send> {
+    fn into_box(
+        self,
+    ) -> Box<dyn crate::pretrade::PreTradePolicy<Order, ExecutionReport, AccountAdjustment> + Send>
+    {
         Box::new(self)
     }
 }
 
 #[doc(hidden)]
-impl<O: 'static, ER: 'static, P: CheckPreTradeStartPolicy<O, ER> + Send + Sync + 'static>
-    PolicyBox<dyn CheckPreTradeStartPolicy<O, ER> + Send + Sync> for P
+impl<
+        Order: 'static,
+        ExecutionReport: 'static,
+        AccountAdjustment: 'static,
+        PreTradePolicy: crate::pretrade::PreTradePolicy<Order, ExecutionReport, AccountAdjustment>
+            + Send
+            + Sync
+            + 'static,
+    >
+    PolicyBox<
+        dyn crate::pretrade::PreTradePolicy<Order, ExecutionReport, AccountAdjustment>
+            + Send
+            + Sync,
+    > for PreTradePolicy
 {
-    fn into_box(self) -> Box<dyn CheckPreTradeStartPolicy<O, ER> + Send + Sync> {
-        Box::new(self)
-    }
-}
-
-// ── Main-stage policies ───────────────────────────────────────────────────────
-
-#[doc(hidden)]
-impl<O: 'static, ER: 'static, P: PreTradePolicy<O, ER> + 'static>
-    PolicyBox<dyn PreTradePolicy<O, ER>> for P
-{
-    fn into_box(self) -> Box<dyn PreTradePolicy<O, ER>> {
-        Box::new(self)
-    }
-}
-
-#[doc(hidden)]
-impl<O: 'static, ER: 'static, P: PreTradePolicy<O, ER> + Send + 'static>
-    PolicyBox<dyn PreTradePolicy<O, ER> + Send> for P
-{
-    fn into_box(self) -> Box<dyn PreTradePolicy<O, ER> + Send> {
-        Box::new(self)
-    }
-}
-
-#[doc(hidden)]
-impl<O: 'static, ER: 'static, P: PreTradePolicy<O, ER> + Send + Sync + 'static>
-    PolicyBox<dyn PreTradePolicy<O, ER> + Send + Sync> for P
-{
-    fn into_box(self) -> Box<dyn PreTradePolicy<O, ER> + Send + Sync> {
-        Box::new(self)
-    }
-}
-
-// ── Account-adjustment policies ───────────────────────────────────────────────
-
-#[doc(hidden)]
-impl<AA: 'static, P: AccountAdjustmentPolicy<AA> + 'static>
-    PolicyBox<dyn AccountAdjustmentPolicy<AA>> for P
-{
-    fn into_box(self) -> Box<dyn AccountAdjustmentPolicy<AA>> {
-        Box::new(self)
-    }
-}
-
-#[doc(hidden)]
-impl<AA: 'static, P: AccountAdjustmentPolicy<AA> + Send + 'static>
-    PolicyBox<dyn AccountAdjustmentPolicy<AA> + Send> for P
-{
-    fn into_box(self) -> Box<dyn AccountAdjustmentPolicy<AA> + Send> {
-        Box::new(self)
-    }
-}
-
-#[doc(hidden)]
-impl<AA: 'static, P: AccountAdjustmentPolicy<AA> + Send + Sync + 'static>
-    PolicyBox<dyn AccountAdjustmentPolicy<AA> + Send + Sync> for P
-{
-    fn into_box(self) -> Box<dyn AccountAdjustmentPolicy<AA> + Send + Sync> {
+    fn into_box(
+        self,
+    ) -> Box<
+        dyn crate::pretrade::PreTradePolicy<Order, ExecutionReport, AccountAdjustment>
+            + Send
+            + Sync,
+    > {
         Box::new(self)
     }
 }
@@ -197,9 +168,7 @@ struct EngineInner<Order: 'static, ExecutionReport: 'static, AccountAdjustment: 
 where
     EL: EngineLockingPolicy + EnginePolicies<Order, ExecutionReport, AccountAdjustment>,
 {
-    check_pre_trade_start_policies: Vec<Box<EL::CheckStart>>,
     pre_trade_policies: Vec<Box<EL::PreTrade>>,
-    account_adjustment_policies: Vec<Box<EL::AccountAdj>>,
 }
 
 /// Errors returned by [`ReadyEngineBuilder::build`].
@@ -253,23 +222,23 @@ impl std::error::Error for AccountAdjustmentBatchError {}
 /// - `ExecutionReport`: execution-report contract type used by `apply_execution_report`;
 /// - `AccountAdjustment`: account-adjustment contract type used by `apply_account_adjustment`;
 /// - `EL`: engine-locking policy; defaults to [`LocalEngineLocking`] (`!Send + !Sync`).
-///   Use [`SyncedEngineLocking`] (produced by [`EngineBuilder::with_full_sync`]) for
+///   Use [`SyncedEngineLocking`] (produced by [`EngineBuilder::full_sync`]) for
 ///   `Send + Sync` engines, or [`SequentialEngineLocking`] (produced by
-///   [`EngineBuilder::with_account_sync`]) for sequential cross-thread engines.
+///   [`EngineBuilder::account_sync`]) for sequential cross-thread engines.
 ///
 /// # Threading
 ///
 /// The engine handle's thread-safety is determined by `EL`:
 ///
-/// - [`LocalEngineLocking`] (default, produced by `with_local_sync`): the handle
+/// - [`LocalEngineLocking`] (default, produced by `no_sync`): the handle
 ///   is `!Send + !Sync`. Keep it on the OS thread that created it. Concurrent
 ///   invocation is not supported.
-/// - [`SyncedEngineLocking`] (produced by `with_full_sync`): the handle is
+/// - [`SyncedEngineLocking`] (produced by `full_sync`): the handle is
 ///   `Send + Sync` when all registered policies are `Send + Sync`. It can be
 ///   wrapped in `Arc<Engine<..., SyncedEngineLocking>>` and shared across
 ///   threads. With `FullLocking` storage, concurrent invocation from multiple
 ///   threads is safe.
-/// - [`SequentialEngineLocking`] (produced by `with_account_sync`): the handle
+/// - [`SequentialEngineLocking`] (produced by `account_sync`): the handle
 ///   is `Send + !Sync`. Ownership may move between OS threads sequentially, but
 ///   concurrent invocation on the same handle is not supported.
 ///
@@ -290,8 +259,8 @@ impl std::error::Error for AccountAdjustmentBatchError {}
 /// type MyReport = WithExecutionReportOperation<WithFinancialImpact<()>>;
 ///
 /// let engine = Engine::<MyOrder, MyReport>::builder()
-///     .with_local_sync()
-///     .check_pre_trade_start_policy(OrderValidationPolicy::new())
+///     .no_sync()
+///     .pre_trade(OrderValidationPolicy::new())
 ///     .build()?;
 ///
 /// let order = WithOrderOperation {
@@ -315,24 +284,24 @@ pub struct Engine<
     Order: 'static,
     ExecutionReport: 'static = (),
     AccountAdjustment: 'static = (),
-    EL = LocalEngineLocking,
+    Locking = LocalEngineLocking,
 > where
-    EL: EngineLockingPolicy + EnginePolicies<Order, ExecutionReport, AccountAdjustment>,
+    Locking: EngineLockingPolicy + EnginePolicies<Order, ExecutionReport, AccountAdjustment>,
 {
-    inner: EL::Strong<EngineInner<Order, ExecutionReport, AccountAdjustment, EL>>,
+    inner: Locking::Strong<EngineInner<Order, ExecutionReport, AccountAdjustment, Locking>>,
 }
 
 /// Single-threaded engine type alias.
 ///
 /// Equivalent to `Engine<Order, ExecutionReport, AccountAdjustment, LocalEngineLocking>`.
-/// Produced by [`EngineBuilder::with_local_sync`] chains.
+/// Produced by [`EngineBuilder::no_sync`] chains.
 pub type LocalEngine<Order, ExecutionReport = (), AccountAdjustment = ()> =
     Engine<Order, ExecutionReport, AccountAdjustment, LocalEngineLocking>;
 
 /// Account-sharded engine type alias.
 ///
 /// Equivalent to `Engine<Order, ExecutionReport, AccountAdjustment, SequentialEngineLocking>`.
-/// Produced by [`EngineBuilder::with_account_sync`] chains. Engine handle is
+/// Produced by [`EngineBuilder::account_sync`] chains. Engine handle is
 /// `Send + !Sync`.
 pub type SequentialEngine<Order, ExecutionReport = (), AccountAdjustment = ()> =
     Engine<Order, ExecutionReport, AccountAdjustment, SequentialEngineLocking>;
@@ -340,7 +309,7 @@ pub type SequentialEngine<Order, ExecutionReport = (), AccountAdjustment = ()> =
 /// Multi-threaded engine type alias.
 ///
 /// Equivalent to `Engine<Order, ExecutionReport, AccountAdjustment, SyncedEngineLocking>`.
-/// Produced by [`EngineBuilder::with_full_sync`] chains. The resulting engine handle is
+/// Produced by [`EngineBuilder::full_sync`] chains. The resulting engine handle is
 /// `Send + Sync` and may be wrapped in `Arc<SyncedEngine<...>>`.
 pub type SyncedEngine<Order, ExecutionReport = (), AccountAdjustment = ()> =
     Engine<Order, ExecutionReport, AccountAdjustment, SyncedEngineLocking>;
@@ -352,8 +321,8 @@ impl<
         Order: 'static,
         ExecutionReport: 'static,
         AccountAdjustment: 'static,
-        EL: EngineLockingPolicy + EnginePolicies<Order, ExecutionReport, AccountAdjustment>,
-    > Engine<Order, ExecutionReport, AccountAdjustment, EL>
+        LockingPolicy: EngineLockingPolicy + EnginePolicies<Order, ExecutionReport, AccountAdjustment>,
+    > Engine<Order, ExecutionReport, AccountAdjustment, LockingPolicy>
 {
     /// Creates an engine builder.
     pub fn builder() -> EngineBuilder<Order, ExecutionReport, AccountAdjustment> {
@@ -377,10 +346,11 @@ impl<
         let now: Instant = Instant::now();
         let ctx = PreTradeContext::new();
         let start_rejects = with_start_pre_trade_now(now, || {
-            let inner: &EngineInner<Order, ExecutionReport, AccountAdjustment, EL> = &self.inner;
+            let inner: &EngineInner<Order, ExecutionReport, AccountAdjustment, LockingPolicy> =
+                &self.inner;
             let mut lists = Vec::new();
             let mut len = 0;
-            for policy in &inner.check_pre_trade_start_policies {
+            for policy in &inner.pre_trade_policies {
                 if let Err(rejects) = policy.check_pre_trade_start(&ctx, &order) {
                     len += rejects.len();
                     lists.push(rejects);
@@ -392,9 +362,11 @@ impl<
             return Err(rejects);
         }
 
-        let engine = EL::downgrade(&self.inner);
+        let engine = LockingPolicy::downgrade(&self.inner);
         let request_handle = RequestHandleImpl::<Order>::new(Box::new(move || {
-            execute_request::<Order, ExecutionReport, AccountAdjustment, EL>(engine, ctx, order)
+            execute_request::<Order, ExecutionReport, AccountAdjustment, LockingPolicy>(
+                engine, ctx, order,
+            )
         }));
 
         Ok(PreTradeRequest::from_handle(Box::new(request_handle)))
@@ -418,12 +390,10 @@ impl<
     /// Returns [`PostTradeResult::kill_switch_triggered`] `true` when at least one policy
     /// reports a kill-switch condition.
     pub fn apply_execution_report(&self, report: &ExecutionReport) -> PostTradeResult {
-        let inner: &EngineInner<Order, ExecutionReport, AccountAdjustment, EL> = &self.inner;
+        let inner: &EngineInner<Order, ExecutionReport, AccountAdjustment, LockingPolicy> =
+            &self.inner;
         let mut kill_switch_triggered = false;
 
-        for policy in &inner.check_pre_trade_start_policies {
-            kill_switch_triggered |= policy.apply_execution_report(report);
-        }
         for policy in &inner.pre_trade_policies {
             kill_switch_triggered |= policy.apply_execution_report(report);
         }
@@ -451,13 +421,14 @@ impl<
             return Ok(());
         }
 
-        let inner: &EngineInner<Order, ExecutionReport, AccountAdjustment, EL> = &self.inner;
+        let inner: &EngineInner<Order, ExecutionReport, AccountAdjustment, LockingPolicy> =
+            &self.inner;
         let mut mutations = Mutations::new();
         let mut batch_error: Option<AccountAdjustmentBatchError> = None;
         let ctx = AccountAdjustmentContext::new();
 
         'outer: for (index, adjustment) in adjustments.iter().enumerate() {
-            for policy in &inner.account_adjustment_policies {
+            for policy in &inner.pre_trade_policies {
                 if let Err(rejects) =
                     policy.apply_account_adjustment(&ctx, account_id, adjustment, &mut mutations)
                 {
@@ -506,7 +477,7 @@ impl<
 /// type MyOrder = WithOrderOperation<()>;
 /// type MyReport = WithFinancialImpact<WithExecutionReportOperation<()>>;
 ///
-/// let builder = Engine::<MyOrder, MyReport>::builder().with_local_sync();
+/// let builder = Engine::<MyOrder, MyReport>::builder().no_sync();
 ///
 /// let pnl_policy = PnlBoundsKillSwitchPolicy::new(
 ///     [PnlBoundsBrokerBarrier {
@@ -537,18 +508,15 @@ impl<
 /// )?;
 ///
 /// let engine = builder
-///     .check_pre_trade_start_policy(pnl_policy)
-///     .check_pre_trade_start_policy(rate_policy)
+///     .pre_trade(pnl_policy)
+///     .pre_trade(rate_policy)
 ///     .build()?;
 /// let _ = engine;
 /// # Ok(())
 /// # }
 /// ```
 pub struct EngineBuilder<Order, ExecutionReport = (), AccountAdjustment = ()> {
-    check_pre_trade_start_policies: Vec<Box<dyn CheckPreTradeStartPolicy<Order, ExecutionReport>>>,
-    pre_trade_policies: Vec<Box<dyn PreTradePolicy<Order, ExecutionReport>>>,
-    account_adjustment_policies: Vec<Box<dyn AccountAdjustmentPolicy<AccountAdjustment>>>,
-    marker: PhantomData<fn(Order, ExecutionReport, AccountAdjustment)>,
+    pre_trade: Vec<Box<dyn PreTradePolicy<Order, ExecutionReport, AccountAdjustment>>>,
 }
 
 impl<Order, ExecutionReport, AccountAdjustment>
@@ -561,37 +529,16 @@ impl<Order, ExecutionReport, AccountAdjustment>
     #[allow(clippy::new_without_default)]
     pub(crate) fn new() -> Self {
         Self {
-            check_pre_trade_start_policies: Vec::new(),
-            pre_trade_policies: Vec::new(),
-            account_adjustment_policies: Vec::new(),
-            marker: PhantomData,
+            pre_trade: Vec::new(),
         }
     }
 
     #[cfg_attr(not(test), allow(dead_code))]
-    fn check_pre_trade_start_policy<Policy>(mut self, policy: Policy) -> Self
+    fn pre_trade<Policy>(mut self, policy: Policy) -> Self
     where
-        Policy: CheckPreTradeStartPolicy<Order, ExecutionReport> + 'static,
+        Policy: PreTradePolicy<Order, ExecutionReport, AccountAdjustment> + 'static,
     {
-        self.check_pre_trade_start_policies.push(Box::new(policy));
-        self
-    }
-
-    #[cfg_attr(not(test), allow(dead_code))]
-    fn pre_trade_policy<Policy>(mut self, policy: Policy) -> Self
-    where
-        Policy: PreTradePolicy<Order, ExecutionReport> + 'static,
-    {
-        self.pre_trade_policies.push(Box::new(policy));
-        self
-    }
-
-    #[cfg_attr(not(test), allow(dead_code))]
-    fn account_adjustment_policy<Policy>(mut self, policy: Policy) -> Self
-    where
-        Policy: AccountAdjustmentPolicy<AccountAdjustment> + 'static,
-    {
-        self.account_adjustment_policies.push(Box::new(policy));
+        self.pre_trade.push(Box::new(policy));
         self
     }
 
@@ -607,19 +554,11 @@ impl<Order, ExecutionReport, AccountAdjustment>
         ExecutionReport: 'static,
         AccountAdjustment: 'static,
     {
-        ensure_unique_policy_names(
-            self.check_pre_trade_start_policies
-                .iter()
-                .map(|p| p.name())
-                .chain(self.pre_trade_policies.iter().map(|p| p.name()))
-                .chain(self.account_adjustment_policies.iter().map(|p| p.name())),
-        )?;
+        ensure_unique_policy_names(self.pre_trade.iter().map(|p| p.name()))?;
 
         Ok(Engine {
             inner: LocalEngineLocking::new_strong(EngineInner {
-                check_pre_trade_start_policies: self.check_pre_trade_start_policies,
-                pre_trade_policies: self.pre_trade_policies,
-                account_adjustment_policies: self.account_adjustment_policies,
+                pre_trade_policies: self.pre_trade,
             }),
         })
     }
@@ -629,12 +568,12 @@ impl<Order, ExecutionReport, AccountAdjustment>
     ///
     /// The policy is specified as a type argument only — the struct must
     /// implement [`SyncPolicy`] and is typically zero-sized. For the
-    /// built-in regimes, prefer [`with_full_sync`](Self::with_full_sync),
-    /// [`with_local_sync`](Self::with_local_sync), or
-    /// [`with_account_sync`](Self::with_account_sync).
+    /// built-in regimes, prefer [`full_sync`](Self::full_sync),
+    /// [`no_sync`](Self::no_sync), or
+    /// [`account_sync`](Self::account_sync).
     ///
     /// [`SyncPolicy`]: crate::SyncPolicy
-    pub fn with_sync<SyncPolicy>(
+    pub fn sync<SyncPolicy>(
         self,
         policy: SyncPolicy,
     ) -> SyncedEngineBuilder<Order, ExecutionReport, AccountAdjustment, SyncPolicy>
@@ -643,15 +582,13 @@ impl<Order, ExecutionReport, AccountAdjustment>
         SyncPolicy::EngineLocking: EnginePolicies<Order, ExecutionReport, AccountAdjustment>,
     {
         // Policies registered on EngineBuilder (if any, via private test helpers) are
-        // intentionally dropped here: with_sync() establishes the locking flavor, and
+        // intentionally dropped here: sync() establishes the locking flavor, and
         // subsequent policy registration happens on the returned SyncedEngineBuilder.
-        // In production usage with_sync() is called immediately after builder(), so
+        // In production usage sync() is called immediately after builder(), so
         // this is always an empty discard.
         let _ = self;
         SyncedEngineBuilder {
-            check_pre_trade_start_policies: Vec::new(),
             pre_trade_policies: Vec::new(),
-            account_adjustment_policies: Vec::new(),
             storage_builder: StorageBuilder::new(policy.create_locking_factory()),
             _marker: PhantomData,
         }
@@ -665,11 +602,11 @@ impl<Order, ExecutionReport, AccountAdjustment>
     /// independent reader-writer lock.
     ///
     /// [`FullLocking`]: crate::storage::FullLocking
-    pub fn with_full_sync(
+    pub fn full_sync(
         self,
     ) -> SyncedEngineBuilder<Order, ExecutionReport, AccountAdjustment, sync_policy::FullSyncPolicy>
     {
-        self.with_sync(sync_policy::FullSyncPolicy)
+        self.sync(sync_policy::FullSyncPolicy)
     }
 
     /// Applies single-thread (no-sync) synchronization and advances to
@@ -682,11 +619,11 @@ impl<Order, ExecutionReport, AccountAdjustment>
     /// zero.
     ///
     /// [`NoLocking`]: crate::storage::NoLocking
-    pub fn with_local_sync(
+    pub fn no_sync(
         self,
     ) -> SyncedEngineBuilder<Order, ExecutionReport, AccountAdjustment, sync_policy::LocalSyncPolicy>
     {
-        self.with_sync(sync_policy::LocalSyncPolicy)
+        self.sync(sync_policy::LocalSyncPolicy)
     }
 
     /// Applies account-index synchronization and advances to
@@ -700,7 +637,7 @@ impl<Order, ExecutionReport, AccountAdjustment>
     /// supported.
     ///
     /// [`IndexLocking`]: crate::storage::IndexLocking
-    pub fn with_account_sync(
+    pub fn account_sync(
         self,
     ) -> SyncedEngineBuilder<
         Order,
@@ -708,7 +645,7 @@ impl<Order, ExecutionReport, AccountAdjustment>
         AccountAdjustment,
         sync_policy::AccountSyncPolicy,
     > {
-        self.with_sync(sync_policy::AccountSyncPolicy)
+        self.sync(sync_policy::AccountSyncPolicy)
     }
 }
 
@@ -716,8 +653,8 @@ impl<Order, ExecutionReport, AccountAdjustment>
 
 /// Engine builder with a synchronization policy applied.
 ///
-/// Obtained from [`EngineBuilder::with_sync`], [`EngineBuilder::with_full_sync`],
-/// [`EngineBuilder::with_local_sync`], or [`EngineBuilder::with_account_sync`].
+/// Obtained from [`EngineBuilder::sync`], [`EngineBuilder::full_sync`],
+/// [`EngineBuilder::no_sync`], or [`EngineBuilder::account_sync`].
 ///
 /// This builder deliberately has **no `build` method**: at least one policy
 /// must be registered before the engine can be constructed. Adding any policy
@@ -734,20 +671,16 @@ pub struct SyncedEngineBuilder<
     Order: 'static,
     ExecutionReport: 'static,
     AccountAdjustment: 'static,
-    SyncPolicyT,
+    SyncPolicy,
 > where
-    SyncPolicyT: sync_policy::SyncPolicy,
-    SyncPolicyT::EngineLocking: EnginePolicies<Order, ExecutionReport, AccountAdjustment>,
+    SyncPolicy: sync_policy::SyncPolicy,
+    SyncPolicy::EngineLocking: EnginePolicies<Order, ExecutionReport, AccountAdjustment>,
 {
-    check_pre_trade_start_policies:
-        CheckStartVec<SyncPolicyT::EngineLocking, Order, ExecutionReport, AccountAdjustment>,
     pre_trade_policies:
-        PreTradeVec<SyncPolicyT::EngineLocking, Order, ExecutionReport, AccountAdjustment>,
-    account_adjustment_policies:
-        AccountAdjVec<SyncPolicyT::EngineLocking, Order, ExecutionReport, AccountAdjustment>,
+        PreTradeVec<SyncPolicy::EngineLocking, Order, ExecutionReport, AccountAdjustment>,
     storage_builder:
-        StorageBuilder<<SyncPolicyT as sync_policy::SyncPolicy>::StorageLockingPolicyFactory>,
-    _marker: PhantomData<(Order, ExecutionReport, AccountAdjustment, SyncPolicyT)>,
+        StorageBuilder<<SyncPolicy as sync_policy::SyncPolicy>::StorageLockingPolicyFactory>,
+    _marker: PhantomData<(Order, ExecutionReport, AccountAdjustment, SyncPolicy)>,
 }
 
 impl<Order, ExecutionReport, AccountAdjustment, SyncPolicyT>
@@ -774,44 +707,16 @@ where
     SyncPolicyT: sync_policy::SyncPolicy,
     SyncPolicyT::EngineLocking: EnginePolicies<Order, ExecutionReport, AccountAdjustment>,
 {
-    /// Registers a start-stage policy and advances to [`ReadyEngineBuilder`].
+    /// Registers a policy and advances to [`ReadyEngineBuilder`].
     ///
     /// The required bound on `Policy` is determined by the `SyncPolicy`'s locking
     /// flavor:
     ///
-    /// - `LocalEngineLocking` (from `with_local_sync`): `'static` only; `!Send`
+    /// - `LocalEngineLocking` (from `no_sync`): `'static` only; `!Send`
     ///   policy state is accepted.
-    /// - `SequentialEngineLocking` (from `with_account_sync`): `Send + 'static`.
-    /// - `SyncedEngineLocking` (from `with_full_sync`): `Send + Sync + 'static`.
-    pub fn check_pre_trade_start_policy<Policy>(
-        mut self,
-        policy: Policy,
-    ) -> ReadyEngineBuilder<Order, ExecutionReport, AccountAdjustment, SyncPolicyT>
-    where
-        Policy: PolicyBox<
-            <SyncPolicyT::EngineLocking as EnginePolicies<
-                Order,
-                ExecutionReport,
-                AccountAdjustment,
-            >>::CheckStart,
-        >,
-    {
-        self.check_pre_trade_start_policies
-            .push(PolicyBox::into_box(policy));
-        ReadyEngineBuilder {
-            check_pre_trade_start_policies: self.check_pre_trade_start_policies,
-            pre_trade_policies: self.pre_trade_policies,
-            account_adjustment_policies: self.account_adjustment_policies,
-            storage_builder: self.storage_builder,
-            _marker: PhantomData,
-        }
-    }
-
-    /// Registers a main-stage policy and advances to [`ReadyEngineBuilder`].
-    ///
-    /// See [`check_pre_trade_start_policy`](Self::check_pre_trade_start_policy) for the
-    /// locking-flavor bound rules.
-    pub fn pre_trade_policy<Policy>(
+    /// - `SequentialEngineLocking` (from `account_sync`): `Send + 'static`.
+    /// - `SyncedEngineLocking` (from `full_sync`): `Send + Sync + 'static`.
+    pub fn pre_trade<Policy>(
         mut self,
         policy: Policy,
     ) -> ReadyEngineBuilder<Order, ExecutionReport, AccountAdjustment, SyncPolicyT>
@@ -826,37 +731,7 @@ where
     {
         self.pre_trade_policies.push(PolicyBox::into_box(policy));
         ReadyEngineBuilder {
-            check_pre_trade_start_policies: self.check_pre_trade_start_policies,
             pre_trade_policies: self.pre_trade_policies,
-            account_adjustment_policies: self.account_adjustment_policies,
-            storage_builder: self.storage_builder,
-            _marker: PhantomData,
-        }
-    }
-
-    /// Registers an account-adjustment policy and advances to [`ReadyEngineBuilder`].
-    ///
-    /// See [`check_pre_trade_start_policy`](Self::check_pre_trade_start_policy) for the
-    /// locking-flavor bound rules.
-    pub fn account_adjustment_policy<Policy>(
-        mut self,
-        policy: Policy,
-    ) -> ReadyEngineBuilder<Order, ExecutionReport, AccountAdjustment, SyncPolicyT>
-    where
-        Policy: PolicyBox<
-            <SyncPolicyT::EngineLocking as EnginePolicies<
-                Order,
-                ExecutionReport,
-                AccountAdjustment,
-            >>::AccountAdj,
-        >,
-    {
-        self.account_adjustment_policies
-            .push(PolicyBox::into_box(policy));
-        ReadyEngineBuilder {
-            check_pre_trade_start_policies: self.check_pre_trade_start_policies,
-            pre_trade_policies: self.pre_trade_policies,
-            account_adjustment_policies: self.account_adjustment_policies,
             storage_builder: self.storage_builder,
             _marker: PhantomData,
         }
@@ -886,12 +761,8 @@ pub struct ReadyEngineBuilder<
     SyncPolicyT: sync_policy::SyncPolicy,
     SyncPolicyT::EngineLocking: EnginePolicies<Order, ExecutionReport, AccountAdjustment>,
 {
-    check_pre_trade_start_policies:
-        CheckStartVec<SyncPolicyT::EngineLocking, Order, ExecutionReport, AccountAdjustment>,
     pre_trade_policies:
         PreTradeVec<SyncPolicyT::EngineLocking, Order, ExecutionReport, AccountAdjustment>,
-    account_adjustment_policies:
-        AccountAdjVec<SyncPolicyT::EngineLocking, Order, ExecutionReport, AccountAdjustment>,
     storage_builder:
         StorageBuilder<<SyncPolicyT as sync_policy::SyncPolicy>::StorageLockingPolicyFactory>,
     _marker: PhantomData<(Order, ExecutionReport, AccountAdjustment, SyncPolicyT)>,
@@ -921,26 +792,8 @@ where
     SyncPolicyT: sync_policy::SyncPolicy,
     SyncPolicyT::EngineLocking: EnginePolicies<Order, ExecutionReport, AccountAdjustment>,
 {
-    /// Registers an additional start-stage policy.
-    ///
-    /// The required bound on `Policy` mirrors [`SyncedEngineBuilder::check_pre_trade_start_policy`].
-    pub fn check_pre_trade_start_policy<Policy>(mut self, policy: Policy) -> Self
-    where
-        Policy: PolicyBox<
-            <SyncPolicyT::EngineLocking as EnginePolicies<
-                Order,
-                ExecutionReport,
-                AccountAdjustment,
-            >>::CheckStart,
-        >,
-    {
-        self.check_pre_trade_start_policies
-            .push(PolicyBox::into_box(policy));
-        self
-    }
-
-    /// Registers an additional main-stage policy.
-    pub fn pre_trade_policy<Policy>(mut self, policy: Policy) -> Self
+    /// Registers an additional policy.
+    pub fn pre_trade<Policy>(mut self, policy: Policy) -> Self
     where
         Policy: PolicyBox<
             <SyncPolicyT::EngineLocking as EnginePolicies<
@@ -954,22 +807,6 @@ where
         self
     }
 
-    /// Registers an additional account-adjustment policy.
-    pub fn account_adjustment_policy<Policy>(mut self, policy: Policy) -> Self
-    where
-        Policy: PolicyBox<
-            <SyncPolicyT::EngineLocking as EnginePolicies<
-                Order,
-                ExecutionReport,
-                AccountAdjustment,
-            >>::AccountAdj,
-        >,
-    {
-        self.account_adjustment_policies
-            .push(PolicyBox::into_box(policy));
-        self
-    }
-
     /// Builds the engine.
     pub fn build(
         self,
@@ -977,18 +814,10 @@ where
         Engine<Order, ExecutionReport, AccountAdjustment, SyncPolicyT::EngineLocking>,
         EngineBuildError,
     > {
-        ensure_unique_policy_names(
-            self.check_pre_trade_start_policies
-                .iter()
-                .map(|p| p.name())
-                .chain(self.pre_trade_policies.iter().map(|p| p.name()))
-                .chain(self.account_adjustment_policies.iter().map(|p| p.name())),
-        )?;
+        ensure_unique_policy_names(self.pre_trade_policies.iter().map(|p| p.name()))?;
         Ok(Engine {
             inner: SyncPolicyT::EngineLocking::new_strong(EngineInner {
-                check_pre_trade_start_policies: self.check_pre_trade_start_policies,
                 pre_trade_policies: self.pre_trade_policies,
-                account_adjustment_policies: self.account_adjustment_policies,
             }),
         })
     }
@@ -1073,10 +902,9 @@ mod tests {
     };
     use crate::param::{AccountId, Asset, Fee, Pnl, Price, Quantity, Side, TradeAmount, Volume};
     use crate::pretrade::{
-        CheckPreTradeStartPolicy, PreTradeContext, PreTradePolicy, Reject, RejectCode, RejectScope,
-        Rejects,
+        PreTradeContext, PreTradePolicy, Reject, RejectCode, RejectScope, Rejects,
     };
-    use crate::{AccountAdjustmentContext, AccountAdjustmentPolicy, Mutation, Mutations};
+    use crate::{AccountAdjustmentContext, Mutation, Mutations};
 
     use super::{AccountAdjustmentBatchError, Engine, EngineBuildError, SyncedEngineLocking};
 
@@ -1089,8 +917,8 @@ mod tests {
     #[test]
     fn build_rejects_duplicate_policy_names_across_stages() {
         let result = Engine::<TestOrder, TestReport>::builder()
-            .check_pre_trade_start_policy(StartPolicyMock::pass("dup"))
-            .pre_trade_policy(MainPolicyMock::pass("dup"))
+            .pre_trade(StartPolicyMock::pass("dup"))
+            .pre_trade(MainPolicyMock::pass("dup"))
             .build();
 
         assert!(matches!(
@@ -1102,8 +930,8 @@ mod tests {
     #[test]
     fn build_rejects_duplicate_policy_names_within_start_stage() {
         let result = Engine::<TestOrder, TestReport>::builder()
-            .check_pre_trade_start_policy(StartPolicyMock::pass("dup"))
-            .check_pre_trade_start_policy(StartPolicyMock::pass("dup"))
+            .pre_trade(StartPolicyMock::pass("dup"))
+            .pre_trade(StartPolicyMock::pass("dup"))
             .build();
 
         assert!(matches!(
@@ -1116,7 +944,7 @@ mod tests {
     fn apply_account_adjustment_passes_adjustment_to_policy_for_single_element() {
         let seen = Rc::new(RefCell::new(Vec::new()));
         let engine = Engine::<TestOrder, TestReport, TestAdjustment>::builder()
-            .account_adjustment_policy(AdjustmentPolicyMock::pass("adj", Rc::clone(&seen)))
+            .pre_trade(AdjustmentPolicyMock::pass("adj", Rc::clone(&seen)))
             .build()
             .expect("engine must build");
 
@@ -1131,7 +959,7 @@ mod tests {
     fn apply_account_adjustment_returns_failing_index() {
         let seen = Rc::new(RefCell::new(Vec::new()));
         let engine = Engine::<TestOrder, TestReport, TestAdjustment>::builder()
-            .account_adjustment_policy(AdjustmentPolicyMock::reject_on_id(
+            .pre_trade(AdjustmentPolicyMock::reject_on_id(
                 "adj_reject",
                 Rc::clone(&seen),
                 1,
@@ -1167,7 +995,7 @@ mod tests {
         let seen = Rc::new(RefCell::new(Vec::new()));
         let mut applied = Vec::new();
         let engine = Engine::<TestOrder, TestReport, TestAdjustment>::builder()
-            .account_adjustment_policy(AdjustmentPolicyMock::reject_on_id(
+            .pre_trade(AdjustmentPolicyMock::reject_on_id(
                 "adj_reject",
                 Rc::clone(&seen),
                 2,
@@ -1200,8 +1028,8 @@ mod tests {
         let first_seen = Rc::new(RefCell::new(Vec::new()));
         let second_seen = Rc::new(RefCell::new(Vec::new()));
         let engine = Engine::<TestOrder, TestReport, TestAdjustment>::builder()
-            .account_adjustment_policy(AdjustmentPolicyMock::pass("first", Rc::clone(&first_seen)))
-            .account_adjustment_policy(AdjustmentPolicyMock::pass(
+            .pre_trade(AdjustmentPolicyMock::pass("first", Rc::clone(&first_seen)))
+            .pre_trade(AdjustmentPolicyMock::pass(
                 "second",
                 Rc::clone(&second_seen),
             ))
@@ -1225,7 +1053,7 @@ mod tests {
     fn apply_account_adjustment_empty_batch_skips_policy_calls() {
         let seen = Rc::new(RefCell::new(Vec::new()));
         let engine = Engine::<TestOrder, TestReport, TestAdjustment>::builder()
-            .account_adjustment_policy(AdjustmentPolicyMock::pass("adj", Rc::clone(&seen)))
+            .pre_trade(AdjustmentPolicyMock::pass("adj", Rc::clone(&seen)))
             .build()
             .expect("engine must build");
 
@@ -1240,8 +1068,8 @@ mod tests {
         let first_seen = Rc::new(RefCell::new(Vec::new()));
         let second_seen = Rc::new(RefCell::new(Vec::new()));
         let engine = Engine::<TestOrder, TestReport, TestAdjustment>::builder()
-            .account_adjustment_policy(AdjustmentPolicyMock::pass("first", Rc::clone(&first_seen)))
-            .account_adjustment_policy(AdjustmentPolicyMock::reject_on_id(
+            .pre_trade(AdjustmentPolicyMock::pass("first", Rc::clone(&first_seen)))
+            .pre_trade(AdjustmentPolicyMock::reject_on_id(
                 "second",
                 Rc::clone(&second_seen),
                 9,
@@ -1268,12 +1096,12 @@ mod tests {
         let first_seen = Rc::new(RefCell::new(Vec::new()));
         let second_seen = Rc::new(RefCell::new(Vec::new()));
         let engine = Engine::<TestOrder, TestReport, TestAdjustment>::builder()
-            .account_adjustment_policy(AdjustmentPolicyMock::reject_on_id(
+            .pre_trade(AdjustmentPolicyMock::reject_on_id(
                 "first",
                 Rc::clone(&first_seen),
                 77,
             ))
-            .account_adjustment_policy(AdjustmentPolicyMock::reject_on_id(
+            .pre_trade(AdjustmentPolicyMock::reject_on_id(
                 "second",
                 Rc::clone(&second_seen),
                 77,
@@ -1298,8 +1126,8 @@ mod tests {
     #[test]
     fn build_rejects_duplicate_policy_names_between_start_and_account_adjustment() {
         let result = Engine::<TestOrder, TestReport, TestAdjustment>::builder()
-            .check_pre_trade_start_policy(StartPolicyMock::pass("dup"))
-            .account_adjustment_policy(AdjustmentPolicyMock::pass(
+            .pre_trade(StartPolicyMock::pass("dup"))
+            .pre_trade(AdjustmentPolicyMock::pass(
                 "dup",
                 Rc::new(RefCell::new(Vec::new())),
             ))
@@ -1331,7 +1159,7 @@ mod tests {
         let seen = Rc::new(RefCell::new(Vec::new()));
         let state = Rc::new(RefCell::new(None));
         let engine = Engine::<TestOrder, TestReport, TestAdjustment>::builder()
-            .account_adjustment_policy(AdjustmentPolicyMock::with_side_effect(
+            .pre_trade(AdjustmentPolicyMock::with_side_effect(
                 "adj_mutation",
                 Rc::clone(&seen),
                 shared_kill_switch_mutation(Rc::clone(&state), "adj_mutation", true, false),
@@ -1352,12 +1180,12 @@ mod tests {
         let second_seen = Rc::new(RefCell::new(Vec::new()));
         let state = Rc::new(RefCell::new(None));
         let engine = Engine::<TestOrder, TestReport, TestAdjustment>::builder()
-            .account_adjustment_policy(AdjustmentPolicyMock::with_side_effect(
+            .pre_trade(AdjustmentPolicyMock::with_side_effect(
                 "adj_mutation",
                 Rc::clone(&first_seen),
                 shared_kill_switch_mutation(Rc::clone(&state), "adj_mutation", true, false),
             ))
-            .account_adjustment_policy(AdjustmentPolicyMock::reject_on_id(
+            .pre_trade(AdjustmentPolicyMock::reject_on_id(
                 "adj_rejecter",
                 Rc::clone(&second_seen),
                 1,
@@ -1376,7 +1204,7 @@ mod tests {
     fn apply_account_adjustment_without_mutations_leaves_state_unchanged() {
         let seen = Rc::new(RefCell::new(Vec::new()));
         let engine = Engine::<TestOrder, TestReport, TestAdjustment>::builder()
-            .account_adjustment_policy(AdjustmentPolicyMock::pass("adj", Rc::clone(&seen)))
+            .pre_trade(AdjustmentPolicyMock::pass("adj", Rc::clone(&seen)))
             .build()
             .expect("engine must build");
 
@@ -1416,8 +1244,8 @@ mod tests {
     #[test]
     fn execute_pre_trade_shortcut_returns_reservation_when_both_stages_pass() {
         let engine = Engine::<TestOrder, TestReport>::builder()
-            .check_pre_trade_start_policy(StartPolicyMock::pass("start"))
-            .pre_trade_policy(MainPolicyMock::pass("main"))
+            .pre_trade(StartPolicyMock::pass("start"))
+            .pre_trade(MainPolicyMock::pass("main"))
             .build()
             .expect("engine must build");
 
@@ -1430,7 +1258,7 @@ mod tests {
     #[test]
     fn execute_pre_trade_wraps_start_stage_reject_into_single_element_rejects() {
         let engine = Engine::<TestOrder, TestReport>::builder()
-            .check_pre_trade_start_policy(StartPolicyMock::new(
+            .pre_trade(StartPolicyMock::new(
                 "start_reject",
                 Rc::new(Cell::new(0)),
                 true,
@@ -1454,14 +1282,14 @@ mod tests {
     #[test]
     fn execute_pre_trade_returns_main_stage_rejects_in_original_order() {
         let engine = Engine::<TestOrder, TestReport>::builder()
-            .check_pre_trade_start_policy(StartPolicyMock::pass("start"))
-            .pre_trade_policy(MainPolicyMock::with_mutation_and_optional_reject(
+            .pre_trade(StartPolicyMock::pass("start"))
+            .pre_trade(MainPolicyMock::with_mutation_and_optional_reject(
                 "main_first",
                 "m1",
                 true,
                 RejectScope::Order,
             ))
-            .pre_trade_policy(MainPolicyMock::with_mutation_and_optional_reject(
+            .pre_trade(MainPolicyMock::with_mutation_and_optional_reject(
                 "main_second",
                 "m2",
                 true,
@@ -1485,8 +1313,8 @@ mod tests {
     fn execute_pre_trade_commit_applies_mutations_on_success() {
         let state = Rc::new(RefCell::new(None));
         let engine = Engine::<TestOrder, TestReport>::builder()
-            .check_pre_trade_start_policy(StartPolicyMock::pass("start"))
-            .pre_trade_policy(MainPolicyMock::with_custom_mutation_and_optional_reject(
+            .pre_trade(StartPolicyMock::pass("start"))
+            .pre_trade(MainPolicyMock::with_custom_mutation_and_optional_reject(
                 "main",
                 shared_kill_switch_mutation(Rc::clone(&state), "shortcut_commit", true, false),
                 false,
@@ -1507,8 +1335,8 @@ mod tests {
     fn execute_pre_trade_reject_does_not_apply_commit_mutations() {
         let state = Rc::new(RefCell::new(None));
         let engine = Engine::<TestOrder, TestReport>::builder()
-            .check_pre_trade_start_policy(StartPolicyMock::pass("start"))
-            .pre_trade_policy(MainPolicyMock::with_custom_mutation_and_optional_reject(
+            .pre_trade(StartPolicyMock::pass("start"))
+            .pre_trade(MainPolicyMock::with_custom_mutation_and_optional_reject(
                 "rejecting_main",
                 shared_kill_switch_mutation(Rc::clone(&state), "shortcut_reject", true, false),
                 true,
@@ -1525,11 +1353,11 @@ mod tests {
     #[test]
     fn accepts_order_without_operation_fields_when_no_policy_requires_them() {
         let engine = Engine::<(), TestReport>::builder()
-            .check_pre_trade_start_policy(CoreStartPolicyMock {
+            .pre_trade(CoreStartPolicyMock {
                 name: "core_start",
                 reject: false,
             })
-            .pre_trade_policy(CoreMainPolicyMock {
+            .pre_trade(CoreMainPolicyMock {
                 name: "core_main",
                 on_apply: None,
                 reject: false,
@@ -1551,11 +1379,11 @@ mod tests {
     #[test]
     fn order_trade_input_build_rejects_duplicate_policy_names_across_stages() {
         let result = Engine::<(), TestReport>::builder()
-            .check_pre_trade_start_policy(CoreStartPolicyMock {
+            .pre_trade(CoreStartPolicyMock {
                 name: "dup",
                 reject: false,
             })
-            .pre_trade_policy(CoreMainPolicyMock {
+            .pre_trade(CoreMainPolicyMock {
                 name: "dup",
                 on_apply: None,
                 reject: false,
@@ -1571,11 +1399,11 @@ mod tests {
     #[test]
     fn order_trade_input_build_rejects_duplicate_policy_names_within_start_stage() {
         let result = Engine::<(), TestReport>::builder()
-            .check_pre_trade_start_policy(CoreStartPolicyMock {
+            .pre_trade(CoreStartPolicyMock {
                 name: "dup",
                 reject: false,
             })
-            .check_pre_trade_start_policy(CoreStartPolicyMock {
+            .pre_trade(CoreStartPolicyMock {
                 name: "dup",
                 reject: false,
             })
@@ -1590,7 +1418,7 @@ mod tests {
     #[test]
     fn order_trade_input_start_pre_trade_rejects_before_request_is_created() {
         let engine = Engine::<(), TestReport>::builder()
-            .check_pre_trade_start_policy(CoreStartPolicyMock {
+            .pre_trade(CoreStartPolicyMock {
                 name: "core_start_reject",
                 reject: true,
             })
@@ -1612,11 +1440,11 @@ mod tests {
     fn order_core_execute_rejects_and_rolls_back_mutations() {
         let state = Rc::new(RefCell::new(None));
         let engine = Engine::<(), TestReport>::builder()
-            .check_pre_trade_start_policy(CoreStartPolicyMock {
+            .pre_trade(CoreStartPolicyMock {
                 name: "core_start",
                 reject: false,
             })
-            .pre_trade_policy(CoreMainPolicyMock {
+            .pre_trade(CoreMainPolicyMock {
                 name: "core_main",
                 on_apply: Some(Rc::new(shared_kill_switch_mutation(
                     Rc::clone(&state),
@@ -1655,11 +1483,11 @@ mod tests {
         for (action, expected_state) in cases {
             let state = Rc::new(RefCell::new(None));
             let engine = Engine::<(), TestReport>::builder()
-                .check_pre_trade_start_policy(CoreStartPolicyMock {
+                .pre_trade(CoreStartPolicyMock {
                     name: "core_start",
                     reject: false,
                 })
-                .pre_trade_policy(CoreMainPolicyMock {
+                .pre_trade(CoreMainPolicyMock {
                     name: "core_main",
                     on_apply: Some(Rc::new(shared_kill_switch_mutation(
                         Rc::clone(&state),
@@ -1733,10 +1561,10 @@ mod tests {
             let start_2 = StartPolicyMock::new("s2", Rc::clone(&calls_2), false, false, None, None);
 
             let engine = Engine::<TestOrder, TestReport>::builder()
-                .check_pre_trade_start_policy(start_0)
-                .check_pre_trade_start_policy(start_1)
-                .check_pre_trade_start_policy(start_2)
-                .pre_trade_policy(MainPolicyMock::with_calls(
+                .pre_trade(start_0)
+                .pre_trade(start_1)
+                .pre_trade(start_2)
+                .pre_trade(MainPolicyMock::with_calls(
                     "m0",
                     Rc::clone(&main_calls),
                     false,
@@ -1782,8 +1610,8 @@ mod tests {
         for case in cases {
             let state = Rc::new(RefCell::new(None));
             let engine = Engine::<TestOrder, TestReport>::builder()
-                .check_pre_trade_start_policy(StartPolicyMock::pass("start"))
-                .pre_trade_policy(MainPolicyMock::with_custom_mutation_and_optional_reject(
+                .pre_trade(StartPolicyMock::pass("start"))
+                .pre_trade(MainPolicyMock::with_custom_mutation_and_optional_reject(
                     "m1_policy",
                     shared_kill_switch_mutation(
                         Rc::clone(&state),
@@ -1794,7 +1622,7 @@ mod tests {
                     case.fail_first,
                     RejectScope::Order,
                 ))
-                .pre_trade_policy(MainPolicyMock::with_custom_mutation_and_optional_reject(
+                .pre_trade(MainPolicyMock::with_custom_mutation_and_optional_reject(
                     "m2_policy",
                     shared_kill_switch_mutation(
                         Rc::clone(&state),
@@ -1834,11 +1662,11 @@ mod tests {
     fn light_stage_changes_are_not_rolled_back_when_execute_rejects() {
         let light_counter = Rc::new(Cell::new(0));
         let engine = Engine::<TestOrder, TestReport>::builder()
-            .check_pre_trade_start_policy(StartPolicyMock::with_counter(
+            .pre_trade(StartPolicyMock::with_counter(
                 "start",
                 Rc::clone(&light_counter),
             ))
-            .pre_trade_policy(MainPolicyMock::with_mutation_and_optional_reject(
+            .pre_trade(MainPolicyMock::with_mutation_and_optional_reject(
                 "rejecting_main",
                 "m1",
                 true,
@@ -1859,14 +1687,14 @@ mod tests {
     fn reservation_drop_triggers_rollback_in_reverse_order() {
         let state = Rc::new(RefCell::new(None));
         let engine = Engine::<TestOrder, TestReport>::builder()
-            .check_pre_trade_start_policy(StartPolicyMock::pass("start"))
-            .pre_trade_policy(MainPolicyMock::with_custom_mutation_and_optional_reject(
+            .pre_trade(StartPolicyMock::pass("start"))
+            .pre_trade(MainPolicyMock::with_custom_mutation_and_optional_reject(
                 "m1_policy",
                 shared_kill_switch_mutation(Rc::clone(&state), "shared_kill_switch", false, false),
                 false,
                 RejectScope::Order,
             ))
-            .pre_trade_policy(MainPolicyMock::with_custom_mutation_and_optional_reject(
+            .pre_trade(MainPolicyMock::with_custom_mutation_and_optional_reject(
                 "m2_policy",
                 shared_kill_switch_mutation(Rc::clone(&state), "shared_kill_switch", true, true),
                 false,
@@ -1887,7 +1715,7 @@ mod tests {
     #[test]
     fn apply_execution_report_aggregates_kill_switch_triggered() {
         let engine = Engine::<TestOrder, TestReport>::builder()
-            .check_pre_trade_start_policy(StartPolicyMock::new(
+            .pre_trade(StartPolicyMock::new(
                 "start_false",
                 Rc::new(Cell::new(0)),
                 false,
@@ -1895,7 +1723,7 @@ mod tests {
                 None,
                 None,
             ))
-            .pre_trade_policy(MainPolicyMock::with_calls(
+            .pre_trade(MainPolicyMock::with_calls(
                 "main_true",
                 Rc::new(Cell::new(0)),
                 false,
@@ -1964,8 +1792,8 @@ mod tests {
         let state = Rc::new(RefCell::new(None));
         let mut reservation = {
             let engine = Engine::<TestOrder, TestReport>::builder()
-                .check_pre_trade_start_policy(StartPolicyMock::pass("start"))
-                .pre_trade_policy(MainPolicyMock::with_custom_mutation_and_optional_reject(
+                .pre_trade(StartPolicyMock::pass("start"))
+                .pre_trade(MainPolicyMock::with_custom_mutation_and_optional_reject(
                     "main",
                     shared_kill_switch_mutation(
                         Rc::clone(&state),
@@ -1993,11 +1821,11 @@ mod tests {
         let state = Rc::new(RefCell::new(None));
         let mut reservation = {
             let engine = Engine::<(), TestReport>::builder()
-                .check_pre_trade_start_policy(CoreStartPolicyMock {
+                .pre_trade(CoreStartPolicyMock {
                     name: "core_start",
                     reject: false,
                 })
-                .pre_trade_policy(CoreMainPolicyMock {
+                .pre_trade(CoreMainPolicyMock {
                     name: "core_main",
                     on_apply: Some(Rc::new(shared_kill_switch_mutation(
                         Rc::clone(&state),
@@ -2050,8 +1878,8 @@ mod tests {
     fn main_stage_observes_settlement_assets_independently() {
         let seen = Rc::new(RefCell::new(Vec::new()));
         let engine = Engine::<TestOrder, TestReport>::builder()
-            .check_pre_trade_start_policy(StartPolicyMock::pass("start"))
-            .pre_trade_policy(MainPolicyMock::with_calls(
+            .pre_trade(StartPolicyMock::pass("start"))
+            .pre_trade(MainPolicyMock::with_calls(
                 "collector",
                 Rc::new(Cell::new(0)),
                 false,
@@ -2089,7 +1917,7 @@ mod tests {
     fn reset_like_start_policy_state_allows_trading_to_resume() {
         let blocked = Rc::new(Cell::new(true));
         let engine = Engine::<TestOrder, TestReport>::builder()
-            .check_pre_trade_start_policy(StartPolicyMock::with_block_flag(
+            .pre_trade(StartPolicyMock::with_block_flag(
                 "toggle",
                 Rc::clone(&blocked),
             ))
@@ -2112,13 +1940,13 @@ mod tests {
         let seen_reports = Rc::new(RefCell::new(Vec::new()));
 
         let result = Engine::<TaggedOrder, TaggedReport>::builder()
-            .check_pre_trade_start_policy(CaptureTaggedStartPolicy::new(
+            .pre_trade(CaptureTaggedStartPolicy::new(
                 "dup",
                 Rc::clone(&journal),
                 Rc::clone(&seen_orders),
                 Rc::clone(&seen_reports),
             ))
-            .pre_trade_policy(CaptureTaggedMainPolicy::new(
+            .pre_trade(CaptureTaggedMainPolicy::new(
                 "dup",
                 Rc::clone(&journal),
                 Rc::clone(&seen_orders),
@@ -2139,13 +1967,13 @@ mod tests {
         let seen_reports = Rc::new(RefCell::new(Vec::new()));
 
         let result = Engine::<TaggedOrder, TaggedReport>::builder()
-            .check_pre_trade_start_policy(CaptureTaggedStartPolicy::new(
+            .pre_trade(CaptureTaggedStartPolicy::new(
                 "dup",
                 Rc::clone(&journal),
                 Rc::clone(&seen_orders),
                 Rc::clone(&seen_reports),
             ))
-            .check_pre_trade_start_policy(SequenceFenceStartPolicy::new("dup", Rc::clone(&journal)))
+            .pre_trade(SequenceFenceStartPolicy::new("dup", Rc::clone(&journal)))
             .build();
 
         assert!(matches!(
@@ -2157,7 +1985,7 @@ mod tests {
     #[test]
     fn tagged_start_pre_trade_rejects_before_request_is_created() {
         let engine = Engine::<TaggedOrder, TaggedReport>::builder()
-            .check_pre_trade_start_policy(RejectTaggedStartPolicyMock {
+            .pre_trade(RejectTaggedStartPolicyMock {
                 name: "tagged_start_reject",
             })
             .build()
@@ -2201,7 +2029,7 @@ mod tests {
     fn tagged_execute_rejects_and_rolls_back_mutations() {
         let state = Rc::new(RefCell::new(None));
         let engine = Engine::<TaggedOrder, TaggedReport>::builder()
-            .pre_trade_policy(TaggedMutationPolicyMock {
+            .pre_trade(TaggedMutationPolicyMock {
                 name: "tagged_main",
                 on_apply: Some(Rc::new(shared_kill_switch_mutation(
                     Rc::clone(&state),
@@ -2244,7 +2072,7 @@ mod tests {
         for (action, expected_state) in cases {
             let state = Rc::new(RefCell::new(None));
             let engine = Engine::<TaggedOrder, TaggedReport>::builder()
-                .pre_trade_policy(TaggedMutationPolicyMock {
+                .pre_trade(TaggedMutationPolicyMock {
                     name: "tagged_main",
                     on_apply: Some(Rc::new(shared_kill_switch_mutation(
                         Rc::clone(&state),
@@ -2285,7 +2113,7 @@ mod tests {
         let state = Rc::new(RefCell::new(None));
         let mut reservation = {
             let engine = Engine::<TaggedOrder, TaggedReport>::builder()
-                .pre_trade_policy(TaggedMutationPolicyMock {
+                .pre_trade(TaggedMutationPolicyMock {
                     name: "tagged_main",
                     on_apply: Some(Rc::new(shared_kill_switch_mutation(
                         Rc::clone(&state),
@@ -2354,23 +2182,23 @@ mod tests {
             let main_seen_reports = Rc::new(RefCell::new(Vec::new()));
 
             let engine = Engine::<TaggedOrder, TaggedReport>::builder()
-                .check_pre_trade_start_policy(CaptureTaggedStartPolicy::new(
+                .pre_trade(CaptureTaggedStartPolicy::new(
                     "capture_start",
                     Rc::clone(&journal),
                     Rc::clone(&start_seen_orders),
                     Rc::clone(&start_seen_reports),
                 ))
-                .check_pre_trade_start_policy(SequenceFenceStartPolicy::new(
+                .pre_trade(SequenceFenceStartPolicy::new(
                     "sequence_start",
                     Rc::clone(&journal),
                 ))
-                .pre_trade_policy(CaptureTaggedMainPolicy::new(
+                .pre_trade(CaptureTaggedMainPolicy::new(
                     "capture_main",
                     Rc::clone(&journal),
                     Rc::clone(&main_seen_orders),
                     Rc::clone(&main_seen_reports),
                 ))
-                .pre_trade_policy(SequenceFenceMainPolicy::new(
+                .pre_trade(SequenceFenceMainPolicy::new(
                     "sequence_main",
                     Rc::clone(&journal),
                 ))
@@ -2494,7 +2322,7 @@ mod tests {
         let reserved_amount = Volume::from_str("20000").expect("volume must be valid");
         let reserved_notional = Rc::new(RefCell::new(None));
         let engine = Engine::<TestOrder, TestReport>::builder()
-            .pre_trade_policy(ReserveNotionalPolicy {
+            .pre_trade(ReserveNotionalPolicy {
                 settlement: usd.clone(),
                 amount: reserved_amount,
                 reserved_notional: Rc::clone(&reserved_notional),
@@ -2536,7 +2364,7 @@ mod tests {
         let reserved_amount = Volume::from_str("20000").expect("volume must be valid");
         let reserved_notional = Rc::new(RefCell::new(None));
         let engine = Engine::<TestOrder, TestReport>::builder()
-            .pre_trade_policy(ReserveNotionalPolicy {
+            .pre_trade(ReserveNotionalPolicy {
                 settlement: usd.clone(),
                 amount: reserved_amount,
                 reserved_notional: Rc::clone(&reserved_notional),
@@ -2594,7 +2422,12 @@ mod tests {
             },
         };
         let mut mutations = Mutations::default();
-        let _ = policy.perform_pre_trade_check(&PreTradeContext::new(), &order, &mut mutations);
+        let _ = <ReserveNotionalPolicy as PreTradePolicy<TestOrder, TestReport>>::perform_pre_trade_check(
+            &policy,
+            &PreTradeContext::new(),
+            &order,
+            &mut mutations,
+        );
     }
 
     #[test]
@@ -2621,7 +2454,12 @@ mod tests {
             },
         };
         let mut mutations = Mutations::default();
-        let _ = policy.perform_pre_trade_check(&PreTradeContext::new(), &order, &mut mutations);
+        let _ = <ReserveNotionalPolicy as PreTradePolicy<TestOrder, TestReport>>::perform_pre_trade_check(
+            &policy,
+            &PreTradeContext::new(),
+            &order,
+            &mut mutations,
+        );
     }
 
     fn order_with_settlement(settlement: &str) -> TestOrder {
@@ -2710,7 +2548,9 @@ mod tests {
         }
     }
 
-    impl CheckPreTradeStartPolicy<TaggedOrder, TaggedReport> for CaptureTaggedStartPolicy {
+    impl<AccountAdjustment> PreTradePolicy<TaggedOrder, TaggedReport, AccountAdjustment>
+        for CaptureTaggedStartPolicy
+    {
         fn name(&self) -> &str {
             self.name
         }
@@ -2747,7 +2587,9 @@ mod tests {
         }
     }
 
-    impl CheckPreTradeStartPolicy<TaggedOrder, TaggedReport> for SequenceFenceStartPolicy {
+    impl<AccountAdjustment> PreTradePolicy<TaggedOrder, TaggedReport, AccountAdjustment>
+        for SequenceFenceStartPolicy
+    {
         fn name(&self) -> &str {
             self.name
         }
@@ -2794,7 +2636,9 @@ mod tests {
         }
     }
 
-    impl PreTradePolicy<TaggedOrder, TaggedReport> for CaptureTaggedMainPolicy {
+    impl<AccountAdjustment> PreTradePolicy<TaggedOrder, TaggedReport, AccountAdjustment>
+        for CaptureTaggedMainPolicy
+    {
         fn name(&self) -> &str {
             self.name
         }
@@ -2832,7 +2676,9 @@ mod tests {
         }
     }
 
-    impl PreTradePolicy<TaggedOrder, TaggedReport> for SequenceFenceMainPolicy {
+    impl<AccountAdjustment> PreTradePolicy<TaggedOrder, TaggedReport, AccountAdjustment>
+        for SequenceFenceMainPolicy
+    {
         fn name(&self) -> &str {
             self.name
         }
@@ -2861,7 +2707,9 @@ mod tests {
         name: &'static str,
     }
 
-    impl CheckPreTradeStartPolicy<TaggedOrder, TaggedReport> for RejectTaggedStartPolicyMock {
+    impl<AccountAdjustment> PreTradePolicy<TaggedOrder, TaggedReport, AccountAdjustment>
+        for RejectTaggedStartPolicyMock
+    {
         fn name(&self) -> &str {
             self.name
         }
@@ -2891,7 +2739,9 @@ mod tests {
         reject: bool,
     }
 
-    impl PreTradePolicy<TaggedOrder, TaggedReport> for TaggedMutationPolicyMock {
+    impl<AccountAdjustment> PreTradePolicy<TaggedOrder, TaggedReport, AccountAdjustment>
+        for TaggedMutationPolicyMock
+    {
         fn name(&self) -> &str {
             self.name
         }
@@ -2928,7 +2778,7 @@ mod tests {
         reject: bool,
     }
 
-    impl CheckPreTradeStartPolicy<(), TestReport> for CoreStartPolicyMock {
+    impl<AccountAdjustment> PreTradePolicy<(), TestReport, AccountAdjustment> for CoreStartPolicyMock {
         fn name(&self) -> &str {
             self.name
         }
@@ -2961,7 +2811,7 @@ mod tests {
         reject: bool,
     }
 
-    impl PreTradePolicy<(), TestReport> for CoreMainPolicyMock {
+    impl<AccountAdjustment> PreTradePolicy<(), TestReport, AccountAdjustment> for CoreMainPolicyMock {
         fn name(&self) -> &str {
             self.name
         }
@@ -3098,7 +2948,9 @@ mod tests {
         }
     }
 
-    impl CheckPreTradeStartPolicy<TestOrder, TestReport> for StartPolicyMock {
+    impl<AccountAdjustment> PreTradePolicy<TestOrder, TestReport, AccountAdjustment>
+        for StartPolicyMock
+    {
         fn name(&self) -> &str {
             self.name
         }
@@ -3214,7 +3066,9 @@ mod tests {
         }
     }
 
-    impl PreTradePolicy<TestOrder, TestReport> for MainPolicyMock {
+    impl<AccountAdjustment> PreTradePolicy<TestOrder, TestReport, AccountAdjustment>
+        for MainPolicyMock
+    {
         fn name(&self) -> &str {
             self.name
         }
@@ -3303,7 +3157,9 @@ mod tests {
         }
     }
 
-    impl AccountAdjustmentPolicy<MockAdjustment> for AdjustmentPolicyMock {
+    impl<Order, ExecutionReport> PreTradePolicy<Order, ExecutionReport, MockAdjustment>
+        for AdjustmentPolicyMock
+    {
         fn name(&self) -> &str {
             self.name
         }
@@ -3358,7 +3214,9 @@ mod tests {
         }
     }
 
-    impl PreTradePolicy<TestOrder, TestReport> for ReserveNotionalPolicy {
+    impl<AccountAdjustment> PreTradePolicy<TestOrder, TestReport, AccountAdjustment>
+        for ReserveNotionalPolicy
+    {
         fn name(&self) -> &str {
             "ReserveNotionalPolicy"
         }
@@ -3426,7 +3284,7 @@ mod tests {
         // StartPolicyMock contains Rc<...> (!Send). Confirms the local builder
         // compiles with !Send policies.
         let _engine = Engine::<TestOrder, TestReport>::builder()
-            .check_pre_trade_start_policy(StartPolicyMock::pass("local_policy"))
+            .pre_trade(StartPolicyMock::pass("local_policy"))
             .build()
             .expect("engine with !Send policy must build in local mode");
     }

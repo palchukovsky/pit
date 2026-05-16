@@ -47,7 +47,7 @@ import openpit.pretrade.policies
 
 engine = (
     openpit.Engine.builder()
-    .with_local_sync()
+    .no_sync()
     .builtin(
         openpit.pretrade.policies.build_order_validation(),
     )

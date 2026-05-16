@@ -62,7 +62,7 @@
 //! ```
 //! use openpit::Engine;
 //!
-//! let builder = Engine::<(), ()>::builder().with_full_sync();
+//! let builder = Engine::<(), ()>::builder().full_sync();
 //! let storage = builder.storage_builder().create::<&'static str, u64>();
 //!
 //! // Insert.

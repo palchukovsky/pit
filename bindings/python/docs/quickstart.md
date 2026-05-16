@@ -15,7 +15,7 @@ def send_order_to_venue(order: openpit.Order) -> None:
 
 engine = (
     openpit.Engine.builder()
-    .with_local_sync()
+    .no_sync()
     .builtin(
         openpit.pretrade.policies.build_order_validation(),
     )

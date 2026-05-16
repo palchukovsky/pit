@@ -34,9 +34,9 @@ use openpit::pretrade::policies::{
     PnlBoundsBrokerBarrier, PnlBoundsKillSwitchPolicy, RateLimit, RateLimitAccountAssetBarrier,
     RateLimitAccountBarrier, RateLimitAssetBarrier, RateLimitBrokerBarrier, RateLimitPolicy,
 };
-use openpit::pretrade::{CheckPreTradeStartPolicy, PreTradeContext, PreTradePolicy, Rejects};
+use openpit::pretrade::{PreTradeContext, PreTradePolicy, Rejects};
 use openpit::storage::StorageBuilder;
-use openpit::{AccountAdjustmentContext, AccountAdjustmentPolicy, Mutation, Mutations};
+use openpit::{AccountAdjustmentContext, Mutation, Mutations};
 
 use crate::account_adjustment::{export_account_adjustment, OpenPitAccountAdjustment};
 use crate::execution_report::{export_execution_report, OpenPitExecutionReport};
@@ -52,47 +52,6 @@ use crate::param::{
 
 use crate::last_error::{write_error, OpenPitOutError};
 use crate::write_error_format;
-
-//--------------------------------------------------------------------------------------------------
-
-macro_rules! impl_custom_policy_send_sync {
-    ($t:ty) => {
-        // SAFETY:
-        // `$t` holds `extern "C" fn` pointers (inherently `Send + Sync`) and
-        // a `*mut c_void` user_data slot. Raw pointers are `!Send + !Sync` by
-        // default; Send and Sync are asserted manually under the following
-        // contract:
-        //
-        // - The public Pit threading contract documents that user_data slots
-        //   on custom-policy structs are opaque caller tokens. Their
-        //   lifetime, thread-safety, and meaning are entirely the caller's
-        //   responsibility (see the Threading Contract page in the SDK docs).
-        // - The SDK never inspects or dereferences user_data; it forwards it
-        //   to the registered C callbacks verbatim. Whatever synchronization
-        //   the caller attaches to user_data is the caller's contract to
-        //   uphold.
-        // - Under `SyncMode::Local` or `SyncMode::Account` the binding caller
-        //   serialises per-handle invocation; under `SyncMode::Full` the
-        //   caller is responsible for making any state reachable through
-        //   user_data safe under concurrent invocation.
-        //
-        // Violating the user_data contract is undefined behavior at the
-        // contract level.
-        unsafe impl Send for $t {}
-        unsafe impl Sync for $t {}
-    };
-}
-
-macro_rules! impl_dyn_policy_sync {
-    ($t:ty, $concrete:literal) => {
-        // SAFETY: the concrete type behind the dyn object is `$concrete`,
-        // which implements `Send + Sync` (see its unsafe impls). The Arc
-        // refcount is thread-safe. Concurrent access to `&self` methods is
-        // safe under `SyncMode::Full`; under other modes the binding caller
-        // serialises per-handle invocation per the SDK threading contract.
-        unsafe impl Sync for $t {}
-    };
-}
 
 //--------------------------------------------------------------------------------------------------
 
@@ -112,8 +71,8 @@ macro_rules! impl_dyn_policy_sync {
 /// - The caller must still destroy its own pointer when that local copy is no
 ///   longer needed. Destroying the caller pointer does not remove the policy from
 ///   the engine if the engine already retained it.
-/// - Destroy the caller-owned pointer with the matching
-///   `openpit_destroy_pretrade_*_policy` function exactly once.
+/// - Destroy the caller-owned pointer with
+///   `openpit_destroy_pretrade_pre_trade_policy` exactly once.
 pub struct PolicyHandle<P: ?Sized> {
     policy: Arc<P>,
 }
@@ -130,36 +89,24 @@ impl<P: ?Sized + GeneralPreTradePolicy> PolicyHandle<P> {
 
 //--------------------------------------------------------------------------------------------------
 
-/// Opaque pointer for a policy that runs at the start-stage pre-trade check.
+/// Unified trait object for all pre-trade hooks exposed through FFI.
 ///
-/// Contract:
-/// - Returned by start-stage policy create functions.
-/// - May be passed to
-///   `openpit_engine_builder_add_check_pre_trade_start_policy`.
-/// - Must be released by the caller with
-///   `openpit_destroy_pretrade_check_pre_trade_start_policy` when no longer needed.
-pub type OpenPitPretradeCheckPreTradeStartPolicy =
-    PolicyHandle<dyn CheckPreTradeStartPolicy<Order, ExecutionReport>>;
+/// It is backed by `PreTradePolicy<Order, ExecutionReport, AccountAdjustment>`
+/// because the core engine now routes start-stage checks, main-stage checks,
+/// execution-report updates, and account-adjustment validation through the same
+/// policy list.
+type UnifiedPreTradePolicy = dyn PreTradePolicy<Order, ExecutionReport, AccountAdjustment>;
 
-/// Opaque pointer for a policy that runs during the main pre-trade check stage.
+/// Opaque pointer for a pre-trade policy.
 ///
 /// Contract:
-/// - Returned by main-stage policy create functions.
+/// - Returned by custom policy create functions.
 /// - May be passed to `openpit_engine_builder_add_pre_trade_policy`.
 /// - Must be released by the caller with
 ///   `openpit_destroy_pretrade_pre_trade_policy` when no longer needed.
-pub type OpenPitPretradePreTradePolicy = PolicyHandle<dyn PreTradePolicy<Order, ExecutionReport>>;
-
-/// Opaque pointer for a policy that validates account adjustments.
-///
-/// Contract:
-/// - Returned by account-adjustment policy create functions.
-/// - May be passed to
-///   `openpit_engine_builder_add_account_adjustment_policy`.
-/// - Must be released by the caller with
-///   `openpit_destroy_account_adjustment_policy` when no longer needed.
-pub type OpenPitAccountAdjustmentPolicy =
-    PolicyHandle<dyn AccountAdjustmentPolicy<AccountAdjustment>>;
+/// - A policy can implement any combination of start-stage, main-stage,
+///   post-trade, and account-adjustment hooks.
+pub type OpenPitPretradePreTradePolicy = PolicyHandle<UnifiedPreTradePolicy>;
 
 //--------------------------------------------------------------------------------------------------
 
@@ -167,19 +114,7 @@ pub trait GeneralPreTradePolicy {
     fn name(&self) -> &str;
 }
 
-impl GeneralPreTradePolicy for dyn CheckPreTradeStartPolicy<Order, ExecutionReport> {
-    fn name(&self) -> &str {
-        self.name()
-    }
-}
-
-impl GeneralPreTradePolicy for dyn PreTradePolicy<Order, ExecutionReport> {
-    fn name(&self) -> &str {
-        self.name()
-    }
-}
-
-impl GeneralPreTradePolicy for dyn AccountAdjustmentPolicy<AccountAdjustment> {
+impl GeneralPreTradePolicy for UnifiedPreTradePolicy {
     fn name(&self) -> &str {
         self.name()
     }
@@ -436,7 +371,7 @@ pub extern "C" fn openpit_engine_builder_add_builtin_order_validation_policy(
         write_error(out_error, "engine builder is null");
         return false;
     }
-    match crate::engine::add_check_pre_trade_start_policy_to_builder(
+    match crate::engine::add_pre_trade_policy_to_builder(
         unsafe { &mut *builder },
         OrderValidationPolicy::new(),
     ) {
@@ -591,7 +526,7 @@ pub unsafe extern "C" fn openpit_engine_builder_add_builtin_rate_limit_policy(
             return false;
         }
     };
-    match crate::engine::add_check_pre_trade_start_policy_to_builder(builder_ref, policy) {
+    match crate::engine::add_pre_trade_policy_to_builder(builder_ref, policy) {
         Ok(()) => true,
         Err(err) => {
             write_error(out_error, &err);
@@ -763,10 +698,7 @@ pub unsafe extern "C" fn openpit_engine_builder_add_builtin_order_size_limit_pol
             return false;
         }
     };
-    match crate::engine::add_check_pre_trade_start_policy_to_builder(
-        unsafe { &mut *builder },
-        policy,
-    ) {
+    match crate::engine::add_pre_trade_policy_to_builder(unsafe { &mut *builder }, policy) {
         Ok(()) => true,
         Err(err) => {
             write_error(out_error, &err);
@@ -936,7 +868,7 @@ pub unsafe extern "C" fn openpit_engine_builder_add_builtin_pnl_bounds_killswitc
             return false;
         }
     };
-    match crate::engine::add_check_pre_trade_start_policy_to_builder(builder_ref, policy) {
+    match crate::engine::add_pre_trade_policy_to_builder(builder_ref, policy) {
         Ok(()) => true,
         Err(err) => {
             write_error(out_error, &err);
@@ -947,124 +879,46 @@ pub unsafe extern "C" fn openpit_engine_builder_add_builtin_pnl_bounds_killswitc
 
 //--------------------------------------------------------------------------------------------------
 
-macro_rules! policy_destroy_fn {
-    ($(#[$meta:meta])* $fn_name:ident, $handle_ty:ty) => {
-        $(#[$meta])*
-        #[no_mangle]
-        pub extern "C" fn $fn_name(policy: *mut $handle_ty) {
-            if policy.is_null() {
-                return;
-            }
-            unsafe { drop(Box::from_raw(policy)) };
-        }
-    };
+#[no_mangle]
+/// Destroys the caller-owned pointer for a pre-trade policy.
+///
+/// Lifetime contract:
+/// - Call this exactly once for each pointer that was returned to the caller
+///   by a custom policy create function.
+/// - After this call the pointer is no longer valid.
+/// - Passing a null pointer is allowed and has no effect.
+/// - This function always succeeds.
+/// - If the policy was previously added to the engine builder, the engine
+///   keeps its own reference and may continue using the policy.
+/// - Destroying this caller-owned pointer does not remove the policy from
+///   the engine.
+pub extern "C" fn openpit_destroy_pretrade_pre_trade_policy(
+    policy: *mut OpenPitPretradePreTradePolicy,
+) {
+    if policy.is_null() {
+        return;
+    }
+    unsafe { drop(Box::from_raw(policy)) };
 }
-
-policy_destroy_fn!(
-    /// Destroys the caller-owned pointer for a start-stage policy.
-    ///
-    /// Lifetime contract:
-    /// - Call this exactly once for each pointer that was returned to the caller
-    ///   by a start-stage policy create function.
-    /// - After this call the pointer is no longer valid.
-    /// - Passing a null pointer is allowed and has no effect.
-    /// - This function always succeeds.
-    /// - If the policy was previously added to the engine builder, the engine
-    ///   keeps its own reference and may continue using the policy.
-    /// - Destroying this caller-owned pointer does not remove the policy from
-    ///   the engine.
-    openpit_destroy_pretrade_check_pre_trade_start_policy,
-    OpenPitPretradeCheckPreTradeStartPolicy
-);
-
-policy_destroy_fn!(
-    /// Destroys the caller-owned pointer for a main-stage policy.
-    ///
-    /// Lifetime contract:
-    /// - Call this exactly once for each pointer that was returned to the caller
-    ///   by a main-stage policy create function.
-    /// - After this call the pointer is no longer valid.
-    /// - Passing a null pointer is allowed and has no effect.
-    /// - This function always succeeds.
-    /// - If the policy was previously added to the engine builder, the engine
-    ///   keeps its own reference and may continue using the policy.
-    /// - Destroying this caller-owned pointer does not remove the policy from
-    ///   the engine.
-    openpit_destroy_pretrade_pre_trade_policy,
-    OpenPitPretradePreTradePolicy
-);
-
-policy_destroy_fn!(
-    /// Destroys the caller-owned pointer for an account-adjustment policy.
-    ///
-    /// Lifetime contract:
-    /// - Call this exactly once for each pointer that was returned to the caller
-    ///   by an account-adjustment policy create function.
-    /// - After this call the pointer is no longer valid.
-    /// - Passing a null pointer is allowed and has no effect.
-    /// - This function always succeeds.
-    /// - If the policy was previously added to the engine builder, the engine
-    ///   keeps its own reference and may continue using the policy.
-    /// - Destroying this caller-owned pointer does not remove the policy from
-    ///   the engine.
-    openpit_destroy_account_adjustment_policy,
-    OpenPitAccountAdjustmentPolicy
-);
 
 //--------------------------------------------------------------------------------------------------
 
-macro_rules! policy_get_name_fn {
-    ($(#[$meta:meta])* $fn_name:ident, $handle_ty:ty) => {
-        $(#[$meta])*
-        #[no_mangle]
-        pub extern "C" fn $fn_name(policy: *const $handle_ty) -> OpenPitStringView {
-            assert!(!policy.is_null());
-            unsafe { (&*policy).get_name() }
-        }
-    };
+#[no_mangle]
+/// Returns the stable policy name for a pre-trade policy pointer.
+///
+/// Contract:
+/// - This function never fails.
+/// - `policy` must be a valid non-null pointer.
+/// - The returned view does not own memory.
+/// - The view remains valid while the policy object is alive and its name
+///   is not changed.
+/// - Passing an invalid pointer aborts the call.
+pub extern "C" fn openpit_pretrade_pre_trade_policy_get_name(
+    policy: *const OpenPitPretradePreTradePolicy,
+) -> OpenPitStringView {
+    assert!(!policy.is_null());
+    unsafe { (&*policy).get_name() }
 }
-
-policy_get_name_fn!(
-    /// Returns the stable policy name for a start-stage policy pointer.
-    ///
-    /// Contract:
-    /// - This function never fails.
-    /// - `policy` must be a valid non-null pointer.
-    /// - The returned view does not own memory.
-    /// - The view remains valid while the policy object is alive and its name
-    ///   is not changed.
-    /// - Passing an invalid pointer aborts the call.
-    openpit_pretrade_check_pre_trade_start_policy_get_name,
-    OpenPitPretradeCheckPreTradeStartPolicy
-);
-
-policy_get_name_fn!(
-    /// Returns the stable policy name for a main-stage policy pointer.
-    ///
-    /// Contract:
-    /// - This function never fails.
-    /// - `policy` must be a valid non-null pointer.
-    /// - The returned view does not own memory.
-    /// - The view remains valid while the policy object is alive and its name
-    ///   is not changed.
-    /// - Passing an invalid pointer aborts the call.
-    openpit_pretrade_pre_trade_policy_get_name,
-    OpenPitPretradePreTradePolicy
-);
-
-policy_get_name_fn!(
-    /// Returns the stable policy name for an account-adjustment policy pointer.
-    ///
-    /// Contract:
-    /// - This function never fails.
-    /// - `policy` must be a valid non-null pointer.
-    /// - The returned view does not own memory.
-    /// - The view remains valid while the policy object is alive and its name
-    ///   is not changed.
-    /// - Passing an invalid pointer aborts the call.
-    openpit_account_adjustment_policy_get_name,
-    OpenPitAccountAdjustmentPolicy
-);
 
 //--------------------------------------------------------------------------------------------------
 
@@ -1083,54 +937,11 @@ fn get_policy_arc<P: ?Sized>(
 }
 
 #[no_mangle]
-/// Adds a start-stage policy to the engine builder.
-///
-/// Why it exists:
-/// - Registers a policy that runs before the main pre-trade stage.
+/// Adds a pre-trade policy to the engine builder.
 ///
 /// Contract:
 /// - `builder` must be a valid engine builder pointer.
-/// - `policy` must be a valid non-null start-stage policy pointer.
-///
-/// Success:
-/// - returns `true` and the builder retains its own reference to the policy.
-///
-/// Error:
-/// - returns `false` when the builder or policy cannot be used;
-/// - if `out_error` is not null, writes a caller-owned `OpenPitSharedString`
-///   error handle that MUST be released with `openpit_destroy_shared_string`.
-///
-/// Lifetime contract:
-/// - The engine builder retains its own reference to the policy object.
-/// - The caller still owns the passed pointer and must release that local pointer
-///   separately with `openpit_destroy_pretrade_check_pre_trade_start_policy` when
-///   it is no longer needed.
-pub extern "C" fn openpit_engine_builder_add_check_pre_trade_start_policy(
-    builder: *mut crate::engine::OpenPitEngineBuilder,
-    policy: *mut OpenPitPretradeCheckPreTradeStartPolicy,
-    out_error: OpenPitOutError,
-) -> bool {
-    let result = get_policy_arc(builder, policy).and_then(|(b, policy)| {
-        crate::engine::add_check_pre_trade_start_policy_to_builder(
-            unsafe { &mut *b },
-            DynCheckPreTradeStartPolicy { inner: policy },
-        )
-    });
-    match result {
-        Ok(()) => true,
-        Err(err) => {
-            write_error(out_error, &err);
-            false
-        }
-    }
-}
-
-#[no_mangle]
-/// Adds a main-stage pre-trade policy to the engine builder.
-///
-/// Contract:
-/// - `builder` must be a valid engine builder pointer.
-/// - `policy` must be a valid non-null main-stage policy pointer.
+/// - `policy` must be a valid non-null pre-trade policy pointer.
 ///
 /// Success:
 /// - returns `true` and the builder retains its own reference to the policy.
@@ -1154,46 +965,6 @@ pub extern "C" fn openpit_engine_builder_add_pre_trade_policy(
         crate::engine::add_pre_trade_policy_to_builder(
             unsafe { &mut *b },
             DynPreTradePolicy { inner: policy },
-        )
-    });
-    match result {
-        Ok(()) => true,
-        Err(err) => {
-            write_error(out_error, &err);
-            false
-        }
-    }
-}
-
-#[no_mangle]
-/// Adds an account-adjustment policy to the engine builder.
-///
-/// Contract:
-/// - `builder` must be a valid engine builder pointer.
-/// - `policy` must be a valid non-null account-adjustment policy pointer.
-///
-/// Success:
-/// - returns `true` and the builder retains its own reference to the policy.
-///
-/// Error:
-/// - returns `false` when the builder or policy cannot be used;
-/// - if `out_error` is not null, writes a caller-owned `OpenPitSharedString`
-///   error handle that MUST be released with `openpit_destroy_shared_string`.
-///
-/// Lifetime contract:
-/// - The engine builder retains its own reference to the policy object.
-/// - The caller still owns the passed pointer and must release that local pointer
-///   separately with `openpit_destroy_account_adjustment_policy` when it
-///   is no longer needed.
-pub extern "C" fn openpit_engine_builder_add_account_adjustment_policy(
-    builder: *mut crate::engine::OpenPitEngineBuilder,
-    policy: *mut OpenPitAccountAdjustmentPolicy,
-    out_error: OpenPitOutError,
-) -> bool {
-    let result = get_policy_arc(builder, policy).and_then(|(b, policy)| {
-        crate::engine::add_account_adjustment_policy_to_builder(
-            unsafe { &mut *b },
-            DynAccountAdjustmentPolicy { inner: policy },
         )
     });
     match result {
@@ -1318,7 +1089,8 @@ pub unsafe extern "C" fn openpit_mutations_push(
 
 //--------------------------------------------------------------------------------------------------
 
-/// Callback used by a custom start-stage policy to validate one order.
+/// Callback used by a custom pre-trade policy to validate one order before a
+/// deferred pre-trade request is created.
 ///
 /// Contract:
 /// - `ctx` is a read-only context valid only for the duration of the callback.
@@ -1337,42 +1109,14 @@ pub unsafe extern "C" fn openpit_mutations_push(
 /// - Every reject payload is copied into internal storage before the callback
 ///   returns.
 /// - `user_data` is passed through unchanged from policy creation.
-pub type OpenPitPretradeCheckPreTradeStartPolicyCheckPreTradeStartFn =
+pub type OpenPitPretradePreTradePolicyCheckPreTradeStartFn =
     unsafe extern "C" fn(
         ctx: *const OpenPitPretradeContext,
         order: *const OpenPitOrder,
         user_data: *mut c_void,
     ) -> *mut OpenPitRejectList;
 
-/// Callback used by a custom start-stage policy to observe an execution report.
-///
-/// Contract:
-/// - `report` points to a read-only report view valid only for the duration of
-///   the callback.
-/// - `report` is passed as a borrowed view and is not copied before the
-///   callback runs.
-/// - If the callback wants to keep any data from `report`, it must copy that
-///   data before returning.
-/// - Return `true` if the policy state changed and the engine should keep the
-///   update.
-/// - Return `false` when nothing changed.
-/// - `user_data` is passed through unchanged from policy creation.
-pub type OpenPitPretradeCheckPreTradeStartPolicyApplyExecutionReportFn =
-    unsafe extern "C" fn(report: *const OpenPitExecutionReport, user_data: *mut c_void) -> bool;
-
-/// Callback invoked when the last reference to a custom start-stage policy is
-/// released and the policy object is about to be destroyed.
-///
-/// Contract:
-/// - Called exactly once, on the thread that drops the last policy reference.
-/// - After this callback returns, no further callbacks will be invoked for
-///   this policy instance.
-/// - `user_data` is the same value that was passed at policy creation.
-/// - The callback must release any resources associated with `user_data`.
-pub type OpenPitPretradeCheckPreTradeStartPolicyFreeUserDataFn =
-    unsafe extern "C" fn(user_data: *mut c_void);
-
-/// Callback used by a custom main-stage policy to perform a pre-trade check.
+/// Callback used by a custom pre-trade policy to perform a main-stage check.
 ///
 /// Contract:
 /// - `ctx` is a read-only context valid only for the duration of the callback.
@@ -1393,14 +1137,15 @@ pub type OpenPitPretradeCheckPreTradeStartPolicyFreeUserDataFn =
 /// - Every reject payload is copied into internal storage before this callback
 ///   returns.
 /// - `user_data` is passed through unchanged from policy creation.
-pub type OpenPitPretradePreTradePolicyCheckFn = unsafe extern "C" fn(
-    ctx: *const OpenPitPretradeContext,
-    order: *const OpenPitOrder,
-    mutations: *mut OpenPitMutations,
-    user_data: *mut c_void,
-) -> *mut OpenPitRejectList;
+pub type OpenPitPretradePreTradePolicyPerformPreTradeCheckFn =
+    unsafe extern "C" fn(
+        ctx: *const OpenPitPretradeContext,
+        order: *const OpenPitOrder,
+        mutations: *mut OpenPitMutations,
+        user_data: *mut c_void,
+    ) -> *mut OpenPitRejectList;
 
-/// Callback used by a custom main-stage policy to observe an execution report.
+/// Callback used by a custom pre-trade policy to observe an execution report.
 ///
 /// Contract:
 /// - `report` points to a read-only report view valid only for the duration of
@@ -1409,25 +1154,13 @@ pub type OpenPitPretradePreTradePolicyCheckFn = unsafe extern "C" fn(
 ///   callback runs.
 /// - If the callback wants to keep any data from `report`, it must copy that
 ///   data before returning.
-/// - Return `true` if the policy state changed and the engine should keep the
-///   update.
-/// - Return `false` when nothing changed.
+/// - Return `true` when this policy reports a kill-switch trigger.
+/// - Return `false` otherwise.
 /// - `user_data` is passed through unchanged from policy creation.
 pub type OpenPitPretradePreTradePolicyApplyExecutionReportFn =
     unsafe extern "C" fn(report: *const OpenPitExecutionReport, user_data: *mut c_void) -> bool;
 
-/// Callback invoked when the last reference to a custom main-stage policy is
-/// released and the policy object is about to be destroyed.
-///
-/// Contract:
-/// - Called exactly once, on the thread that drops the last policy reference.
-/// - After this callback returns, no further callbacks will be invoked for
-///   this policy instance.
-/// - `user_data` is the same value that was passed at policy creation.
-/// - The callback must release any resources associated with `user_data`.
-pub type OpenPitPretradePreTradePolicyFreeUserDataFn = unsafe extern "C" fn(user_data: *mut c_void);
-
-/// Callback used by a custom account-adjustment policy to validate one
+/// Callback used by a custom pre-trade policy to validate one account
 /// adjustment.
 ///
 /// Contract:
@@ -1447,16 +1180,17 @@ pub type OpenPitPretradePreTradePolicyFreeUserDataFn = unsafe extern "C" fn(user
 /// - Return a non-empty reject list to reject the adjustment.
 /// - Returned reject list ownership is transferred to the callee.
 /// - `user_data` is passed through unchanged from policy creation.
-pub type OpenPitAccountAdjustmentPolicyApplyFn = unsafe extern "C" fn(
-    ctx: *const OpenPitAccountAdjustmentContext,
-    account_id: OpenPitParamAccountId,
-    adjustment: *const OpenPitAccountAdjustment,
-    mutations: *mut OpenPitMutations,
-    user_data: *mut c_void,
-) -> *mut OpenPitRejectList;
+pub type OpenPitPretradePreTradePolicyApplyAccountAdjustmentFn =
+    unsafe extern "C" fn(
+        ctx: *const OpenPitAccountAdjustmentContext,
+        account_id: OpenPitParamAccountId,
+        adjustment: *const OpenPitAccountAdjustment,
+        mutations: *mut OpenPitMutations,
+        user_data: *mut c_void,
+    ) -> *mut OpenPitRejectList;
 
-/// Callback invoked when the last reference to a custom account-adjustment
-/// policy is released and the policy object is about to be destroyed.
+/// Callback invoked when the last reference to a custom pre-trade policy is
+/// released and the policy object is about to be destroyed.
 ///
 /// Contract:
 /// - Called exactly once, on the thread that drops the last policy reference.
@@ -1464,51 +1198,34 @@ pub type OpenPitAccountAdjustmentPolicyApplyFn = unsafe extern "C" fn(
 ///   this policy instance.
 /// - `user_data` is the same value that was passed at policy creation.
 /// - The callback must release any resources associated with `user_data`.
-pub type OpenPitAccountAdjustmentPolicyFreeUserDataFn =
-    unsafe extern "C" fn(user_data: *mut c_void);
+pub type OpenPitPretradePreTradePolicyFreeUserDataFn = unsafe extern "C" fn(user_data: *mut c_void);
 
 //--------------------------------------------------------------------------------------------------
 
-struct DynCheckPreTradeStartPolicy {
-    inner: Arc<dyn CheckPreTradeStartPolicy<Order, ExecutionReport>>,
+struct DynPreTradePolicy {
+    inner: Arc<UnifiedPreTradePolicy>,
 }
 
-// SAFETY: The binding threading contract (engine.rs module comment) guarantees
-// that engine method calls are never concurrent from the caller side. The inner
-// Arc's concrete type is a Custom* callback struct whose user_data is accessed
-// only under that serialization guarantee. The Arc refcount is atomically
-// maintained. Sequential transfer across OS threads is permitted by the contract.
-unsafe impl Send for DynCheckPreTradeStartPolicy {}
-impl_dyn_policy_sync!(
-    DynCheckPreTradeStartPolicy,
-    "CustomCheckPreTradeStartPolicy"
-);
+// SAFETY: The binding threading contract (engine.rs module comment) describes
+// when concurrent calls are allowed. The inner Arc's concrete type is a custom
+// callback struct whose user_data is accessed under that contract. The Arc
+// refcount is atomically maintained. Sequential transfer across OS threads is
+// permitted by the contract.
+unsafe impl Send for DynPreTradePolicy {}
+// SAFETY: the concrete type behind the dyn object is `CustomPreTradePolicy`,
+// which implements `Send + Sync` (see its unsafe impls). The Arc refcount is
+// thread-safe. Concurrent access to `&self` methods is safe under
+// `SyncMode::Full`; under other modes the binding caller serialises per-handle
+// invocation per the SDK threading contract.
+unsafe impl Sync for DynPreTradePolicy {}
 
-impl CheckPreTradeStartPolicy<Order, ExecutionReport> for DynCheckPreTradeStartPolicy {
+impl PreTradePolicy<Order, ExecutionReport, AccountAdjustment> for DynPreTradePolicy {
     fn name(&self) -> &str {
         self.inner.name()
     }
 
     fn check_pre_trade_start(&self, ctx: &PreTradeContext, order: &Order) -> Result<(), Rejects> {
         self.inner.check_pre_trade_start(ctx, order)
-    }
-
-    fn apply_execution_report(&self, report: &ExecutionReport) -> bool {
-        self.inner.apply_execution_report(report)
-    }
-}
-
-struct DynPreTradePolicy {
-    inner: Arc<dyn PreTradePolicy<Order, ExecutionReport>>,
-}
-
-// SAFETY: same reasoning as `DynCheckPreTradeStartPolicy` above.
-unsafe impl Send for DynPreTradePolicy {}
-impl_dyn_policy_sync!(DynPreTradePolicy, "CustomPreTradePolicy");
-
-impl PreTradePolicy<Order, ExecutionReport> for DynPreTradePolicy {
-    fn name(&self) -> &str {
-        self.inner.name()
     }
 
     fn perform_pre_trade_check(
@@ -1522,20 +1239,6 @@ impl PreTradePolicy<Order, ExecutionReport> for DynPreTradePolicy {
 
     fn apply_execution_report(&self, report: &ExecutionReport) -> bool {
         self.inner.apply_execution_report(report)
-    }
-}
-
-struct DynAccountAdjustmentPolicy {
-    inner: Arc<dyn AccountAdjustmentPolicy<AccountAdjustment>>,
-}
-
-// SAFETY: same reasoning as `DynCheckPreTradeStartPolicy` above.
-unsafe impl Send for DynAccountAdjustmentPolicy {}
-impl_dyn_policy_sync!(DynAccountAdjustmentPolicy, "CustomAccountAdjustmentPolicy");
-
-impl AccountAdjustmentPolicy<AccountAdjustment> for DynAccountAdjustmentPolicy {
-    fn name(&self) -> &str {
-        self.inner.name()
     }
 
     fn apply_account_adjustment(
@@ -1552,53 +1255,49 @@ impl AccountAdjustmentPolicy<AccountAdjustment> for DynAccountAdjustmentPolicy {
 
 //--------------------------------------------------------------------------------------------------
 
-struct CustomCheckPreTradeStartPolicy {
+struct CustomPreTradePolicy {
     name: String,
-    check_fn: OpenPitPretradeCheckPreTradeStartPolicyCheckPreTradeStartFn,
-    apply_execution_report_fn: OpenPitPretradeCheckPreTradeStartPolicyApplyExecutionReportFn,
-    free_user_data_fn: OpenPitPretradeCheckPreTradeStartPolicyFreeUserDataFn,
+    check_pre_trade_start_fn: Option<OpenPitPretradePreTradePolicyCheckPreTradeStartFn>,
+    perform_pre_trade_check_fn: Option<OpenPitPretradePreTradePolicyPerformPreTradeCheckFn>,
+    apply_execution_report_fn: Option<OpenPitPretradePreTradePolicyApplyExecutionReportFn>,
+    apply_account_adjustment_fn: Option<OpenPitPretradePreTradePolicyApplyAccountAdjustmentFn>,
+    free_user_data_fn: OpenPitPretradePreTradePolicyFreeUserDataFn,
     user_data: *mut c_void,
 }
 
-impl_custom_policy_send_sync!(CustomCheckPreTradeStartPolicy);
+// SAFETY:
+// `CustomPreTradePolicy` holds `extern "C" fn` pointers (inherently `Send +
+// Sync`) and a `*mut c_void` user_data slot. Raw pointers are `!Send + !Sync`
+// by default; Send and Sync are asserted manually under the following contract:
+//
+// - The public Pit threading contract documents that user_data slots on custom
+//   policy structs are opaque caller tokens. Their lifetime, thread-safety, and
+//   meaning are entirely the caller's responsibility.
+// - The SDK never inspects or dereferences user_data; it forwards it to the
+//   registered C callbacks verbatim. Whatever synchronization the caller
+//   attaches to user_data is the caller's contract to uphold.
+// - Under `SyncMode::Local` or `SyncMode::Account` the binding caller
+//   serialises per-handle invocation; under `SyncMode::Full` the caller is
+//   responsible for making any state reachable through user_data safe under
+//   concurrent invocation.
+//
+// Violating the user_data contract is undefined behavior at the contract level.
+unsafe impl Send for CustomPreTradePolicy {}
+unsafe impl Sync for CustomPreTradePolicy {}
 
-impl CheckPreTradeStartPolicy<Order, ExecutionReport> for CustomCheckPreTradeStartPolicy {
+impl PreTradePolicy<Order, ExecutionReport, AccountAdjustment> for CustomPreTradePolicy {
     fn name(&self) -> &str {
         &self.name
     }
 
     fn check_pre_trade_start(&self, ctx: &PreTradeContext, order: &Order) -> Result<(), Rejects> {
+        let Some(check_fn) = self.check_pre_trade_start_fn else {
+            return Ok(());
+        };
         let input = export_order(order);
         let c_ctx = (ctx as *const PreTradeContext).cast::<OpenPitPretradeContext>();
-        let rejects = unsafe { (self.check_fn)(c_ctx, &input, self.user_data) };
+        let rejects = unsafe { check_fn(c_ctx, &input, self.user_data) };
         import_reject_list_result(rejects)
-    }
-
-    fn apply_execution_report(&self, report: &ExecutionReport) -> bool {
-        let input = export_execution_report(report);
-        unsafe { (self.apply_execution_report_fn)(&input, self.user_data) }
-    }
-}
-
-impl Drop for CustomCheckPreTradeStartPolicy {
-    fn drop(&mut self) {
-        unsafe { (self.free_user_data_fn)(self.user_data) };
-    }
-}
-
-struct CustomPreTradePolicy {
-    name: String,
-    check_fn: OpenPitPretradePreTradePolicyCheckFn,
-    apply_execution_report_fn: OpenPitPretradePreTradePolicyApplyExecutionReportFn,
-    free_user_data_fn: OpenPitPretradePreTradePolicyFreeUserDataFn,
-    user_data: *mut c_void,
-}
-
-impl_custom_policy_send_sync!(CustomPreTradePolicy);
-
-impl PreTradePolicy<Order, ExecutionReport> for CustomPreTradePolicy {
-    fn name(&self) -> &str {
-        &self.name
     }
 
     fn perform_pre_trade_check(
@@ -1607,57 +1306,44 @@ impl PreTradePolicy<Order, ExecutionReport> for CustomPreTradePolicy {
         order: &Order,
         mutations: &mut Mutations,
     ) -> Result<(), Rejects> {
+        let Some(check_fn) = self.perform_pre_trade_check_fn else {
+            return Ok(());
+        };
         let mut mutations_handle = OpenPitMutations {
             mutations: mutations as *mut Mutations,
         };
         let input = export_order(order);
         let c_ctx = (ctx as *const PreTradeContext).cast::<OpenPitPretradeContext>();
-        let rejects =
-            unsafe { (self.check_fn)(c_ctx, &input, &mut mutations_handle, self.user_data) };
+        let rejects = unsafe { check_fn(c_ctx, &input, &mut mutations_handle, self.user_data) };
         import_reject_list_result(rejects)
     }
 
     fn apply_execution_report(&self, report: &ExecutionReport) -> bool {
+        let Some(apply_fn) = self.apply_execution_report_fn else {
+            return false;
+        };
         let input = export_execution_report(report);
-        unsafe { (self.apply_execution_report_fn)(&input, self.user_data) }
-    }
-}
-
-impl Drop for CustomPreTradePolicy {
-    fn drop(&mut self) {
-        unsafe { (self.free_user_data_fn)(self.user_data) };
-    }
-}
-
-struct CustomAccountAdjustmentPolicy {
-    name: String,
-    apply_fn: OpenPitAccountAdjustmentPolicyApplyFn,
-    free_user_data_fn: OpenPitAccountAdjustmentPolicyFreeUserDataFn,
-    user_data: *mut c_void,
-}
-
-impl_custom_policy_send_sync!(CustomAccountAdjustmentPolicy);
-
-impl AccountAdjustmentPolicy<AccountAdjustment> for CustomAccountAdjustmentPolicy {
-    fn name(&self) -> &str {
-        &self.name
+        unsafe { apply_fn(&input, self.user_data) }
     }
 
     fn apply_account_adjustment(
         &self,
-        _ctx: &AccountAdjustmentContext,
+        ctx: &AccountAdjustmentContext,
         account_id: openpit::param::AccountId,
         adjustment: &AccountAdjustment,
         mutations: &mut Mutations,
     ) -> Result<(), Rejects> {
+        let Some(apply_fn) = self.apply_account_adjustment_fn else {
+            return Ok(());
+        };
         let mut mutations_handle = OpenPitMutations {
             mutations: mutations as *mut Mutations,
         };
         let input = export_account_adjustment(adjustment);
         let c_ctx =
-            (_ctx as *const AccountAdjustmentContext).cast::<OpenPitAccountAdjustmentContext>();
+            (ctx as *const AccountAdjustmentContext).cast::<OpenPitAccountAdjustmentContext>();
         let rejects = unsafe {
-            (self.apply_fn)(
+            apply_fn(
                 c_ctx,
                 account_id.as_u64(),
                 &input,
@@ -1669,7 +1355,7 @@ impl AccountAdjustmentPolicy<AccountAdjustment> for CustomAccountAdjustmentPolic
     }
 }
 
-impl Drop for CustomAccountAdjustmentPolicy {
+impl Drop for CustomPreTradePolicy {
     fn drop(&mut self) {
         unsafe { (self.free_user_data_fn)(self.user_data) };
     }
@@ -1712,82 +1398,20 @@ fn import_reject_list_result(rejects: *mut OpenPitRejectList) -> Result<(), Reje
 }
 
 #[no_mangle]
-/// Creates a custom start-stage policy from caller-provided callbacks.
-///
-/// Why it exists:
-/// - Lets the caller implement policy logic outside the engine and plug it into
-///   the same builder flow as built-in policies.
+/// Creates a custom pre-trade policy from caller-provided callbacks.
 ///
 /// Contract:
 /// - `name` must point to a valid, null-terminated string for the duration of
 ///   the call.
-/// - `check_fn`, `apply_fn`, and `free_user_data_fn` must remain callable for
-///   as long as the policy may still be used by either the caller pointer or
-///   the engine.
-/// - `free_user_data_fn` will be called exactly once, when the last reference
-///   to the policy is released.
-/// - `user_data` is opaque to the SDK: the engine never inspects, dereferences,
-///   or frees it; it is forwarded verbatim to the registered callbacks.
-///   Lifetime, thread-safety, and meaning of the pointed-at state are entirely
-///   the caller's responsibility. Under `OpenPitSyncPolicy_Local` or
-///   `OpenPitSyncPolicy_Account`, the caller serialises per-handle invocation per
-///   the SDK threading contract; under `OpenPitSyncPolicy_Full`, the caller is
-///   responsible for making any state reachable through `user_data` safe under
-///   concurrent invocation.
-///
-/// Success:
-/// - returns a new caller-owned policy object.
-///
-/// Error:
-/// - returns null when `name` is invalid;
-/// - if `out_error` is not null, writes a caller-owned `OpenPitSharedString`
-///   error handle that MUST be released with `openpit_destroy_shared_string`.
-///
-/// Lifetime contract:
-/// - The policy stores its own copy of `name`; the caller may release the input
-///   string after this function returns.
-/// - The returned pointer is owned by the caller and must be released with
-///   `openpit_destroy_pretrade_check_pre_trade_start_policy` when no longer needed.
-/// - If the policy is added to the engine builder, the engine keeps its own
-///   reference, but the caller must still release the caller-owned pointer.
-/// - `free_user_data_fn` runs once the last reference to the policy is
-///   released; when the engine is the final holder, it runs as part of engine
-///   destruction.
-pub unsafe extern "C" fn openpit_create_pretrade_custom_check_pre_trade_start_policy(
-    name: OpenPitStringView,
-    check_fn: OpenPitPretradeCheckPreTradeStartPolicyCheckPreTradeStartFn,
-    apply_execution_report_fn: OpenPitPretradeCheckPreTradeStartPolicyApplyExecutionReportFn,
-    free_user_data_fn: OpenPitPretradeCheckPreTradeStartPolicyFreeUserDataFn,
-    user_data: *mut c_void,
-    out_error: OpenPitOutError,
-) -> *mut OpenPitPretradeCheckPreTradeStartPolicy {
-    let name = match unsafe { parse_policy_name(name, out_error) } {
-        Some(v) => v,
-        None => return std::ptr::null_mut(),
-    };
-
-    let policy = CustomCheckPreTradeStartPolicy {
-        name,
-        check_fn,
-        apply_execution_report_fn,
-        free_user_data_fn,
-        user_data,
-    };
-
-    OpenPitPretradeCheckPreTradeStartPolicy::new(Arc::new(policy))
-}
-
-#[no_mangle]
-/// Creates a custom main-stage pre-trade policy from caller-provided callbacks.
-///
-/// Contract:
-/// - `name` must point to a valid, null-terminated string for the duration of
-///   the call.
-/// - `check_fn`, `apply_fn`, and `free_user_data_fn` must
-///   remain callable for as long as the policy may still be used by either the
-///   caller pointer or the engine.
-/// - Custom policy callbacks can register commit/rollback mutations through the
-///   mutations pointer passed to `check_fn`.
+/// - `check_pre_trade_start_fn`, `perform_pre_trade_check_fn`,
+///   `apply_execution_report_fn`, and `apply_account_adjustment_fn` may be null.
+/// - A null `check_pre_trade_start_fn`, `perform_pre_trade_check_fn`, or
+///   `apply_account_adjustment_fn` means that hook accepts by default.
+/// - A null `apply_execution_report_fn` means that hook returns `false`.
+/// - Non-null callbacks and `free_user_data_fn` must remain callable for as long
+///   as the policy may still be used by either the caller pointer or the engine.
+/// - Custom main-stage and account-adjustment callbacks can register
+///   commit/rollback mutations through their `mutations` pointer.
 /// - `free_user_data_fn` will be called exactly once, when the last reference
 ///   to the policy is released.
 /// - `user_data` is opaque to the SDK: the engine never inspects, dereferences,
@@ -1819,8 +1443,10 @@ pub unsafe extern "C" fn openpit_create_pretrade_custom_check_pre_trade_start_po
 ///   destruction.
 pub unsafe extern "C" fn openpit_create_pretrade_custom_pre_trade_policy(
     name: OpenPitStringView,
-    check_fn: OpenPitPretradePreTradePolicyCheckFn,
-    apply_fn: OpenPitPretradePreTradePolicyApplyExecutionReportFn,
+    check_pre_trade_start_fn: Option<OpenPitPretradePreTradePolicyCheckPreTradeStartFn>,
+    perform_pre_trade_check_fn: Option<OpenPitPretradePreTradePolicyPerformPreTradeCheckFn>,
+    apply_execution_report_fn: Option<OpenPitPretradePreTradePolicyApplyExecutionReportFn>,
+    apply_account_adjustment_fn: Option<OpenPitPretradePreTradePolicyApplyAccountAdjustmentFn>,
     free_user_data_fn: OpenPitPretradePreTradePolicyFreeUserDataFn,
     user_data: *mut c_void,
     out_error: OpenPitOutError,
@@ -1832,74 +1458,15 @@ pub unsafe extern "C" fn openpit_create_pretrade_custom_pre_trade_policy(
 
     let policy = CustomPreTradePolicy {
         name,
-        check_fn,
-        apply_execution_report_fn: apply_fn,
+        check_pre_trade_start_fn,
+        perform_pre_trade_check_fn,
+        apply_execution_report_fn,
+        apply_account_adjustment_fn,
         free_user_data_fn,
         user_data,
     };
 
     OpenPitPretradePreTradePolicy::new(Arc::new(policy))
-}
-
-#[no_mangle]
-/// Creates a custom account-adjustment policy from caller-provided callbacks.
-///
-/// Contract:
-/// - `name` must point to a valid, null-terminated string for the duration of
-///   the call.
-/// - `apply_fn` and `free_user_data_fn` must remain callable for as long as
-///   the policy may still be used by either the caller pointer or the engine.
-/// - Custom policy callbacks can register commit/rollback mutations through the
-///   mutations pointer passed to `apply_fn`.
-/// - `free_user_data_fn` will be called exactly once, when the last reference
-///   to the policy is released.
-/// - `user_data` is opaque to the SDK: the engine never inspects, dereferences,
-///   or frees it; it is forwarded verbatim to the registered callbacks.
-///   Lifetime, thread-safety, and meaning of the pointed-at state are entirely
-///   the caller's responsibility. Under `OpenPitSyncPolicy_Local` or
-///   `OpenPitSyncPolicy_Account`, the caller serialises per-handle invocation per
-///   the SDK threading contract; under `OpenPitSyncPolicy_Full`, the caller is
-///   responsible for making any state reachable through `user_data` safe under
-///   concurrent invocation.
-///
-/// Success:
-/// - returns a new caller-owned policy object.
-///
-/// Error:
-/// - returns null when `name` is invalid;
-/// - if `out_error` is not null, writes a caller-owned `OpenPitSharedString`
-///   error handle that MUST be released with `openpit_destroy_shared_string`.
-///
-/// Lifetime contract:
-/// - The policy stores its own copy of `name`; the caller may release the input
-///   string after this function returns.
-/// - The returned pointer is owned by the caller and must be released with
-///   `openpit_destroy_account_adjustment_policy` when no longer needed.
-/// - If the policy is added to the engine builder, the engine keeps its own
-///   reference, but the caller must still release the caller-owned pointer.
-/// - `free_user_data_fn` runs once the last reference to the policy is
-///   released; when the engine is the final holder, it runs as part of engine
-///   destruction.
-pub unsafe extern "C" fn openpit_create_custom_account_adjustment_policy(
-    name: OpenPitStringView,
-    apply_fn: OpenPitAccountAdjustmentPolicyApplyFn,
-    free_user_data_fn: OpenPitAccountAdjustmentPolicyFreeUserDataFn,
-    user_data: *mut c_void,
-    out_error: OpenPitOutError,
-) -> *mut OpenPitAccountAdjustmentPolicy {
-    let name = match unsafe { parse_policy_name(name, out_error) } {
-        Some(v) => v,
-        None => return std::ptr::null_mut(),
-    };
-
-    let policy = CustomAccountAdjustmentPolicy {
-        name,
-        apply_fn,
-        free_user_data_fn,
-        user_data,
-    };
-
-    OpenPitAccountAdjustmentPolicy::new(Arc::new(policy))
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -1962,6 +1529,49 @@ mod tests {
         _user_data: *mut c_void,
     ) -> *mut OpenPitRejectList {
         std::ptr::null_mut()
+    }
+
+    unsafe fn create_pre_trade_policy_with_start_hook(
+        name: OpenPitStringView,
+        check_pte_trade_start_fn: OpenPitPretradePreTradePolicyCheckPreTradeStartFn,
+        apply_execution_report_fn: OpenPitPretradePreTradePolicyApplyExecutionReportFn,
+        free_user_data_fn: OpenPitPretradePreTradePolicyFreeUserDataFn,
+        user_data: *mut c_void,
+        out_error: OpenPitOutError,
+    ) -> *mut OpenPitPretradePreTradePolicy {
+        unsafe {
+            openpit_create_pretrade_custom_pre_trade_policy(
+                name,
+                Some(check_pte_trade_start_fn),
+                None,
+                Some(apply_execution_report_fn),
+                None,
+                free_user_data_fn,
+                user_data,
+                out_error,
+            )
+        }
+    }
+
+    unsafe fn create_pre_trade_policy_with_account_adjustment_hook(
+        name: OpenPitStringView,
+        apply_fn: OpenPitPretradePreTradePolicyApplyAccountAdjustmentFn,
+        free_user_data_fn: OpenPitPretradePreTradePolicyFreeUserDataFn,
+        user_data: *mut c_void,
+        out_error: OpenPitOutError,
+    ) -> *mut OpenPitPretradePreTradePolicy {
+        unsafe {
+            openpit_create_pretrade_custom_pre_trade_policy(
+                name,
+                None,
+                None,
+                None,
+                Some(apply_fn),
+                free_user_data_fn,
+                user_data,
+                out_error,
+            )
+        }
     }
 
     fn cstr_to_string(handle: *mut crate::string::OpenPitSharedString) -> String {
@@ -2062,15 +1672,17 @@ mod tests {
     }
 
     fn execute_with_custom_pre_trade_policy(
-        check_fn: OpenPitPretradePreTradePolicyCheckFn,
+        check_fn: OpenPitPretradePreTradePolicyPerformPreTradeCheckFn,
         user_data: *mut c_void,
     ) -> openpit::pretrade::PreTradeReservation {
         let engine = openpit::Engine::<Order, ExecutionReport, AccountAdjustment>::builder()
-            .with_sync(openpit::LocalSyncPolicy)
-            .pre_trade_policy(CustomPreTradePolicy {
+            .sync(openpit::LocalSyncPolicy)
+            .pre_trade(CustomPreTradePolicy {
                 name: "ffi.custom".to_owned(),
-                check_fn,
-                apply_execution_report_fn: custom_apply_report_fn,
+                check_pre_trade_start_fn: None,
+                perform_pre_trade_check_fn: Some(check_fn),
+                apply_execution_report_fn: Some(custom_apply_report_fn),
+                apply_account_adjustment_fn: None,
                 free_user_data_fn: custom_free_user_data_fn,
                 user_data,
             })
@@ -2357,7 +1969,7 @@ mod tests {
     fn add_policy_reports_null_builder() {
         let name = OpenPitStringView::from_utf8("null.builder.check");
         let policy = unsafe {
-            openpit_create_pretrade_custom_check_pre_trade_start_policy(
+            create_pre_trade_policy_with_start_hook(
                 name,
                 custom_check_fn,
                 custom_apply_report_fn,
@@ -2368,14 +1980,14 @@ mod tests {
         };
         assert!(!policy.is_null());
         let mut out_error = std::ptr::null_mut();
-        let ok = openpit_engine_builder_add_check_pre_trade_start_policy(
+        let ok = openpit_engine_builder_add_pre_trade_policy(
             std::ptr::null_mut(),
             policy,
             &mut out_error,
         );
         assert!(!ok);
         assert_eq!(cstr_to_string(out_error), "engine builder is null");
-        openpit_destroy_pretrade_check_pre_trade_start_policy(policy);
+        openpit_destroy_pretrade_pre_trade_policy(policy);
     }
 
     #[test]
@@ -2385,7 +1997,7 @@ mod tests {
             std::ptr::null_mut(),
         );
         let mut out_error = std::ptr::null_mut();
-        let ok = openpit_engine_builder_add_check_pre_trade_start_policy(
+        let ok = openpit_engine_builder_add_pre_trade_policy(
             builder,
             std::ptr::null_mut(),
             &mut out_error,
@@ -2399,7 +2011,7 @@ mod tests {
     fn custom_check_policy_keeps_caller_name() {
         let name = OpenPitStringView::from_utf8("caller.check.start");
         let pointer = unsafe {
-            openpit_create_pretrade_custom_check_pre_trade_start_policy(
+            create_pre_trade_policy_with_start_hook(
                 name,
                 custom_check_fn,
                 custom_apply_report_fn,
@@ -2414,9 +2026,9 @@ mod tests {
             cstr_to_string(std::ptr::null_mut())
         );
 
-        let got = openpit_pretrade_check_pre_trade_start_policy_get_name(pointer);
+        let got = openpit_pretrade_pre_trade_policy_get_name(pointer);
         assert_eq!(string_view_to_string(got), "caller.check.start");
-        openpit_destroy_pretrade_check_pre_trade_start_policy(pointer);
+        openpit_destroy_pretrade_pre_trade_policy(pointer);
     }
 
     #[test]
@@ -2425,8 +2037,10 @@ mod tests {
         let pointer = unsafe {
             openpit_create_pretrade_custom_pre_trade_policy(
                 name,
-                custom_pre_trade_check_fn,
-                custom_apply_report_fn,
+                None,
+                Some(custom_pre_trade_check_fn),
+                Some(custom_apply_report_fn),
+                None,
                 custom_free_user_data_fn,
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
@@ -2444,10 +2058,10 @@ mod tests {
     }
 
     #[test]
-    fn custom_account_adjustment_policy_keeps_caller_name() {
+    fn custom_pre_trade_policy_with_account_adjustment_hook_keeps_caller_name() {
         let name = OpenPitStringView::from_utf8("caller.account.adjustment");
         let pointer = unsafe {
-            openpit_create_custom_account_adjustment_policy(
+            create_pre_trade_policy_with_account_adjustment_hook(
                 name,
                 custom_account_adjustment_apply_fn,
                 custom_free_user_data_fn,
@@ -2461,16 +2075,16 @@ mod tests {
             cstr_to_string(std::ptr::null_mut())
         );
 
-        let got = openpit_account_adjustment_policy_get_name(pointer);
+        let got = openpit_pretrade_pre_trade_policy_get_name(pointer);
         assert_eq!(string_view_to_string(got), "caller.account.adjustment");
-        openpit_destroy_account_adjustment_policy(pointer);
+        openpit_destroy_pretrade_pre_trade_policy(pointer);
     }
 
     #[test]
     fn custom_policy_create_rejects_null_empty_and_invalid_name() {
         let mut out_error = std::ptr::null_mut();
         let null_name = unsafe {
-            openpit_create_pretrade_custom_check_pre_trade_start_policy(
+            create_pre_trade_policy_with_start_hook(
                 OpenPitStringView::not_set(),
                 custom_check_fn,
                 custom_apply_report_fn,
@@ -2485,7 +2099,7 @@ mod tests {
         let empty = OpenPitStringView::from_utf8("");
         let mut out_error = std::ptr::null_mut();
         let empty_name = unsafe {
-            openpit_create_pretrade_custom_check_pre_trade_start_policy(
+            create_pre_trade_policy_with_start_hook(
                 empty,
                 custom_check_fn,
                 custom_apply_report_fn,
@@ -2500,7 +2114,7 @@ mod tests {
         let invalid_utf8 = [0xff_u8, 0x00];
         let mut out_error = std::ptr::null_mut();
         let invalid_name = unsafe {
-            openpit_create_pretrade_custom_check_pre_trade_start_policy(
+            create_pre_trade_policy_with_start_hook(
                 OpenPitStringView {
                     ptr: invalid_utf8.as_ptr(),
                     len: invalid_utf8.len(),
@@ -2521,7 +2135,7 @@ mod tests {
         let name_a = OpenPitStringView::from_utf8("custom.a");
         let name_b = OpenPitStringView::from_utf8("custom.b");
         let handle_a = unsafe {
-            openpit_create_pretrade_custom_check_pre_trade_start_policy(
+            create_pre_trade_policy_with_start_hook(
                 name_a,
                 custom_check_fn,
                 custom_apply_report_fn,
@@ -2531,7 +2145,7 @@ mod tests {
             )
         };
         let handle_b = unsafe {
-            openpit_create_pretrade_custom_check_pre_trade_start_policy(
+            create_pre_trade_policy_with_start_hook(
                 name_b,
                 custom_check_fn,
                 custom_apply_report_fn,
@@ -2543,16 +2157,16 @@ mod tests {
         assert!(!handle_a.is_null());
         assert!(!handle_b.is_null());
 
-        let got_a = openpit_pretrade_check_pre_trade_start_policy_get_name(handle_a);
-        let got_b = openpit_pretrade_check_pre_trade_start_policy_get_name(handle_b);
+        let got_a = openpit_pretrade_pre_trade_policy_get_name(handle_a);
+        let got_b = openpit_pretrade_pre_trade_policy_get_name(handle_b);
         assert_eq!(string_view_to_string(got_a), "custom.a");
         assert_eq!(string_view_to_string(got_b), "custom.b");
-        openpit_destroy_pretrade_check_pre_trade_start_policy(handle_a);
-        openpit_destroy_pretrade_check_pre_trade_start_policy(handle_b);
+        openpit_destroy_pretrade_pre_trade_policy(handle_a);
+        openpit_destroy_pretrade_pre_trade_policy(handle_b);
     }
 
     #[test]
-    fn add_main_and_account_adjustment_policy_to_builder() {
+    fn add_pre_trade_policies_with_main_and_account_adjustment_hooks_to_builder() {
         let builder = crate::engine::openpit_create_engine_builder(
             crate::engine::OpenPitSyncPolicy::Full as u8,
             std::ptr::null_mut(),
@@ -2562,8 +2176,10 @@ mod tests {
         let pre_trade_policy = unsafe {
             openpit_create_pretrade_custom_pre_trade_policy(
                 pre_trade_name,
-                custom_pre_trade_check_fn,
-                custom_apply_report_fn,
+                None,
+                Some(custom_pre_trade_check_fn),
+                Some(custom_apply_report_fn),
+                None,
                 custom_free_user_data_fn,
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
@@ -2584,7 +2200,7 @@ mod tests {
 
         let account_name = OpenPitStringView::from_utf8("caller.adjustment.add");
         let account_policy = unsafe {
-            openpit_create_custom_account_adjustment_policy(
+            create_pre_trade_policy_with_account_adjustment_hook(
                 account_name,
                 custom_account_adjustment_apply_fn,
                 custom_free_user_data_fn,
@@ -2597,13 +2213,13 @@ mod tests {
             "{}",
             cstr_to_string(std::ptr::null_mut())
         );
-        let ok = openpit_engine_builder_add_account_adjustment_policy(
+        let ok = openpit_engine_builder_add_pre_trade_policy(
             builder,
             account_policy,
             std::ptr::null_mut(),
         );
         assert!(ok, "{}", cstr_to_string(std::ptr::null_mut()));
-        openpit_destroy_account_adjustment_policy(account_policy);
+        openpit_destroy_pretrade_pre_trade_policy(account_policy);
 
         let engine = crate::engine::openpit_engine_builder_build(builder, std::ptr::null_mut());
         assert!(
@@ -2616,7 +2232,7 @@ mod tests {
     }
 
     #[test]
-    fn add_check_start_policy_to_builder_and_execute_paths() {
+    fn add_pre_trade_policy_with_start_hook_to_builder_and_execute_paths() {
         let builder = crate::engine::openpit_create_engine_builder(
             crate::engine::OpenPitSyncPolicy::Full as u8,
             std::ptr::null_mut(),
@@ -2624,7 +2240,7 @@ mod tests {
 
         let check_name = OpenPitStringView::from_utf8("caller.check.start.add");
         let check_policy = unsafe {
-            openpit_create_pretrade_custom_check_pre_trade_start_policy(
+            create_pre_trade_policy_with_start_hook(
                 check_name,
                 custom_check_fn,
                 custom_apply_report_fn,
@@ -2638,13 +2254,13 @@ mod tests {
             "{}",
             cstr_to_string(std::ptr::null_mut())
         );
-        let ok = openpit_engine_builder_add_check_pre_trade_start_policy(
+        let ok = openpit_engine_builder_add_pre_trade_policy(
             builder,
             check_policy,
             std::ptr::null_mut(),
         );
         assert!(ok, "{}", cstr_to_string(std::ptr::null_mut()));
-        openpit_destroy_pretrade_check_pre_trade_start_policy(check_policy);
+        openpit_destroy_pretrade_pre_trade_policy(check_policy);
 
         let engine = crate::engine::openpit_engine_builder_build(builder, std::ptr::null_mut());
         assert!(
@@ -2689,8 +2305,10 @@ mod tests {
         let pre_trade_policy = unsafe {
             openpit_create_pretrade_custom_pre_trade_policy(
                 pre_trade_name,
-                custom_pre_trade_check_fn,
-                custom_apply_report_fn,
+                None,
+                Some(custom_pre_trade_check_fn),
+                Some(custom_apply_report_fn),
+                None,
                 custom_free_user_data_fn,
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
@@ -2710,7 +2328,7 @@ mod tests {
 
         let account_name = OpenPitStringView::from_utf8("account.invoke");
         let account_policy = unsafe {
-            openpit_create_custom_account_adjustment_policy(
+            create_pre_trade_policy_with_account_adjustment_hook(
                 account_name,
                 custom_account_adjustment_apply_fn,
                 custom_free_user_data_fn,
@@ -2723,12 +2341,12 @@ mod tests {
             "{}",
             cstr_to_string(std::ptr::null_mut())
         );
-        assert!(openpit_engine_builder_add_account_adjustment_policy(
+        assert!(openpit_engine_builder_add_pre_trade_policy(
             builder,
             account_policy,
             std::ptr::null_mut()
         ));
-        openpit_destroy_account_adjustment_policy(account_policy);
+        openpit_destroy_pretrade_pre_trade_policy(account_policy);
 
         let engine = crate::engine::openpit_engine_builder_build(builder, std::ptr::null_mut());
         assert!(

@@ -67,7 +67,7 @@ class StrategyReport(openpit.ExecutionReport):
         self.report_tag = report_tag
 
 
-class CaptureStrategyOrderStartPolicy(openpit.pretrade.CheckPreTradeStartPolicy):
+class CaptureStrategyOrderStartCheck(openpit.pretrade.Policy):
     # @typing.override
     def __init__(self) -> None:
         self.orders: list[openpit.Order] = []
@@ -78,12 +78,12 @@ class CaptureStrategyOrderStartPolicy(openpit.pretrade.CheckPreTradeStartPolicy)
     # @typing.override
     @property
     def name(self) -> str:
-        return "CaptureStrategyOrderStartPolicy"
+        return "CaptureStrategyOrderStartCheck"
 
     # @typing.override
     def check_pre_trade_start(
         self,
-        ctx: openpit.pretrade.PreTradeContext,
+        ctx: openpit.pretrade.Context,
         order: openpit.Order,
     ) -> tuple[openpit.pretrade.PolicyReject, ...]:
         strategy_order = typing.cast(StrategyOrder, order)
@@ -103,7 +103,7 @@ class CaptureStrategyOrderStartPolicy(openpit.pretrade.CheckPreTradeStartPolicy)
         return False
 
 
-class StrategyTagPolicy(openpit.pretrade.PreTradePolicy):
+class StrategyTagPolicy(openpit.pretrade.Policy):
     # @typing.override
     def __init__(self) -> None:
         self.orders: list[openpit.Order] = []
@@ -119,7 +119,7 @@ class StrategyTagPolicy(openpit.pretrade.PreTradePolicy):
     # @typing.override
     def perform_pre_trade_check(
         self,
-        ctx: openpit.pretrade.PreTradeContext,
+        ctx: openpit.pretrade.Context,
         order: openpit.Order,
     ) -> openpit.pretrade.PolicyDecision:
         strategy_order = typing.cast(StrategyOrder, order)
@@ -161,14 +161,14 @@ def make_strategy_report(report_tag: str) -> StrategyReport:
 
 
 @pytest.mark.unit
-def test_custom_order_model_reaches_start_and_main_policy_callbacks() -> None:
-    start_policy = CaptureStrategyOrderStartPolicy()
-    main_policy = StrategyTagPolicy()
+def test_custom_order_model_reaches_start_and_execution_check_callbacks() -> None:
+    start_check = CaptureStrategyOrderStartCheck()
+    execution_check = StrategyTagPolicy()
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
-        .check_pre_trade_start_policy(policy=start_policy)
-        .pre_trade_policy(policy=main_policy)
+        .no_sync()
+        .pre_trade(policy=start_check)
+        .pre_trade(policy=execution_check)
         .build()
     )
     order = make_strategy_order("allowed")
@@ -176,28 +176,28 @@ def test_custom_order_model_reaches_start_and_main_policy_callbacks() -> None:
     start_result = engine.start_pre_trade(order=order)
 
     assert start_result.ok
-    assert start_policy.orders == [order]
-    assert start_policy.orders[0] is order
-    assert start_policy.strategy_tags == ["allowed"]
+    assert start_check.orders == [order]
+    assert start_check.orders[0] is order
+    assert start_check.strategy_tags == ["allowed"]
 
     execute_result = start_result.request.execute()
 
     assert execute_result.ok
-    assert main_policy.orders == [order]
-    assert main_policy.orders[0] is order
-    assert main_policy.strategy_tags == ["allowed"]
+    assert execution_check.orders == [order]
+    assert execution_check.orders[0] is order
+    assert execution_check.strategy_tags == ["allowed"]
     execute_result.reservation.rollback()
 
 
 @pytest.mark.unit
 def test_custom_order_model_rejects_blocked_strategy_tag() -> None:
-    start_policy = CaptureStrategyOrderStartPolicy()
-    main_policy = StrategyTagPolicy()
+    start_check = CaptureStrategyOrderStartCheck()
+    execution_check = StrategyTagPolicy()
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
-        .check_pre_trade_start_policy(policy=start_policy)
-        .pre_trade_policy(policy=main_policy)
+        .no_sync()
+        .pre_trade(policy=start_check)
+        .pre_trade(policy=execution_check)
         .build()
     )
     order = make_strategy_order("blocked")
@@ -205,8 +205,8 @@ def test_custom_order_model_rejects_blocked_strategy_tag() -> None:
     start_result = engine.start_pre_trade(order=order)
 
     assert start_result.ok
-    assert start_policy.orders[0] is order
-    assert start_policy.strategy_tags == ["blocked"]
+    assert start_check.orders[0] is order
+    assert start_check.strategy_tags == ["blocked"]
 
     execute_result = start_result.request.execute()
 
@@ -217,19 +217,19 @@ def test_custom_order_model_rejects_blocked_strategy_tag() -> None:
     assert execute_result.rejects[0].code == (
         openpit.pretrade.RejectCode.COMPLIANCE_RESTRICTION
     )
-    assert main_policy.orders[0] is order
-    assert main_policy.strategy_tags == ["blocked"]
+    assert execution_check.orders[0] is order
+    assert execution_check.strategy_tags == ["blocked"]
 
 
 @pytest.mark.unit
 def test_custom_execution_report_model_reaches_start_and_main_callbacks() -> None:
-    start_policy = CaptureStrategyOrderStartPolicy()
-    main_policy = StrategyTagPolicy()
+    start_check = CaptureStrategyOrderStartCheck()
+    execution_check = StrategyTagPolicy()
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
-        .check_pre_trade_start_policy(policy=start_policy)
-        .pre_trade_policy(policy=main_policy)
+        .no_sync()
+        .pre_trade(policy=start_check)
+        .pre_trade(policy=execution_check)
         .build()
     )
     report = make_strategy_report("fill-1")
@@ -237,9 +237,9 @@ def test_custom_execution_report_model_reaches_start_and_main_callbacks() -> Non
     post_trade = engine.apply_execution_report(report=report)
 
     assert post_trade.kill_switch_triggered is False
-    assert start_policy.reports == [report]
-    assert start_policy.reports[0] is report
-    assert start_policy.report_tags == ["fill-1"]
-    assert main_policy.reports == [report]
-    assert main_policy.reports[0] is report
-    assert main_policy.report_tags == ["fill-1"]
+    assert start_check.reports == [report]
+    assert start_check.reports[0] is report
+    assert start_check.report_tags == ["fill-1"]
+    assert execution_check.reports == [report]
+    assert execution_check.reports[0] is report
+    assert execution_check.report_tags == ["fill-1"]

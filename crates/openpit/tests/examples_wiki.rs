@@ -25,9 +25,9 @@ use openpit::pretrade::{
     PreTradeContext, PreTradePolicy, Reject, RejectCode, RejectScope, Rejects,
 };
 use openpit::{
-    AccountAdjustmentContext, AccountAdjustmentPolicy, Engine, ExecutionReportOperation,
-    FinancialImpact, HasOrderPrice, HasTradeAmount, Instrument, Mutation, Mutations,
-    OrderOperation, WithExecutionReportOperation, WithFinancialImpact,
+    AccountAdjustmentContext, Engine, ExecutionReportOperation, FinancialImpact, HasOrderPrice,
+    HasTradeAmount, Instrument, Mutation, Mutations, OrderOperation, WithExecutionReportOperation,
+    WithFinancialImpact,
 };
 
 type PitExecutionReport = WithExecutionReportOperation<WithFinancialImpact<()>>;
@@ -278,8 +278,8 @@ fn example_wiki_pipeline_start_stage_reject() -> Result<(), Box<dyn std::error::
     // Wiki example: pit.wiki/Pre-trade-Pipeline.md — Handle a Start-Stage Reservation
     // Keep this example in sync with the matching wiki example.
     let engine = Engine::<OrderOperation, PitExecutionReport>::builder()
-        .with_local_sync()
-        .check_pre_trade_start_policy(OrderValidationPolicy::new())
+        .no_sync()
+        .pre_trade(OrderValidationPolicy::new())
         .build()?;
     let order = aapl_usd_order("100", "185");
 
@@ -306,8 +306,8 @@ fn example_wiki_pipeline_main_stage_finalize() -> Result<(), Box<dyn std::error:
     // Wiki example: pit.wiki/Pre-trade-Pipeline.md — Execute the Main Stage and Finalize the Reservation
     // Keep this example in sync with the matching wiki example.
     let engine = Engine::<OrderOperation, PitExecutionReport>::builder()
-        .with_local_sync()
-        .check_pre_trade_start_policy(OrderValidationPolicy::new())
+        .no_sync()
+        .pre_trade(OrderValidationPolicy::new())
         .build()?;
     let order = aapl_usd_order("100", "185");
 
@@ -339,8 +339,8 @@ fn example_wiki_pipeline_shortcut_start_and_main() -> Result<(), Box<dyn std::er
     // Wiki example: pit.wiki/Getting-Started.md — Shortcut for Start + Main Stages
     // Keep this example in sync with the matching wiki example.
     let engine = Engine::<OrderOperation, PitExecutionReport>::builder()
-        .with_local_sync()
-        .check_pre_trade_start_policy(OrderValidationPolicy::new())
+        .no_sync()
+        .pre_trade(OrderValidationPolicy::new())
         .build()?;
     let order = aapl_usd_order("100", "185");
 
@@ -367,8 +367,8 @@ fn example_wiki_pipeline_apply_post_trade_feedback() -> Result<(), Box<dyn std::
     // Wiki example: pit.wiki/Pre-trade-Pipeline.md — Apply Post-Trade Feedback
     // Keep this example in sync with the matching wiki example.
     let engine = Engine::<OrderOperation, PitExecutionReport>::builder()
-        .with_local_sync()
-        .check_pre_trade_start_policy(OrderValidationPolicy::new())
+        .no_sync()
+        .pre_trade(OrderValidationPolicy::new())
         .build()?;
     let report = aapl_usd_report("-50", "3.4");
 
@@ -439,7 +439,9 @@ fn example_wiki_account_adjustments() -> Result<(), Box<dyn std::error::Error>> 
 
     // The engine validates the whole batch atomically.
     struct AcceptAllAdjustments;
-    impl AccountAdjustmentPolicy<AccountAdjustment> for AcceptAllAdjustments {
+    impl<Order, ExecutionReport> PreTradePolicy<Order, ExecutionReport, AccountAdjustment>
+        for AcceptAllAdjustments
+    {
         fn name(&self) -> &'static str {
             "AcceptAllAdjustments"
         }
@@ -454,8 +456,8 @@ fn example_wiki_account_adjustments() -> Result<(), Box<dyn std::error::Error>> 
         }
     }
     let engine = Engine::<(), (), AccountAdjustment>::builder()
-        .with_local_sync()
-        .account_adjustment_policy(AcceptAllAdjustments)
+        .no_sync()
+        .pre_trade(AcceptAllAdjustments)
         .build()?;
     let result = engine.apply_account_adjustment(account_id, &adjustments);
     assert!(result.is_ok());
@@ -488,7 +490,9 @@ fn example_wiki_account_adjustments_balance_limit_policy() -> Result<(), Box<dyn
         }
     }
 
-    impl<A: HasAssetDelta> AccountAdjustmentPolicy<A> for BalanceLimitPolicy {
+    impl<Order, ExecutionReport, A: HasAssetDelta> PreTradePolicy<Order, ExecutionReport, A>
+        for BalanceLimitPolicy
+    {
         fn name(&self) -> &str {
             "BalanceLimitPolicy"
         }
@@ -516,7 +520,7 @@ fn example_wiki_account_adjustments_balance_limit_policy() -> Result<(), Box<dyn
 
             if new_total > self.max_total {
                 return Err(Rejects::from(Reject::new(
-                    <Self as AccountAdjustmentPolicy<A>>::name(self),
+                    <Self as PreTradePolicy<(), (), A>>::name(self),
                     RejectScope::Account,
                     RejectCode::RiskLimitExceeded,
                     "cumulative adjustment exceeds limit",
@@ -569,8 +573,8 @@ fn example_wiki_account_adjustments_balance_limit_policy() -> Result<(), Box<dyn
 
     let policy = BalanceLimitPolicy::new(Volume::from_str("1000000")?);
     let engine = Engine::<(), (), SimpleAdjustment>::builder()
-        .with_local_sync()
-        .account_adjustment_policy(policy)
+        .no_sync()
+        .pre_trade(policy)
         .build()?;
 
     let result = engine.apply_account_adjustment(
@@ -597,8 +601,8 @@ fn example_wiki_policy_rollback_safety() -> Result<(), Box<dyn std::error::Error
     };
 
     let engine = Engine::<OrderOperation, PitExecutionReport>::builder()
-        .with_local_sync()
-        .pre_trade_policy(reserve_policy)
+        .no_sync()
+        .pre_trade(reserve_policy)
         .build()?;
 
     let request = engine.start_pre_trade(aapl_usd_order("10", "25"))?;
@@ -616,8 +620,8 @@ fn example_wiki_policy_notional_cap() -> Result<(), Box<dyn std::error::Error>> 
     // Wiki example: pit.wiki/Policy-API.md — Custom Main-Stage Policy → Rust
     // Keep this example in sync with the matching wiki example.
     let engine = Engine::<OrderOperation, PitExecutionReport>::builder()
-        .with_local_sync()
-        .pre_trade_policy(NotionalCapPolicy {
+        .no_sync()
+        .pre_trade(NotionalCapPolicy {
             max_abs_notional: Volume::from_str("1000")?,
         })
         .build()?;
@@ -741,8 +745,8 @@ fn example_wiki_policies_order_validation() -> Result<(), Box<dyn std::error::Er
     use openpit::pretrade::policies::OrderValidationPolicy;
 
     let engine = Engine::<OrderOperation, PitExecutionReport>::builder()
-        .with_local_sync()
-        .check_pre_trade_start_policy(OrderValidationPolicy::new())
+        .no_sync()
+        .pre_trade(OrderValidationPolicy::new())
         .build()?;
 
     let order = aapl_usd_order("100", "185");
@@ -758,7 +762,7 @@ fn example_wiki_policies_rate_limit() -> Result<(), Box<dyn std::error::Error>> 
 
     use openpit::pretrade::policies::{RateLimit, RateLimitBrokerBarrier, RateLimitPolicy};
 
-    let builder = Engine::<OrderOperation, PitExecutionReport>::builder().with_local_sync();
+    let builder = Engine::<OrderOperation, PitExecutionReport>::builder().no_sync();
     let policy = RateLimitPolicy::new(
         Some(RateLimitBrokerBarrier {
             limit: RateLimit {
@@ -771,7 +775,7 @@ fn example_wiki_policies_rate_limit() -> Result<(), Box<dyn std::error::Error>> 
         [],
         builder.storage_builder(),
     )?;
-    let engine = builder.check_pre_trade_start_policy(policy).build()?;
+    let engine = builder.pre_trade(policy).build()?;
 
     let order = aapl_usd_order("1", "100");
     engine.start_pre_trade(order)?.execute()?.commit();
@@ -800,8 +804,8 @@ fn example_wiki_policies_order_size_limit() -> Result<(), Box<dyn std::error::Er
     )?;
 
     let engine = Engine::<OrderOperation, PitExecutionReport>::builder()
-        .with_local_sync()
-        .check_pre_trade_start_policy(policy)
+        .no_sync()
+        .pre_trade(policy)
         .build()?;
 
     let order = aapl_usd_order("10", "100");
@@ -816,7 +820,7 @@ fn example_wiki_policies_pnl_bounds_killswitch() -> Result<(), Box<dyn std::erro
     use openpit::param::{Asset, Pnl};
     use openpit::pretrade::policies::{PnlBoundsBrokerBarrier, PnlBoundsKillSwitchPolicy};
 
-    let builder = Engine::<OrderOperation, PitExecutionReport>::builder().with_local_sync();
+    let builder = Engine::<OrderOperation, PitExecutionReport>::builder().no_sync();
     let policy = PnlBoundsKillSwitchPolicy::new(
         [PnlBoundsBrokerBarrier {
             settlement_asset: Asset::new("USD")?,
@@ -826,7 +830,7 @@ fn example_wiki_policies_pnl_bounds_killswitch() -> Result<(), Box<dyn std::erro
         [],
         builder.storage_builder(),
     )?;
-    let engine = builder.check_pre_trade_start_policy(policy).build()?;
+    let engine = builder.pre_trade(policy).build()?;
 
     let order = aapl_usd_order("1", "100");
     engine.start_pre_trade(order)?.execute()?.commit();

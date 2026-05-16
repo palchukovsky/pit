@@ -8,8 +8,8 @@ def test_pretrade_entities_have_rust_like_module_paths() -> None:
     assert hasattr(openpit, "ExecutionReport")
     assert hasattr(openpit, "PostTradeResult")
     assert hasattr(openpit, "Mutation")
-    assert not hasattr(openpit, "PreTradeRequest")
-    assert not hasattr(openpit, "PreTradeReservation")
+    assert not hasattr(openpit, "Request")
+    assert not hasattr(openpit, "Reservation")
     assert not hasattr(openpit, "Reject")
     assert not hasattr(openpit, "RejectCode")
 
@@ -18,13 +18,22 @@ def test_pretrade_entities_have_rust_like_module_paths() -> None:
     assert openpit.Order.__module__ == "openpit.core"
     assert openpit.ExecutionReport.__module__ == "openpit.core"
     assert openpit.Mutation.__module__ == "openpit.core"
-    assert openpit.pretrade.PreTradeRequest.__module__ == "openpit.pretrade"
-    assert openpit.pretrade.PreTradeReservation.__module__ == "openpit.pretrade"
+    assert openpit.pretrade.Request.__module__ == "openpit.pretrade"
+    assert openpit.pretrade.Reservation.__module__ == "openpit.pretrade"
+    assert not hasattr(openpit.pretrade, "PreTradeRequest")
+    assert not hasattr(openpit.pretrade, "PreTradeReservation")
     assert not hasattr(openpit.pretrade, "ExecutionReport")
     assert not hasattr(openpit.pretrade, "Mutation")
     assert openpit.pretrade.Reject.__module__ == "openpit.pretrade"
     assert openpit.pretrade.RejectCode.__module__ == "openpit.pretrade"
     assert openpit.PostTradeResult.__module__ == "openpit.pretrade"
+
+    assert openpit.account_adjustment.Adjustment.__module__ == (
+        "openpit.account_adjustment"
+    )
+    assert openpit.account_adjustment.Amount.__module__ == "openpit.account_adjustment"
+    assert not hasattr(openpit.account_adjustment, "AccountAdjustment")
+    assert not hasattr(openpit.account_adjustment, "AccountAdjustmentAmount")
 
 
 def test_builtins_policies_have_rust_like_module_paths() -> None:

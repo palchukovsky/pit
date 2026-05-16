@@ -11,7 +11,7 @@ def test_rate_limit_rejects_second_order_in_window() -> None:
     policies = openpit.pretrade.policies
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
+        .no_sync()
         .builtin(
             policies.build_rate_limit().broker_barrier(
                 policies.RateLimitBrokerBarrier(
@@ -38,7 +38,7 @@ def test_pnl_kill_switch_triggers_when_pnl_outside_bounds() -> None:
     policies = openpit.pretrade.policies
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
+        .no_sync()
         .builtin(
             policies.build_pnl_bounds_killswitch()
             .broker_barriers(
@@ -141,7 +141,7 @@ def test_order_size_limit_paths(
     policies = openpit.pretrade.policies
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
+        .no_sync()
         .builtin(
             policies.build_order_size_limit()
             .broker_barrier(_huge_broker_barrier())
@@ -193,7 +193,7 @@ def test_order_size_limit_paths(
 def test_order_size_limit_policy_asset_barrier_requires_asset_string() -> None:
     policies = openpit.pretrade.policies
     with pytest.raises((TypeError, ValueError)):
-        openpit.Engine.builder().with_local_sync().builtin(
+        openpit.Engine.builder().no_sync().builtin(
             policies.build_order_size_limit()
             .broker_barrier(_huge_broker_barrier())
             .asset_barriers(
@@ -212,7 +212,7 @@ def test_order_size_limit_policy_asset_barrier_requires_asset_string() -> None:
 def test_pnl_kill_switch_requires_asset_string() -> None:
     policies = openpit.pretrade.policies
     with pytest.raises(TypeError, match="asset must be a str"):
-        openpit.Engine.builder().with_local_sync().builtin(
+        openpit.Engine.builder().no_sync().builtin(
             policies.build_pnl_bounds_killswitch().broker_barriers(
                 policies.PnlBoundsBrokerBarrier(
                     settlement_asset=123,  # type: ignore[arg-type]
@@ -226,7 +226,7 @@ def test_pnl_kill_switch_requires_asset_string() -> None:
 def test_pnl_kill_switch_requires_at_least_one_bound() -> None:
     policies = openpit.pretrade.policies
     with pytest.raises(ValueError):
-        openpit.Engine.builder().with_local_sync().builtin(
+        openpit.Engine.builder().no_sync().builtin(
             policies.build_pnl_bounds_killswitch().broker_barriers(
                 policies.PnlBoundsBrokerBarrier(
                     settlement_asset="USD",
@@ -240,7 +240,7 @@ def test_rate_limit_asset_barrier_rejects_when_limit_is_exceeded() -> None:
     policies = openpit.pretrade.policies
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
+        .no_sync()
         .builtin(
             policies.build_rate_limit().asset_barriers(
                 policies.RateLimitAssetBarrier(
@@ -268,7 +268,7 @@ def test_rate_limit_account_barrier_independent_of_asset() -> None:
     policies = openpit.pretrade.policies
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
+        .no_sync()
         .builtin(
             policies.build_rate_limit().account_barriers(
                 policies.RateLimitAccountBarrier(
@@ -296,7 +296,7 @@ def test_rate_limit_account_asset_barrier_specific_to_pair() -> None:
     policies = openpit.pretrade.policies
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
+        .no_sync()
         .builtin(
             policies.build_rate_limit().account_asset_barriers(
                 policies.RateLimitAccountAssetBarrier(
@@ -332,7 +332,7 @@ def test_order_size_limit_account_asset_overrides_asset_baseline() -> None:
     policies = openpit.pretrade.policies
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
+        .no_sync()
         .builtin(
             policies.build_order_size_limit()
             .broker_barrier(_huge_broker_barrier())
@@ -376,7 +376,7 @@ def test_order_size_limit_unknown_settlement_passes() -> None:
     policies = openpit.pretrade.policies
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
+        .no_sync()
         .builtin(
             policies.build_order_size_limit()
             .broker_barrier(_huge_broker_barrier())
@@ -403,7 +403,7 @@ def test_with_full_sync_uses_full_locking_for_builtin_policies() -> None:
     policies = openpit.pretrade.policies
     engine = (
         openpit.Engine.builder()
-        .with_full_sync()
+        .full_sync()
         .builtin(
             policies.build_rate_limit().broker_barrier(
                 policies.RateLimitBrokerBarrier(
@@ -458,7 +458,7 @@ def test_engine_full_sync_concurrent_start_pre_trade_is_safe() -> None:
 
     engine = (
         openpit.Engine.builder()
-        .with_full_sync()
+        .full_sync()
         .builtin(
             policies.build_rate_limit().account_barriers(
                 *[
@@ -496,7 +496,7 @@ def test_engine_full_sync_concurrent_broker_rate_limit_is_safe() -> None:
 
     engine = (
         openpit.Engine.builder()
-        .with_full_sync()
+        .full_sync()
         .builtin(
             policies.build_rate_limit().broker_barrier(
                 policies.RateLimitBrokerBarrier(
@@ -523,7 +523,7 @@ def test_engine_full_sync_concurrent_broker_rate_limit_is_safe() -> None:
 def test_rate_limit_zero_window_rejected_by_builder() -> None:
     policies = openpit.pretrade.policies
     with pytest.raises(ValueError, match="rate limit window must be positive"):
-        openpit.Engine.builder().with_local_sync().builtin(
+        openpit.Engine.builder().no_sync().builtin(
             policies.build_rate_limit().broker_barrier(
                 policies.RateLimitBrokerBarrier(
                     limit=policies.RateLimit(

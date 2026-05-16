@@ -44,7 +44,6 @@ typedef struct OpenPitAccountAdjustmentBounds OpenPitAccountAdjustmentBounds;
 typedef struct OpenPitAccountAdjustmentBoundsOptional
     OpenPitAccountAdjustmentBoundsOptional;
 typedef struct OpenPitAccountAdjustmentContext OpenPitAccountAdjustmentContext;
-typedef struct OpenPitAccountAdjustmentPolicy OpenPitAccountAdjustmentPolicy;
 typedef struct OpenPitAccountAdjustmentPositionOperation
     OpenPitAccountAdjustmentPositionOperation;
 typedef struct OpenPitAccountAdjustmentPositionOperationOptional
@@ -102,8 +101,6 @@ typedef struct OpenPitParamQuantityOptional OpenPitParamQuantityOptional;
 typedef struct OpenPitParamTradeAmount OpenPitParamTradeAmount;
 typedef struct OpenPitParamVolume OpenPitParamVolume;
 typedef struct OpenPitParamVolumeOptional OpenPitParamVolumeOptional;
-typedef struct OpenPitPretradeCheckPreTradeStartPolicy
-    OpenPitPretradeCheckPreTradeStartPolicy;
 typedef struct OpenPitPretradeContext OpenPitPretradeContext;
 typedef struct OpenPitPretradePoliciesOrderSizeAccountAssetBarrier
     OpenPitPretradePoliciesOrderSizeAccountAssetBarrier;
@@ -1589,7 +1586,8 @@ typedef void (*OpenPitMutationFreeFn)(
 );
 
 /**
- * Callback used by a custom start-stage policy to validate one order.
+ * Callback used by a custom pre-trade policy to validate one order before a
+ * deferred pre-trade request is created.
  *
  * Contract:
  * - `ctx` is a read-only context valid only for the duration of the
@@ -1611,49 +1609,14 @@ typedef void (*OpenPitMutationFreeFn)(
  * - `user_data` is passed through unchanged from policy creation.
  */
 typedef OpenPitRejectList *
-(*OpenPitPretradeCheckPreTradeStartPolicyCheckPreTradeStartFn)(
+(*OpenPitPretradePreTradePolicyCheckPreTradeStartFn)(
     const OpenPitPretradeContext * ctx,
     const OpenPitOrder * order,
     void * user_data
 );
 
 /**
- * Callback used by a custom start-stage policy to observe an execution report.
- *
- * Contract:
- * - `report` points to a read-only report view valid only for the duration
- *   of the callback.
- * - `report` is passed as a borrowed view and is not copied before the
- *   callback runs.
- * - If the callback wants to keep any data from `report`, it must copy that
- *   data before returning.
- * - Return `true` if the policy state changed and the engine should keep the
- *   update.
- * - Return `false` when nothing changed.
- * - `user_data` is passed through unchanged from policy creation.
- */
-typedef bool (*OpenPitPretradeCheckPreTradeStartPolicyApplyExecutionReportFn)(
-    const OpenPitExecutionReport * report,
-    void * user_data
-);
-
-/**
- * Callback invoked when the last reference to a custom start-stage policy is
- * released and the policy object is about to be destroyed.
- *
- * Contract:
- * - Called exactly once, on the thread that drops the last policy reference.
- * - After this callback returns, no further callbacks will be invoked for
- *   this policy instance.
- * - `user_data` is the same value that was passed at policy creation.
- * - The callback must release any resources associated with `user_data`.
- */
-typedef void (*OpenPitPretradeCheckPreTradeStartPolicyFreeUserDataFn)(
-    void * user_data
-);
-
-/**
- * Callback used by a custom main-stage policy to perform a pre-trade check.
+ * Callback used by a custom pre-trade policy to perform a main-stage check.
  *
  * Contract:
  * - `ctx` is a read-only context valid only for the duration of the
@@ -1676,7 +1639,8 @@ typedef void (*OpenPitPretradeCheckPreTradeStartPolicyFreeUserDataFn)(
  *   callback returns.
  * - `user_data` is passed through unchanged from policy creation.
  */
-typedef OpenPitRejectList * (*OpenPitPretradePreTradePolicyCheckFn)(
+typedef OpenPitRejectList *
+(*OpenPitPretradePreTradePolicyPerformPreTradeCheckFn)(
     const OpenPitPretradeContext * ctx,
     const OpenPitOrder * order,
     OpenPitMutations * mutations,
@@ -1684,7 +1648,7 @@ typedef OpenPitRejectList * (*OpenPitPretradePreTradePolicyCheckFn)(
 );
 
 /**
- * Callback used by a custom main-stage policy to observe an execution report.
+ * Callback used by a custom pre-trade policy to observe an execution report.
  *
  * Contract:
  * - `report` points to a read-only report view valid only for the duration
@@ -1693,9 +1657,8 @@ typedef OpenPitRejectList * (*OpenPitPretradePreTradePolicyCheckFn)(
  *   callback runs.
  * - If the callback wants to keep any data from `report`, it must copy that
  *   data before returning.
- * - Return `true` if the policy state changed and the engine should keep the
- *   update.
- * - Return `false` when nothing changed.
+ * - Return `true` when this policy reports a kill-switch trigger.
+ * - Return `false` otherwise.
  * - `user_data` is passed through unchanged from policy creation.
  */
 typedef bool (*OpenPitPretradePreTradePolicyApplyExecutionReportFn)(
@@ -1704,22 +1667,7 @@ typedef bool (*OpenPitPretradePreTradePolicyApplyExecutionReportFn)(
 );
 
 /**
- * Callback invoked when the last reference to a custom main-stage policy is
- * released and the policy object is about to be destroyed.
- *
- * Contract:
- * - Called exactly once, on the thread that drops the last policy reference.
- * - After this callback returns, no further callbacks will be invoked for
- *   this policy instance.
- * - `user_data` is the same value that was passed at policy creation.
- * - The callback must release any resources associated with `user_data`.
- */
-typedef void (*OpenPitPretradePreTradePolicyFreeUserDataFn)(
-    void * user_data
-);
-
-/**
- * Callback used by a custom account-adjustment policy to validate one
+ * Callback used by a custom pre-trade policy to validate one account
  * adjustment.
  *
  * Contract:
@@ -1741,7 +1689,8 @@ typedef void (*OpenPitPretradePreTradePolicyFreeUserDataFn)(
  * - Returned reject list ownership is transferred to the callee.
  * - `user_data` is passed through unchanged from policy creation.
  */
-typedef OpenPitRejectList * (*OpenPitAccountAdjustmentPolicyApplyFn)(
+typedef OpenPitRejectList *
+(*OpenPitPretradePreTradePolicyApplyAccountAdjustmentFn)(
     const OpenPitAccountAdjustmentContext * ctx,
     OpenPitParamAccountId account_id,
     const OpenPitAccountAdjustment * adjustment,
@@ -1750,8 +1699,8 @@ typedef OpenPitRejectList * (*OpenPitAccountAdjustmentPolicyApplyFn)(
 );
 
 /**
- * Callback invoked when the last reference to a custom account-adjustment
- * policy is released and the policy object is about to be destroyed.
+ * Callback invoked when the last reference to a custom pre-trade policy is
+ * released and the policy object is about to be destroyed.
  *
  * Contract:
  * - Called exactly once, on the thread that drops the last policy reference.
@@ -1760,7 +1709,7 @@ typedef OpenPitRejectList * (*OpenPitAccountAdjustmentPolicyApplyFn)(
  * - `user_data` is the same value that was passed at policy creation.
  * - The callback must release any resources associated with `user_data`.
  */
-typedef void (*OpenPitAccountAdjustmentPolicyFreeUserDataFn)(
+typedef void (*OpenPitPretradePreTradePolicyFreeUserDataFn)(
     void * user_data
 );
 
@@ -4024,67 +3973,45 @@ bool openpit_engine_builder_add_builtin_pnl_bounds_killswitch_policy(
     OpenPitOutError out_error
 );
 
-void openpit_destroy_pretrade_check_pre_trade_start_policy(
-    OpenPitPretradeCheckPreTradeStartPolicy * policy
-);
-
+/**
+ * Destroys the caller-owned pointer for a pre-trade policy.
+ *
+ * Lifetime contract:
+ * - Call this exactly once for each pointer that was returned to the caller
+ *   by a custom policy create function.
+ * - After this call the pointer is no longer valid.
+ * - Passing a null pointer is allowed and has no effect.
+ * - This function always succeeds.
+ * - If the policy was previously added to the engine builder, the engine
+ *   keeps its own reference and may continue using the policy.
+ * - Destroying this caller-owned pointer does not remove the policy from the
+ *   engine.
+ */
 void openpit_destroy_pretrade_pre_trade_policy(
     OpenPitPretradePreTradePolicy * policy
 );
 
-void openpit_destroy_account_adjustment_policy(
-    OpenPitAccountAdjustmentPolicy * policy
-);
-
-OpenPitStringView openpit_pretrade_check_pre_trade_start_policy_get_name(
-    const OpenPitPretradeCheckPreTradeStartPolicy * policy
-);
-
+/**
+ * Returns the stable policy name for a pre-trade policy pointer.
+ *
+ * Contract:
+ * - This function never fails.
+ * - `policy` must be a valid non-null pointer.
+ * - The returned view does not own memory.
+ * - The view remains valid while the policy object is alive and its name is
+ *   not changed.
+ * - Passing an invalid pointer aborts the call.
+ */
 OpenPitStringView openpit_pretrade_pre_trade_policy_get_name(
     const OpenPitPretradePreTradePolicy * policy
 );
 
-OpenPitStringView openpit_account_adjustment_policy_get_name(
-    const OpenPitAccountAdjustmentPolicy * policy
-);
-
 /**
- * Adds a start-stage policy to the engine builder.
- *
- * Why it exists:
- * - Registers a policy that runs before the main pre-trade stage.
+ * Adds a pre-trade policy to the engine builder.
  *
  * Contract:
  * - `builder` must be a valid engine builder pointer.
- * - `policy` must be a valid non-null start-stage policy pointer.
- *
- * Success:
- * - returns `true` and the builder retains its own reference to the policy.
- *
- * Error:
- * - returns `false` when the builder or policy cannot be used;
- * - if `out_error` is not null, writes a caller-owned `OpenPitSharedString`
- *   error handle that MUST be released with `openpit_destroy_shared_string`.
- *
- * Lifetime contract:
- * - The engine builder retains its own reference to the policy object.
- * - The caller still owns the passed pointer and must release that local
- *   pointer separately with
- *   `openpit_destroy_pretrade_check_pre_trade_start_policy` when it is no
- *   longer needed.
- */
-bool openpit_engine_builder_add_check_pre_trade_start_policy(
-    OpenPitEngineBuilder * builder,
-    OpenPitPretradeCheckPreTradeStartPolicy * policy,
-    OpenPitOutError out_error
-);
-
-/**
- * Adds a main-stage pre-trade policy to the engine builder.
- *
- * Contract:
- * - `builder` must be a valid engine builder pointer.
- * - `policy` must be a valid non-null main-stage policy pointer.
+ * - `policy` must be a valid non-null pre-trade policy pointer.
  *
  * Success:
  * - returns `true` and the builder retains its own reference to the policy.
@@ -4103,33 +4030,6 @@ bool openpit_engine_builder_add_check_pre_trade_start_policy(
 bool openpit_engine_builder_add_pre_trade_policy(
     OpenPitEngineBuilder * builder,
     OpenPitPretradePreTradePolicy * policy,
-    OpenPitOutError out_error
-);
-
-/**
- * Adds an account-adjustment policy to the engine builder.
- *
- * Contract:
- * - `builder` must be a valid engine builder pointer.
- * - `policy` must be a valid non-null account-adjustment policy pointer.
- *
- * Success:
- * - returns `true` and the builder retains its own reference to the policy.
- *
- * Error:
- * - returns `false` when the builder or policy cannot be used;
- * - if `out_error` is not null, writes a caller-owned `OpenPitSharedString`
- *   error handle that MUST be released with `openpit_destroy_shared_string`.
- *
- * Lifetime contract:
- * - The engine builder retains its own reference to the policy object.
- * - The caller still owns the passed pointer and must release that local
- *   pointer separately with `openpit_destroy_account_adjustment_policy` when
- *   it is no longer needed.
- */
-bool openpit_engine_builder_add_account_adjustment_policy(
-    OpenPitEngineBuilder * builder,
-    OpenPitAccountAdjustmentPolicy * policy,
     OpenPitOutError out_error
 );
 
@@ -4163,70 +4063,22 @@ bool openpit_mutations_push(
 );
 
 /**
- * Creates a custom start-stage policy from caller-provided callbacks.
- *
- * Why it exists:
- * - Lets the caller implement policy logic outside the engine and plug it
- *   into the same builder flow as built-in policies.
+ * Creates a custom pre-trade policy from caller-provided callbacks.
  *
  * Contract:
  * - `name` must point to a valid, null-terminated string for the duration of
  *   the call.
- * - `check_fn`, `apply_fn`, and `free_user_data_fn` must remain callable for
- *   as long as the policy may still be used by either the caller pointer or
- *   the engine.
- * - `free_user_data_fn` will be called exactly once, when the last reference
- *   to the policy is released.
- * - `user_data` is opaque to the SDK: the engine never inspects,
- *   dereferences, or frees it; it is forwarded verbatim to the registered
- *   callbacks. Lifetime, thread-safety, and meaning of the pointed-at state
- *   are entirely the caller's responsibility. Under
- *   `OpenPitSyncPolicy_Local` or `OpenPitSyncPolicy_Account`, the caller
- *   serialises per-handle invocation per the SDK threading contract; under
- *   `OpenPitSyncPolicy_Full`, the caller is responsible for making any state
- *   reachable through `user_data` safe under concurrent invocation.
- *
- * Success:
- * - returns a new caller-owned policy object.
- *
- * Error:
- * - returns null when `name` is invalid;
- * - if `out_error` is not null, writes a caller-owned `OpenPitSharedString`
- *   error handle that MUST be released with `openpit_destroy_shared_string`.
- *
- * Lifetime contract:
- * - The policy stores its own copy of `name`; the caller may release the
- *   input string after this function returns.
- * - The returned pointer is owned by the caller and must be released with
- *   `openpit_destroy_pretrade_check_pre_trade_start_policy` when no longer
- *   needed.
- * - If the policy is added to the engine builder, the engine keeps its own
- *   reference, but the caller must still release the caller-owned pointer.
- * - `free_user_data_fn` runs once the last reference to the policy is
- *   released; when the engine is the final holder, it runs as part of engine
- *   destruction.
- */
-OpenPitPretradeCheckPreTradeStartPolicy *
-openpit_create_pretrade_custom_check_pre_trade_start_policy(
-    OpenPitStringView name,
-    OpenPitPretradeCheckPreTradeStartPolicyCheckPreTradeStartFn check_fn,
-    OpenPitPretradeCheckPreTradeStartPolicyApplyExecutionReportFn apply_execution_report_fn,
-    OpenPitPretradeCheckPreTradeStartPolicyFreeUserDataFn free_user_data_fn,
-    void * user_data,
-    OpenPitOutError out_error
-);
-
-/**
- * Creates a custom main-stage pre-trade policy from caller-provided callbacks.
- *
- * Contract:
- * - `name` must point to a valid, null-terminated string for the duration of
- *   the call.
- * - `check_fn`, `apply_fn`, and `free_user_data_fn` must remain callable for
- *   as long as the policy may still be used by either the caller pointer or
- *   the engine.
- * - Custom policy callbacks can register commit/rollback mutations through
- *   the mutations pointer passed to `check_fn`.
+ * - `check_pre_trade_start_fn`, `perform_pre_trade_check_fn`,
+ *   `apply_execution_report_fn`, and `apply_account_adjustment_fn` may be
+ *   null.
+ * - A null `check_pre_trade_start_fn`, `perform_pre_trade_check_fn`, or
+ *   `apply_account_adjustment_fn` means that hook accepts by default.
+ * - A null `apply_execution_report_fn` means that hook returns `false`.
+ * - Non-null callbacks and `free_user_data_fn` must remain callable for as
+ *   long as the policy may still be used by either the caller pointer or the
+ *   engine.
+ * - Custom main-stage and account-adjustment callbacks can register
+ *   commit/rollback mutations through their `mutations` pointer.
  * - `free_user_data_fn` will be called exactly once, when the last reference
  *   to the policy is released.
  * - `user_data` is opaque to the SDK: the engine never inspects,
@@ -4259,58 +4111,11 @@ openpit_create_pretrade_custom_check_pre_trade_start_policy(
  */
 OpenPitPretradePreTradePolicy * openpit_create_pretrade_custom_pre_trade_policy(
     OpenPitStringView name,
-    OpenPitPretradePreTradePolicyCheckFn check_fn,
-    OpenPitPretradePreTradePolicyApplyExecutionReportFn apply_fn,
+    OpenPitPretradePreTradePolicyCheckPreTradeStartFn check_pre_trade_start_fn,
+    OpenPitPretradePreTradePolicyPerformPreTradeCheckFn perform_pre_trade_check_fn,
+    OpenPitPretradePreTradePolicyApplyExecutionReportFn apply_execution_report_fn,
+    OpenPitPretradePreTradePolicyApplyAccountAdjustmentFn apply_account_adjustment_fn,
     OpenPitPretradePreTradePolicyFreeUserDataFn free_user_data_fn,
-    void * user_data,
-    OpenPitOutError out_error
-);
-
-/**
- * Creates a custom account-adjustment policy from caller-provided callbacks.
- *
- * Contract:
- * - `name` must point to a valid, null-terminated string for the duration of
- *   the call.
- * - `apply_fn` and `free_user_data_fn` must remain callable for as long as
- *   the policy may still be used by either the caller pointer or the engine.
- * - Custom policy callbacks can register commit/rollback mutations through
- *   the mutations pointer passed to `apply_fn`.
- * - `free_user_data_fn` will be called exactly once, when the last reference
- *   to the policy is released.
- * - `user_data` is opaque to the SDK: the engine never inspects,
- *   dereferences, or frees it; it is forwarded verbatim to the registered
- *   callbacks. Lifetime, thread-safety, and meaning of the pointed-at state
- *   are entirely the caller's responsibility. Under
- *   `OpenPitSyncPolicy_Local` or `OpenPitSyncPolicy_Account`, the caller
- *   serialises per-handle invocation per the SDK threading contract; under
- *   `OpenPitSyncPolicy_Full`, the caller is responsible for making any state
- *   reachable through `user_data` safe under concurrent invocation.
- *
- * Success:
- * - returns a new caller-owned policy object.
- *
- * Error:
- * - returns null when `name` is invalid;
- * - if `out_error` is not null, writes a caller-owned `OpenPitSharedString`
- *   error handle that MUST be released with `openpit_destroy_shared_string`.
- *
- * Lifetime contract:
- * - The policy stores its own copy of `name`; the caller may release the
- *   input string after this function returns.
- * - The returned pointer is owned by the caller and must be released with
- *   `openpit_destroy_account_adjustment_policy` when no longer needed.
- * - If the policy is added to the engine builder, the engine keeps its own
- *   reference, but the caller must still release the caller-owned pointer.
- * - `free_user_data_fn` runs once the last reference to the policy is
- *   released; when the engine is the final holder, it runs as part of engine
- *   destruction.
- */
-OpenPitAccountAdjustmentPolicy *
-openpit_create_custom_account_adjustment_policy(
-    OpenPitStringView name,
-    OpenPitAccountAdjustmentPolicyApplyFn apply_fn,
-    OpenPitAccountAdjustmentPolicyFreeUserDataFn free_user_data_fn,
     void * user_data,
     OpenPitOutError out_error
 );

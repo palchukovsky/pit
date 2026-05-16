@@ -54,7 +54,7 @@ func multithreadTestOrder(t *testing.T, accountID uint64) model.Order {
 
 func buildFullSyncRateLimitEngine(t *testing.T, maxOrders uint) *Engine {
 	t.Helper()
-	engine, err := NewEngineBuilder().WithFullSync().
+	engine, err := NewEngineBuilder().FullSync().
 		Builtin(policies.BuildRateLimit().
 			BrokerBarrier(policies.RateLimitBrokerBarrier{
 				Limit: policies.RateLimit{
@@ -81,7 +81,7 @@ func buildFullSyncAccountRateLimitEngine(t *testing.T, maxOrders uint, accounts 
 			AccountID: param.NewAccountIDFromInt(uint64(i)), //nolint:gosec // i is always non-negative
 		}
 	}
-	engine, err := NewEngineBuilder().WithFullSync().
+	engine, err := NewEngineBuilder().FullSync().
 		Builtin(policies.BuildRateLimit().AccountBarriers(barriers...)).
 		Build()
 	if err != nil {
@@ -102,7 +102,7 @@ func buildAccountSyncAccountRateLimitEngine(t *testing.T, maxOrders uint, accoun
 			AccountID: param.NewAccountIDFromInt(uint64(i)), //nolint:gosec // i is always non-negative
 		}
 	}
-	engine, err := NewEngineBuilder().WithAccountSync().
+	engine, err := NewEngineBuilder().AccountSync().
 		Builtin(policies.BuildRateLimit().AccountBarriers(barriers...)).
 		Build()
 	if err != nil {
@@ -301,7 +301,7 @@ func TestEngineFullSyncConcurrentAccountRateLimitIsSafe(t *testing.T) {
 }
 
 // TestRateLimitAccountSyncConcurrentLoad verifies correct behavior under the
-// WithAccountSync engine configuration when the client routes orders through
+// AccountSync engine configuration when the client routes orders through
 // account-sharded queues: calls for the same account are sequential, while
 // different shards invoke the same engine concurrently.
 func TestRateLimitAccountSyncConcurrentLoad(t *testing.T) {

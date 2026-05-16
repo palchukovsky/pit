@@ -29,7 +29,7 @@ import (
 )
 
 func TestBuiltinRateLimitBrokerAxisHappyAndReject(t *testing.T) {
-	engine, err := NewEngineBuilder().WithLocalSync().
+	engine, err := NewEngineBuilder().NoSync().
 		Builtin(policies.BuildRateLimit().
 			BrokerBarrier(policies.RateLimitBrokerBarrier{
 				Limit: policies.RateLimit{MaxOrders: 1, Window: 60 * time.Second},
@@ -72,7 +72,7 @@ func TestBuiltinRateLimitBrokerAxisHappyAndReject(t *testing.T) {
 
 func TestBuiltinRateLimitAssetAxisHappyAndReject(t *testing.T) {
 	usd := builtinTestAsset(t, "USD")
-	engine, err := NewEngineBuilder().WithLocalSync().
+	engine, err := NewEngineBuilder().NoSync().
 		Builtin(policies.BuildRateLimit().
 			AssetBarriers(policies.RateLimitAssetBarrier{
 				Limit:           policies.RateLimit{MaxOrders: 1, Window: 60 * time.Second},
@@ -109,7 +109,7 @@ func TestBuiltinRateLimitAssetAxisHappyAndReject(t *testing.T) {
 }
 
 func TestBuiltinRateLimitAccountAxisHappyAndReject(t *testing.T) {
-	engine, err := NewEngineBuilder().WithLocalSync().
+	engine, err := NewEngineBuilder().NoSync().
 		Builtin(policies.BuildRateLimit().
 			AccountBarriers(policies.RateLimitAccountBarrier{
 				Limit:     policies.RateLimit{MaxOrders: 1, Window: 60 * time.Second},
@@ -156,7 +156,7 @@ func TestBuiltinRateLimitAccountAxisHappyAndReject(t *testing.T) {
 
 func TestBuiltinRateLimitAccountAssetAxisHappyAndReject(t *testing.T) {
 	usd := builtinTestAsset(t, "USD")
-	engine, err := NewEngineBuilder().WithLocalSync().
+	engine, err := NewEngineBuilder().NoSync().
 		Builtin(policies.BuildRateLimit().
 			AccountAssetBarriers(policies.RateLimitAccountAssetBarrier{
 				Limit:           policies.RateLimit{MaxOrders: 1, Window: 60 * time.Second},
@@ -204,7 +204,7 @@ func TestBuiltinRateLimitAccountAssetAxisHappyAndReject(t *testing.T) {
 
 func TestBuiltinRateLimitCombinedAxesHappyAndReject(t *testing.T) {
 	usd := builtinTestAsset(t, "USD")
-	engine, err := NewEngineBuilder().WithLocalSync().
+	engine, err := NewEngineBuilder().NoSync().
 		Builtin(policies.BuildRateLimit().
 			BrokerBarrier(policies.RateLimitBrokerBarrier{
 				Limit: policies.RateLimit{MaxOrders: 1, Window: 60 * time.Second},
@@ -253,7 +253,7 @@ func TestBuiltinRateLimitCombinedAxesHappyAndReject(t *testing.T) {
 }
 
 func TestBuiltinRateLimitWithFullSyncDoesNotPanic(t *testing.T) {
-	engine, err := NewEngineBuilder().WithFullSync().
+	engine, err := NewEngineBuilder().FullSync().
 		Builtin(policies.BuildRateLimit().
 			BrokerBarrier(policies.RateLimitBrokerBarrier{
 				Limit: policies.RateLimit{MaxOrders: 10, Window: 60 * time.Second},
@@ -275,7 +275,7 @@ func TestBuiltinRateLimitWithFullSyncDoesNotPanic(t *testing.T) {
 }
 
 func TestBuiltinRateLimitZeroWindowReturnsError(t *testing.T) {
-	_, err := NewEngineBuilder().WithLocalSync().
+	_, err := NewEngineBuilder().NoSync().
 		Builtin(policies.BuildRateLimit().
 			BrokerBarrier(policies.RateLimitBrokerBarrier{
 				Limit: policies.RateLimit{MaxOrders: 1, Window: 0},
@@ -287,7 +287,7 @@ func TestBuiltinRateLimitZeroWindowReturnsError(t *testing.T) {
 }
 
 func TestBuiltinRateLimitSubMicrosecondWindowAccepted(t *testing.T) {
-	_, err := NewEngineBuilder().WithLocalSync().
+	_, err := NewEngineBuilder().NoSync().
 		Builtin(policies.BuildRateLimit().
 			BrokerBarrier(policies.RateLimitBrokerBarrier{
 				Limit: policies.RateLimit{MaxOrders: 1, Window: 100 * time.Nanosecond},
@@ -315,7 +315,7 @@ func TestBuiltinOrderSizeLimitAccountAssetOverridesAssetBaseline(t *testing.T) {
 	acct := param.NewAccountIDFromInt(1001)
 
 	// Asset baseline: max qty 10. Account+asset override: max qty 5.
-	engine, err := NewEngineBuilder().WithLocalSync().
+	engine, err := NewEngineBuilder().NoSync().
 		Builtin(policies.BuildOrderSizeLimit().
 			BrokerBarrier(hugeOrderSizeLimit(t)).
 			AssetBarriers(policies.OrderSizeAssetBarrier{
@@ -377,7 +377,7 @@ func TestBuiltinOrderSizeLimitUnknownSettlementPasses(t *testing.T) {
 	usd := builtinTestAsset(t, "USD")
 
 	// Only USD asset barrier configured; EUR is unknown and must pass.
-	engine, err := NewEngineBuilder().WithLocalSync().
+	engine, err := NewEngineBuilder().NoSync().
 		Builtin(policies.BuildOrderSizeLimit().
 			BrokerBarrier(hugeOrderSizeLimit(t)).
 			AssetBarriers(policies.OrderSizeAssetBarrier{
@@ -428,7 +428,7 @@ func TestBuiltinOrderSizeLimitAssetOnlyBuildsAndRejects(t *testing.T) {
 	maxQty := orderSizeTestQty(t, "10")
 	maxNotional := orderSizeTestVol(t, "1000")
 
-	engine, err := NewEngineBuilder().WithLocalSync().
+	engine, err := NewEngineBuilder().NoSync().
 		Builtin(policies.BuildOrderSizeLimit().
 			AssetBarriers(policies.OrderSizeAssetBarrier{
 				Limit: policies.OrderSizeLimit{
@@ -464,7 +464,7 @@ func TestBuiltinOrderSizeLimitAssetOnlyBuildsAndRejects(t *testing.T) {
 func TestBuiltinPnlBoundsKillswitchBrokerOnlyTriggersAndBlocksAccount(t *testing.T) {
 	usd := builtinTestAsset(t, "USD")
 
-	engine, err := NewEngineBuilder().WithLocalSync().
+	engine, err := NewEngineBuilder().NoSync().
 		Builtin(policies.BuildPnlBoundsKillswitch().
 			BrokerBarriers(policies.PnlBoundsBrokerBarrier{
 				SettlementAsset: usd,
@@ -521,7 +521,7 @@ func TestBuiltinPnlBoundsKillswitchAccountBarrierIndependentOfOtherAccounts(
 ) {
 	usd := builtinTestAsset(t, "USD")
 
-	engine, err := NewEngineBuilder().WithLocalSync().
+	engine, err := NewEngineBuilder().NoSync().
 		Builtin(policies.BuildPnlBoundsKillswitch().
 			AccountBarriers(policies.PnlBoundsAccountAssetBarrier{
 				AccountID:       param.NewAccountIDFromInt(1001),
@@ -576,7 +576,7 @@ func TestBuiltinPnlBoundsKillswitchBrokerBarrierRejectViaCheckPreTradeStart(
 ) {
 	usd := builtinTestAsset(t, "USD")
 	// Lower bound > 0 means zero P&L is already below the lower bound.
-	engine, err := NewEngineBuilder().WithLocalSync().
+	engine, err := NewEngineBuilder().NoSync().
 		Builtin(policies.BuildPnlBoundsKillswitch().
 			BrokerBarriers(policies.PnlBoundsBrokerBarrier{
 				SettlementAsset: usd,

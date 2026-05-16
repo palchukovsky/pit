@@ -68,7 +68,7 @@ class InterleavingCase:
     report_order: tuple[int, int, int]
 
 
-class CaptureStartPolicy(openpit.pretrade.CheckPreTradeStartPolicy):
+class CaptureStartCheck(openpit.pretrade.Policy):
     # @typing.override
     def __init__(self, *, name: str, journal: list[str]) -> None:
         self._name = name
@@ -84,7 +84,7 @@ class CaptureStartPolicy(openpit.pretrade.CheckPreTradeStartPolicy):
     # @typing.override
     def check_pre_trade_start(
         self,
-        ctx: openpit.pretrade.PreTradeContext,
+        ctx: openpit.pretrade.Context,
         order: openpit.Order,
     ) -> tuple[openpit.pretrade.PolicyReject, ...]:
         self.orders.append(order)
@@ -103,7 +103,7 @@ class CaptureStartPolicy(openpit.pretrade.CheckPreTradeStartPolicy):
         return False
 
 
-class SequenceFenceStartPolicy(openpit.pretrade.CheckPreTradeStartPolicy):
+class SequenceFenceStartCheck(openpit.pretrade.Policy):
     # @typing.override
     def __init__(self, *, name: str, journal: list[str]) -> None:
         self._name = name
@@ -117,7 +117,7 @@ class SequenceFenceStartPolicy(openpit.pretrade.CheckPreTradeStartPolicy):
     # @typing.override
     def check_pre_trade_start(
         self,
-        ctx: openpit.pretrade.PreTradeContext,
+        ctx: openpit.pretrade.Context,
         order: openpit.Order,
     ) -> tuple[openpit.pretrade.PolicyReject, ...]:
         self._journal.append(f"start:{self.name}:{order.order_tag}")
@@ -134,7 +134,7 @@ class SequenceFenceStartPolicy(openpit.pretrade.CheckPreTradeStartPolicy):
         return False
 
 
-class CaptureMainPolicy(openpit.pretrade.PreTradePolicy):
+class CaptureExecutionCheck(openpit.pretrade.Policy):
     # @typing.override
     def __init__(self, *, name: str, journal: list[str]) -> None:
         self._name = name
@@ -150,7 +150,7 @@ class CaptureMainPolicy(openpit.pretrade.PreTradePolicy):
     # @typing.override
     def perform_pre_trade_check(
         self,
-        ctx: openpit.pretrade.PreTradeContext,
+        ctx: openpit.pretrade.Context,
         order: openpit.Order,
     ) -> openpit.pretrade.PolicyDecision:
         tagged_order = typing.cast(TaggedOrder, order)
@@ -170,7 +170,7 @@ class CaptureMainPolicy(openpit.pretrade.PreTradePolicy):
         return False
 
 
-class SequenceFenceMainPolicy(openpit.pretrade.PreTradePolicy):
+class SequenceFenceExecutionCheck(openpit.pretrade.Policy):
     # @typing.override
     def __init__(self, *, name: str, journal: list[str]) -> None:
         self._name = name
@@ -184,7 +184,7 @@ class SequenceFenceMainPolicy(openpit.pretrade.PreTradePolicy):
     # @typing.override
     def perform_pre_trade_check(
         self,
-        ctx: openpit.pretrade.PreTradeContext,
+        ctx: openpit.pretrade.Context,
         order: openpit.Order,
     ) -> openpit.pretrade.PolicyDecision:
         tagged_order = typing.cast(TaggedOrder, order)
@@ -286,17 +286,17 @@ def test_policy_callbacks_preserve_original_objects_across_interleaving(
     case: InterleavingCase,
 ) -> None:
     journal: list[str] = []
-    capture_start = CaptureStartPolicy(name="capture-start", journal=journal)
-    sequence_start = SequenceFenceStartPolicy(name="sequence-start", journal=journal)
-    capture_main = CaptureMainPolicy(name="capture-main", journal=journal)
-    sequence_main = SequenceFenceMainPolicy(name="sequence-main", journal=journal)
+    capture_start = CaptureStartCheck(name="capture-start", journal=journal)
+    sequence_start = SequenceFenceStartCheck(name="sequence-start", journal=journal)
+    capture_main = CaptureExecutionCheck(name="capture-main", journal=journal)
+    sequence_main = SequenceFenceExecutionCheck(name="sequence-main", journal=journal)
     engine = (
         openpit.Engine.builder()
-        .with_local_sync()
-        .check_pre_trade_start_policy(policy=capture_start)
-        .check_pre_trade_start_policy(policy=sequence_start)
-        .pre_trade_policy(policy=capture_main)
-        .pre_trade_policy(policy=sequence_main)
+        .no_sync()
+        .pre_trade(policy=capture_start)
+        .pre_trade(policy=sequence_start)
+        .pre_trade(policy=capture_main)
+        .pre_trade(policy=sequence_main)
         .build()
     )
 

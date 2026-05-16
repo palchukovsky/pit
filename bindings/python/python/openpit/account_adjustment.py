@@ -17,7 +17,6 @@
 
 from __future__ import annotations
 
-import abc
 import typing
 
 from ._openpit import AccountAdjustment as _AccountAdjustment
@@ -39,49 +38,6 @@ from .param import (
     Price,
 )
 
-if typing.TYPE_CHECKING:
-    from . import AccountAdjustmentContext
-    from .core import Mutation
-    from .param import AccountId
-    from .pretrade.policy import PolicyDecision, PolicyReject
-
-
-class AccountAdjustmentPolicy(abc.ABC):
-    """Interface for account-adjustment validation policies.
-
-    Account-adjustment policies run inside ``Engine.apply_account_adjustment``.
-    They receive every adjustment in a batch in order and may return normal
-    business rejects, rollback mutations, or ``None`` for success without
-    mutations.
-    """
-
-    @property
-    @abc.abstractmethod
-    def name(self) -> str:
-        """Stable policy name unique within one engine configuration."""
-        ...
-
-    @abc.abstractmethod
-    def apply_account_adjustment(
-        self,
-        ctx: AccountAdjustmentContext,
-        account_id: AccountId,
-        adjustment: AccountAdjustment,
-    ) -> PolicyDecision | typing.Iterable[PolicyReject] | tuple[Mutation, ...] | None:
-        """Evaluate one account adjustment from an atomic batch.
-
-        Args:
-            ctx: Read-only engine context for the current batch operation.
-            account_id: Account affected by the batch.
-            adjustment: Current adjustment item.
-
-        Returns:
-            ``None`` for success, an iterable of ``PolicyReject`` objects for
-            business rejection, or a tuple of ``Mutation`` objects to register
-            rollback work.
-        """
-        ...
-
 
 def _require_instance(
     value: typing.Any,
@@ -98,13 +54,11 @@ def _require_instance(
     return value
 
 
-class AccountAdjustmentAmount(_AccountAdjustmentAmount):
+class Amount(_AccountAdjustmentAmount):
     """Grouped total/reserved/pending adjustment payload."""
 
     # @typing.override
-    def __new__(
-        cls, *args: typing.Any, **kwargs: typing.Any
-    ) -> AccountAdjustmentAmount:
+    def __new__(cls, *args: typing.Any, **kwargs: typing.Any) -> Amount:
         _ = args, kwargs
         return _AccountAdjustmentAmount.__new__(cls)
 
@@ -160,13 +114,11 @@ class AccountAdjustmentAmount(_AccountAdjustmentAmount):
         return _AccountAdjustmentAmount.__repr__(self)
 
 
-class AccountAdjustmentBalanceOperation(_AccountAdjustmentBalanceOperation):
+class BalanceOperation(_AccountAdjustmentBalanceOperation):
     """Direct physical balance adjustment."""
 
     # @typing.override
-    def __new__(
-        cls, *args: typing.Any, **kwargs: typing.Any
-    ) -> AccountAdjustmentBalanceOperation:
+    def __new__(cls, *args: typing.Any, **kwargs: typing.Any) -> BalanceOperation:
         _ = args, kwargs
         return _AccountAdjustmentBalanceOperation.__new__(cls)
 
@@ -201,13 +153,11 @@ class AccountAdjustmentBalanceOperation(_AccountAdjustmentBalanceOperation):
         return _AccountAdjustmentBalanceOperation.__repr__(self)
 
 
-class AccountAdjustmentPositionOperation(_AccountAdjustmentPositionOperation):
+class PositionOperation(_AccountAdjustmentPositionOperation):
     """Direct derivatives-like position adjustment."""
 
     # @typing.override
-    def __new__(
-        cls, *args: typing.Any, **kwargs: typing.Any
-    ) -> AccountAdjustmentPositionOperation:
+    def __new__(cls, *args: typing.Any, **kwargs: typing.Any) -> PositionOperation:
         _ = args, kwargs
         return _AccountAdjustmentPositionOperation.__new__(cls)
 
@@ -278,13 +228,11 @@ class AccountAdjustmentPositionOperation(_AccountAdjustmentPositionOperation):
         return _AccountAdjustmentPositionOperation.__repr__(self)
 
 
-class AccountAdjustmentBounds(_AccountAdjustmentBounds):
+class Bounds(_AccountAdjustmentBounds):
     """Optional post-adjustment inclusive limits."""
 
     # @typing.override
-    def __new__(
-        cls, *args: typing.Any, **kwargs: typing.Any
-    ) -> AccountAdjustmentBounds:
+    def __new__(cls, *args: typing.Any, **kwargs: typing.Any) -> Bounds:
         _ = args, kwargs
         return _AccountAdjustmentBounds.__new__(cls)
 
@@ -340,7 +288,7 @@ class AccountAdjustmentBounds(_AccountAdjustmentBounds):
         return _AccountAdjustmentBounds.__repr__(self)
 
 
-class AccountAdjustment(_AccountAdjustment):
+class Adjustment(_AccountAdjustment):
     """Extensible non-trading account-adjustment model.
 
     Snapshot semantics:
@@ -350,7 +298,7 @@ class AccountAdjustment(_AccountAdjustment):
     """
 
     # @typing.override
-    def __new__(cls, *args: typing.Any, **kwargs: typing.Any) -> AccountAdjustment:
+    def __new__(cls, *args: typing.Any, **kwargs: typing.Any) -> Adjustment:
         _ = args, kwargs
         return _AccountAdjustment.__new__(cls)
 
@@ -358,29 +306,25 @@ class AccountAdjustment(_AccountAdjustment):
     def __init__(
         self,
         *,
-        operation: (
-            AccountAdjustmentBalanceOperation
-            | AccountAdjustmentPositionOperation
-            | None
-        ) = None,
-        amount: AccountAdjustmentAmount | None = None,
-        bounds: AccountAdjustmentBounds | None = None,
+        operation: BalanceOperation | PositionOperation | None = None,
+        amount: Amount | None = None,
+        bounds: Bounds | None = None,
     ) -> None:
         # Structural aggregate check is intentionally kept in Python because
         # operation is a Python-only union wrapper at the public boundary.
         if operation is not None and not isinstance(
             operation,
-            (AccountAdjustmentBalanceOperation, AccountAdjustmentPositionOperation),
+            (BalanceOperation, PositionOperation),
         ):
             raise TypeError(
                 "operation must be "
-                "openpit.account_adjustment.AccountAdjustmentBalanceOperation or "
-                "openpit.account_adjustment.AccountAdjustmentPositionOperation"
+                "openpit.account_adjustment.BalanceOperation or "
+                "openpit.account_adjustment.PositionOperation"
             )
         # Structural checks for aggregate groups stay at Python boundary to keep
         # explicit API-contract errors for wrong wrapper types.
-        _require_instance(amount, AccountAdjustmentAmount, name="amount")
-        _require_instance(bounds, AccountAdjustmentBounds, name="bounds")
+        _require_instance(amount, Amount, name="amount")
+        _require_instance(bounds, Bounds, name="bounds")
         _AccountAdjustment.operation.__set__(self, operation)
         _AccountAdjustment.amount.__set__(self, amount)
         _AccountAdjustment.bounds.__set__(self, bounds)
@@ -391,17 +335,17 @@ class AccountAdjustment(_AccountAdjustment):
     @property
     def operation(
         self,
-    ) -> AccountAdjustmentBalanceOperation | AccountAdjustmentPositionOperation | None:
+    ) -> BalanceOperation | PositionOperation | None:
         """Adjustment operation details group."""
         return self.__dict__.get("_py_operation")
 
     @property
-    def amount(self) -> AccountAdjustmentAmount | None:
+    def amount(self) -> Amount | None:
         """Adjustment amount deltas group."""
         return self.__dict__.get("_py_amount")
 
     @property
-    def bounds(self) -> AccountAdjustmentBounds | None:
+    def bounds(self) -> Bounds | None:
         """Optional post-adjustment bounds group."""
         return self.__dict__.get("_py_bounds")
 
@@ -410,10 +354,9 @@ class AccountAdjustment(_AccountAdjustment):
 
 
 __all__ = [
-    "AccountAdjustment",
-    "AccountAdjustmentAmount",
-    "AccountAdjustmentBalanceOperation",
-    "AccountAdjustmentBounds",
-    "AccountAdjustmentPolicy",
-    "AccountAdjustmentPositionOperation",
+    "Adjustment",
+    "Amount",
+    "BalanceOperation",
+    "Bounds",
+    "PositionOperation",
 ]

@@ -63,8 +63,8 @@ use super::PreTradeLock;
 ///
 /// use openpit::pretrade::policies::OrderValidationPolicy;
 /// let engine = Engine::<OrderOperation>::builder()
-///     .with_local_sync()
-///     .check_pre_trade_start_policy(OrderValidationPolicy::new())
+///     .no_sync()
+///     .pre_trade(OrderValidationPolicy::new())
 ///     .build()?;
 /// let order = OrderOperation {
 ///     instrument: Instrument::new(

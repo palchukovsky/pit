@@ -20,14 +20,13 @@
 //! This module contains the request lifecycle used by Pit before an order is
 //! sent to an external execution system:
 //!
-//! - [`CheckPreTradeStartPolicy`] models fast admission checks;
-//! - [`PreTradePolicy`] models deeper stateful checks;
+//! - [`PreTradePolicy`] models start-stage, main-stage, post-trade, and
+//!   account-adjustment policy hooks;
 //! - [`PreTradeRequest`] is the single-use handle returned after start-stage success;
 //! - [`PreTradeReservation`] is the finalizable handle for reserved state;
 //!
 //! Custom controls typically start from the policy traits plus [`PreTradeContext`].
 
-mod check_pre_trade_start_policy;
 mod context;
 pub(crate) mod handle;
 mod lock;
@@ -39,7 +38,6 @@ mod request;
 mod reservation;
 pub(crate) mod start_pre_trade_time;
 
-pub use check_pre_trade_start_policy::CheckPreTradeStartPolicy;
 pub use context::PreTradeContext;
 pub use lock::PreTradeLock;
 pub use policy::PreTradePolicy;

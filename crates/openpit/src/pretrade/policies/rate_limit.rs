@@ -24,9 +24,7 @@ use crate::core::{HasAccountId, HasInstrument};
 use crate::param::{AccountId, Asset};
 use crate::pretrade::policy::request_field_access_pre_trade_reject;
 use crate::pretrade::start_pre_trade_time::start_pre_trade_now;
-use crate::pretrade::{
-    CheckPreTradeStartPolicy, PreTradeContext, Reject, RejectCode, RejectScope, Rejects,
-};
+use crate::pretrade::{PreTradeContext, PreTradePolicy, Reject, RejectCode, RejectScope, Rejects};
 use crate::storage::{Storage, StorageBuilder};
 
 type StoragePolicy<LPF> = <LPF as crate::storage::LockingPolicyFactory>::Policy;
@@ -190,7 +188,7 @@ impl AtomicWindowCounter {
 /// use openpit::OrderOperation;
 /// use openpit::param::TradeAmount;
 ///
-/// let builder = Engine::<OrderOperation>::builder().with_local_sync();
+/// let builder = Engine::<OrderOperation>::builder().no_sync();
 /// let policy = RateLimitPolicy::new(
 ///     Some(RateLimitBrokerBarrier {
 ///         limit: RateLimit { max_orders: 2, window: Duration::from_secs(60) },
@@ -201,7 +199,7 @@ impl AtomicWindowCounter {
 ///     builder.storage_builder(),
 /// )?;
 /// let engine = builder
-///     .check_pre_trade_start_policy(policy)
+///     .pre_trade(policy)
 ///     .build()?;
 ///
 /// let order = OrderOperation {
@@ -317,7 +315,8 @@ where
     }
 }
 
-impl<Order, ExecutionReport, LockingPolicyFactory> CheckPreTradeStartPolicy<Order, ExecutionReport>
+impl<Order, ExecutionReport, AccountAdjustment, LockingPolicyFactory>
+    PreTradePolicy<Order, ExecutionReport, AccountAdjustment>
     for RateLimitPolicy<LockingPolicyFactory>
 where
     Order: HasAccountId + HasInstrument,
@@ -512,9 +511,7 @@ mod tests {
     use crate::core::{Instrument, OrderOperation};
     use crate::param::{AccountId, Asset, Quantity, Side, TradeAmount};
     use crate::pretrade::start_pre_trade_time::with_start_pre_trade_now;
-    use crate::pretrade::{
-        CheckPreTradeStartPolicy, PreTradeContext, RejectCode, RejectScope, Rejects,
-    };
+    use crate::pretrade::{PreTradeContext, PreTradePolicy, RejectCode, RejectScope, Rejects};
     use crate::storage::NoLocking;
 
     use super::{
@@ -526,7 +523,7 @@ mod tests {
 
     fn test_builder() -> crate::SyncedEngineBuilder<OrderOperation, (), (), crate::LocalSyncPolicy>
     {
-        crate::Engine::<OrderOperation>::builder().with_local_sync()
+        crate::Engine::<OrderOperation>::builder().no_sync()
     }
 
     // ── constructor validation ─────────────────────────────────────────────
@@ -758,12 +755,11 @@ mod tests {
             account_id: account(1),
         };
 
-        let result =
-            <TestPolicy as CheckPreTradeStartPolicy<NoInstrumentOrder, ()>>::check_pre_trade_start(
-                &policy,
-                &PreTradeContext::new(),
-                &order,
-            );
+        let result = <TestPolicy as PreTradePolicy<NoInstrumentOrder, ()>>::check_pre_trade_start(
+            &policy,
+            &PreTradeContext::new(),
+            &order,
+        );
 
         assert!(result.is_ok());
     }
@@ -775,12 +771,11 @@ mod tests {
             account_id: account(1),
         };
 
-        let result =
-            <TestPolicy as CheckPreTradeStartPolicy<NoInstrumentOrder, ()>>::check_pre_trade_start(
-                &policy,
-                &PreTradeContext::new(),
-                &order,
-            );
+        let result = <TestPolicy as PreTradePolicy<NoInstrumentOrder, ()>>::check_pre_trade_start(
+            &policy,
+            &PreTradeContext::new(),
+            &order,
+        );
 
         assert!(result.is_ok());
     }
@@ -897,13 +892,12 @@ mod tests {
         }
 
         let policy = account_policy(account(1), 10, Duration::from_secs(60));
-        let reject =
-            <TestPolicy as CheckPreTradeStartPolicy<NoAccountId, ()>>::check_pre_trade_start(
-                &policy,
-                &PreTradeContext::new(),
-                &NoAccountId,
-            )
-            .expect_err("missing account_id must reject");
+        let reject = <TestPolicy as PreTradePolicy<NoAccountId, ()>>::check_pre_trade_start(
+            &policy,
+            &PreTradeContext::new(),
+            &NoAccountId,
+        )
+        .expect_err("missing account_id must reject");
         let reject = &reject[0];
         assert_eq!(reject.scope, RejectScope::Order);
         assert_eq!(reject.code, RejectCode::MissingRequiredField);
@@ -931,7 +925,7 @@ mod tests {
 
         let policy = broker_policy(10, Duration::from_secs(60));
         assert!(
-            <TestPolicy as CheckPreTradeStartPolicy<NoAccountId, ()>>::check_pre_trade_start(
+            <TestPolicy as PreTradePolicy<NoAccountId, ()>>::check_pre_trade_start(
                 &policy,
                 &PreTradeContext::new(),
                 &NoAccountId,
@@ -947,13 +941,12 @@ mod tests {
             account_id: account(1),
         };
 
-        let reject =
-            <TestPolicy as CheckPreTradeStartPolicy<NoInstrumentOrder, ()>>::check_pre_trade_start(
-                &policy,
-                &PreTradeContext::new(),
-                &order,
-            )
-            .expect_err("asset-axis policy must require instrument");
+        let reject = <TestPolicy as PreTradePolicy<NoInstrumentOrder, ()>>::check_pre_trade_start(
+            &policy,
+            &PreTradeContext::new(),
+            &order,
+        )
+        .expect_err("asset-axis policy must require instrument");
         let reject = &reject[0];
         assert_eq!(reject.scope, RejectScope::Order);
         assert_eq!(reject.code, RejectCode::MissingRequiredField);
@@ -981,7 +974,7 @@ mod tests {
 
     fn check_at(policy: &TestPolicy, order: &OrderOperation, now: Instant) -> Result<(), Rejects> {
         with_start_pre_trade_now(now, || {
-            <TestPolicy as CheckPreTradeStartPolicy<OrderOperation, ()>>::check_pre_trade_start(
+            <TestPolicy as PreTradePolicy<OrderOperation, ()>>::check_pre_trade_start(
                 policy,
                 &PreTradeContext::new(),
                 order,

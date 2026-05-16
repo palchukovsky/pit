@@ -33,8 +33,8 @@ import (
 
 func TestEngineBuilderCloseIsIdempotent(*testing.T) {
 	builder := NewEngineBuilder().
-		WithFullSync().
-		CheckPreTradeStartPolicy(&engineTestStartPolicy{name: "p"})
+		FullSync().
+		PreTrade(&engineTestStartPolicy{name: "p"})
 
 	builder.Close()
 	builder.Close()
@@ -42,8 +42,8 @@ func TestEngineBuilderCloseIsIdempotent(*testing.T) {
 
 func TestEngineBuilderBuildFailsAfterClose(t *testing.T) {
 	builder := NewEngineBuilder().
-		WithFullSync().
-		CheckPreTradeStartPolicy(&engineTestStartPolicy{name: "p"})
+		FullSync().
+		PreTrade(&engineTestStartPolicy{name: "p"})
 
 	builder.Close()
 	engine, err := builder.Build()
@@ -62,9 +62,7 @@ func TestEngineBuilderScheduleCloseAfterPolicyAddFailure(t *testing.T) {
 	// A forced-failure applier triggers an error on the first Builtin call.
 	// Subsequent policy adds must see the error and schedule policies for
 	// cleanup.
-	builder := NewEngineBuilder().WithFullSync().
-		Builtin(&engineTestFailingBuilder{})
-	builder.CheckPreTradeStartPolicy(second)
+	builder := NewEngineBuilder().FullSync().Builtin(&engineTestFailingBuilder{}).PreTrade(second)
 
 	if second.closeCalls != 0 {
 		t.Fatalf("second closeCalls before Build() = %d, want 0", second.closeCalls)
@@ -141,8 +139,8 @@ func TestEngineApplyAccountAdjustmentEmptyBatchIsNoop(t *testing.T) {
 
 func TestEngineApplyAccountAdjustmentReturnsBatchReject(t *testing.T) {
 	engine, err := NewEngineBuilder().
-		WithFullSync().
-		AccountAdjustmentPolicy(&engineTestRejectingAdjustmentPolicy{name: "adjustment-reject"}).
+		FullSync().
+		PreTrade(&engineTestRejectingAdjustmentPolicy{name: "adjustment-reject"}).
 		Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
@@ -178,8 +176,8 @@ func newEngineForTests(t *testing.T) *Engine {
 	t.Helper()
 
 	engine, err := NewEngineBuilder().
-		WithFullSync().
-		CheckPreTradeStartPolicy(&engineTestNoopStartPolicy{}).
+		FullSync().
+		PreTrade(&engineTestNoopStartPolicy{}).
 		Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
@@ -204,8 +202,20 @@ func (engineTestStartPolicy) CheckPreTradeStart(pretrade.Context, model.Order) [
 	return nil
 }
 
+func (engineTestStartPolicy) PerformPreTradeCheck(
+	pretrade.Context, model.Order, tx.Mutations,
+) []reject.Reject {
+	return nil
+}
+
 func (engineTestStartPolicy) ApplyExecutionReport(model.ExecutionReport) bool {
 	return false
+}
+
+func (engineTestStartPolicy) ApplyAccountAdjustment(
+	accountadjustment.Context, param.AccountID, model.AccountAdjustment, tx.Mutations,
+) []reject.Reject {
+	return nil
 }
 
 type engineTestNoopStartPolicy struct{}
@@ -218,8 +228,20 @@ func (engineTestNoopStartPolicy) CheckPreTradeStart(pretrade.Context, model.Orde
 	return nil
 }
 
+func (engineTestNoopStartPolicy) PerformPreTradeCheck(
+	pretrade.Context, model.Order, tx.Mutations,
+) []reject.Reject {
+	return nil
+}
+
 func (engineTestNoopStartPolicy) ApplyExecutionReport(model.ExecutionReport) bool {
 	return false
+}
+
+func (engineTestNoopStartPolicy) ApplyAccountAdjustment(
+	accountadjustment.Context, param.AccountID, model.AccountAdjustment, tx.Mutations,
+) []reject.Reject {
+	return nil
 }
 
 type engineTestRejectingAdjustmentPolicy struct {
@@ -230,6 +252,22 @@ func (engineTestRejectingAdjustmentPolicy) Close() {}
 
 func (p engineTestRejectingAdjustmentPolicy) Name() string {
 	return p.name
+}
+
+func (engineTestRejectingAdjustmentPolicy) CheckPreTradeStart(
+	pretrade.Context, model.Order,
+) []reject.Reject {
+	return nil
+}
+
+func (engineTestRejectingAdjustmentPolicy) PerformPreTradeCheck(
+	pretrade.Context, model.Order, tx.Mutations,
+) []reject.Reject {
+	return nil
+}
+
+func (engineTestRejectingAdjustmentPolicy) ApplyExecutionReport(model.ExecutionReport) bool {
+	return false
 }
 
 func (p *engineTestRejectingAdjustmentPolicy) ApplyAccountAdjustment(

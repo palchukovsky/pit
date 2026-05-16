@@ -21,9 +21,7 @@ use std::fmt::{Display, Formatter};
 use crate::core::{HasAccountId, HasFee, HasInstrument, HasPnl};
 use crate::param::{AccountId, Asset, Pnl};
 use crate::pretrade::policy::request_field_access_pre_trade_reject;
-use crate::pretrade::{
-    CheckPreTradeStartPolicy, PreTradeContext, Reject, RejectCode, RejectScope, Rejects,
-};
+use crate::pretrade::{PreTradeContext, PreTradePolicy, Reject, RejectCode, RejectScope, Rejects};
 use crate::storage::{Storage, StorageBuilder};
 
 /// Per-settlement P&L bounds configuration for the broker barrier.
@@ -214,7 +212,8 @@ where
     }
 }
 
-impl<Order, ExecutionReport, LockingPolicyFactory> CheckPreTradeStartPolicy<Order, ExecutionReport>
+impl<Order, ExecutionReport, AccountAdjustment, LockingPolicyFactory>
+    PreTradePolicy<Order, ExecutionReport, AccountAdjustment>
     for PnlBoundsKillSwitchPolicy<LockingPolicyFactory>
 where
     Order: HasInstrument + HasAccountId,
@@ -516,7 +515,7 @@ mod tests {
     use crate::core::{HasAccountId, HasFee, HasInstrument, HasPnl, Instrument, OrderOperation};
     use crate::param::TradeAmount;
     use crate::param::{AccountId, Asset, Fee, Pnl, Price, Quantity, Side};
-    use crate::pretrade::{CheckPreTradeStartPolicy, PreTradeContext, RejectCode, RejectScope};
+    use crate::pretrade::{PreTradeContext, PreTradePolicy, RejectCode, RejectScope};
     use crate::storage::NoLocking;
     use crate::RequestFieldAccessError;
 
@@ -529,7 +528,7 @@ mod tests {
 
     fn test_builder(
     ) -> crate::SyncedEngineBuilder<OrderOperation, TestReport, (), crate::LocalSyncPolicy> {
-        crate::Engine::<OrderOperation, TestReport>::builder().with_local_sync()
+        crate::Engine::<OrderOperation, TestReport>::builder().no_sync()
     }
 
     struct TestReport {
@@ -1074,7 +1073,7 @@ mod tests {
 
         let policy = policy_usd(Some(pnl("-100")), Some(pnl("50")));
         let reject =
-            <TestPolicy as CheckPreTradeStartPolicy<InvalidOrder, TestReport>>::check_pre_trade_start(
+            <TestPolicy as PreTradePolicy<InvalidOrder, TestReport>>::check_pre_trade_start(
                 &policy,
                 &PreTradeContext::new(),
                 &InvalidOrder,
@@ -1093,7 +1092,7 @@ mod tests {
         policy: &TestPolicy,
         order: &OrderOperation,
     ) -> Result<(), crate::pretrade::Rejects> {
-        <TestPolicy as CheckPreTradeStartPolicy<OrderOperation, TestReport>>::check_pre_trade_start(
+        <TestPolicy as PreTradePolicy<OrderOperation, TestReport>>::check_pre_trade_start(
             policy,
             &PreTradeContext::new(),
             order,
@@ -1101,7 +1100,7 @@ mod tests {
     }
 
     fn apply_report(policy: &TestPolicy, report: &TestReport) -> bool {
-        <TestPolicy as CheckPreTradeStartPolicy<OrderOperation, TestReport>>::apply_execution_report(
+        <TestPolicy as PreTradePolicy<OrderOperation, TestReport>>::apply_execution_report(
             policy, report,
         )
     }

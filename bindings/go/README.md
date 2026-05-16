@@ -1,7 +1,7 @@
 # OpenPit (Pre-trade Integrity Toolkit) for Go
 
 <!-- markdownlint-disable MD013 -->
-[![Verify](https://github.com/openpitkit/pit/actions/workflows/verify.yml/badge.svg)](https://github.com/openpitkit/pit/actions/workflows/verify.yml) [![Release](https://github.com/openpitkit/pit/actions/workflows/release.yml/badge.svg)](https://github.com/openpitkit/pit/actions/workflows/release.yml) [![Go version](https://img.shields.io/badge/go-1.22%2B-00ADD8)](https://go.dev/) [![Module](https://img.shields.io/badge/module-go.openpit.dev%2Fopenpit-00ADD8)](https://go.openpit.dev/openpit) [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
+[![Verify](https://github.com/openpitkit/pit/actions/workflows/verify.yml/badge.svg)](https://github.com/openpitkit/pit/actions/workflows/verify.yml) [![Release](https://github.com/openpitkit/pit/actions/workflows/release.yml/badge.svg)](https://github.com/openpitkit/pit/actions/workflows/release.yml) [![Go version](https://img.shields.io/badge/go-1.22%2B-00ADD8)](https://pkg.go.dev/go.openpit.dev/openpit) [![Module](https://img.shields.io/badge/module-go.openpit.dev%2Fopenpit-00ADD8)](https://pkg.go.dev/go.openpit.dev/openpit) [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 <!-- markdownlint-enable MD013 -->
 
 > **Read-only mirror.** This repository is a mirror of [`bindings/go/`](https://github.com/openpitkit/pit/tree/main/bindings/go)
@@ -59,9 +59,9 @@ The engine evaluates an order through a deterministic pre-trade pipeline:
 - `engine.ExecutePreTrade(order)` is a shortcut that composes both stages
 - `engine.ApplyExecutionReport(report)` updates post-trade policy state
 
-Start-stage policies stop on the first reject. Main-stage policies aggregate
-rejects and roll back registered mutations in reverse order when any reject is
-produced.
+Start-stage policies aggregate rejects from all registered policies. Main-stage
+policies aggregate rejects and roll back registered mutations in reverse order
+when any reject is produced.
 
 Built-in start-stage policies currently include:
 
@@ -130,7 +130,7 @@ func main() {
 
  // 1. Build the engine (one time at the platform initialization).
  engine, err := openpit.NewEngineBuilder().
-  WithFullSync().
+  FullSync().
   Builtin(policies.BuildOrderValidation()).
   Builtin(
    policies.BuildPnlBoundsKillswitch().

@@ -37,7 +37,7 @@ fn account_sync_engine_with_rate_limit_and_pnl_bounds_builds() {
     let usd = Asset::new("USD").expect("asset");
     let account = AccountId::from_u64(1);
 
-    let builder = Engine::<OrderOperation, Report>::builder().with_account_sync();
+    let builder = Engine::<OrderOperation, Report>::builder().account_sync();
 
     let rate_limit = RateLimitPolicy::new(
         Some(RateLimitBrokerBarrier {
@@ -86,8 +86,8 @@ fn account_sync_engine_with_rate_limit_and_pnl_bounds_builds() {
     .expect("pnl-bounds policy");
 
     let _engine = builder
-        .check_pre_trade_start_policy(rate_limit)
-        .check_pre_trade_start_policy(pnl_bounds)
+        .pre_trade(rate_limit)
+        .pre_trade(pnl_bounds)
         .build()
         .expect("engine builds");
 }

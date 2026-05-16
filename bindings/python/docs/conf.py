@@ -93,14 +93,15 @@ nitpick_ignore = [
     ("py:class", "enum.StrEnum"),
     ("py:class", "Mutation"),
     ("py:class", "openpit.Order"),
+    ("py:class", "AccountAdjustment"),
     ("py:class", "openpit.core.AccountAdjustment"),
     ("py:class", "openpit.core.AccountAdjustmentAmount"),
     ("py:class", "openpit.core.AccountAdjustmentBalanceOperation"),
     ("py:class", "openpit.core.AccountAdjustmentBounds"),
     ("py:class", "openpit.core.AccountAdjustmentPositionOperation"),
     ("py:class", "openpit.core.Mutation"),
-    ("py:class", "PreTradeLock"),
-    ("py:class", "PreTradeContext"),
+    ("py:class", "Lock"),
+    ("py:class", "Context"),
     ("py:meth", "Policy.perform_pre_trade_check"),
 ]
 

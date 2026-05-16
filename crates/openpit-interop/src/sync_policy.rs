@@ -33,7 +33,7 @@ use openpit::{AccountKey, AccountKeyConstraint};
 /// must not be invoked concurrently when the underlying sync mode does
 /// not promise full synchronization. Sequential invocation across OS
 /// threads is supported for every sync mode. The full-synchronization
-/// modes (e.g. `with_full_sync()` in any binding) make the underlying
+/// modes (e.g. `full_sync()` in any binding) make the underlying
 /// engine fully thread-safe and admit concurrent invocation as well.
 pub struct EngineHandle<T: ?Sized>(pub(crate) Arc<T>);
 
@@ -130,10 +130,8 @@ impl<Order: 'static, ExecutionReport: 'static, AccountAdjustment: 'static>
     openpit::__private::EnginePolicies<Order, ExecutionReport, AccountAdjustment>
     for EngineLocking
 {
-    type CheckStart =
-        dyn openpit::pretrade::CheckPreTradeStartPolicy<Order, ExecutionReport> + Send;
-    type PreTrade = dyn openpit::pretrade::PreTradePolicy<Order, ExecutionReport> + Send;
-    type AccountAdj = dyn openpit::AccountAdjustmentPolicy<AccountAdjustment> + Send;
+    type PreTrade =
+        dyn openpit::pretrade::PreTradePolicy<Order, ExecutionReport, AccountAdjustment> + Send;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -332,8 +330,8 @@ mod tests {
 
     fn build_engine(mode: SyncMode) -> Result<Engine, openpit::EngineBuildError> {
         Engine::builder()
-            .with_sync(SyncPolicy::new(mode))
-            .check_pre_trade_start_policy(OrderValidationPolicy::new())
+            .sync(SyncPolicy::new(mode))
+            .pre_trade(OrderValidationPolicy::new())
             .build()
     }
 
@@ -355,8 +353,8 @@ mod tests {
     #[test]
     fn sync_policy_add_check_pre_trade_start_policy_builds_engine() {
         let result = Engine::builder()
-            .with_sync(SyncPolicy::new(SyncMode::Full))
-            .check_pre_trade_start_policy(OrderValidationPolicy::new())
+            .sync(SyncPolicy::new(SyncMode::Full))
+            .pre_trade(OrderValidationPolicy::new())
             .build();
         assert!(result.is_ok());
     }

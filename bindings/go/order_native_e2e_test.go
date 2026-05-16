@@ -20,11 +20,13 @@ package openpit
 import (
 	"testing"
 
+	"go.openpit.dev/openpit/accountadjustment"
 	"go.openpit.dev/openpit/model"
 	"go.openpit.dev/openpit/param"
 	"go.openpit.dev/openpit/pkg/optional"
 	"go.openpit.dev/openpit/pretrade"
 	"go.openpit.dev/openpit/reject"
+	"go.openpit.dev/openpit/tx"
 )
 
 func TestOrderNativeE2E_ExecuteAndApplyExecutionReport(t *testing.T) {
@@ -184,8 +186,8 @@ func mustOrderNativeFee(t *testing.T, value string) param.Fee {
 
 func newEngineForOrderNativeE2ETest(t *testing.T) *Engine {
 	t.Helper()
-	engine, err := NewEngineBuilder().WithFullSync().
-		CheckPreTradeStartPolicy(&orderNativeE2ENoopStartPolicy{}).
+	engine, err := NewEngineBuilder().FullSync().
+		PreTrade(&orderNativeE2ENoopStartPolicy{}).
 		Build()
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
@@ -203,6 +205,19 @@ func (orderNativeE2ENoopStartPolicy) CheckPreTradeStart(pretrade.Context, model.
 	return nil
 }
 
+func (orderNativeE2ENoopStartPolicy) PerformPreTradeCheck(pretrade.Context, model.Order, tx.Mutations) []reject.Reject {
+	return nil
+}
+
 func (orderNativeE2ENoopStartPolicy) ApplyExecutionReport(model.ExecutionReport) bool {
 	return false
+}
+
+func (orderNativeE2ENoopStartPolicy) ApplyAccountAdjustment(
+	accountadjustment.Context,
+	param.AccountID,
+	model.AccountAdjustment,
+	tx.Mutations,
+) []reject.Reject {
+	return nil
 }

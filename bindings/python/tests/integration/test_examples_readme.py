@@ -20,6 +20,11 @@ import datetime
 import openpit
 import pytest
 
+# Mirrors public examples from:
+# - bindings/python/README.md
+# - ../pit.wiki/Getting-Started.md
+# If this test changes, update every linked documentation snippet.
+
 
 def send_order_to_venue(order: openpit.Order) -> None:
     _ = order

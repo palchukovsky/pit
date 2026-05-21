@@ -94,12 +94,12 @@ define_optional!(
 ///
 /// The group is absent when every field is absent.
 pub struct OpenPitAccountAdjustmentAmount {
-    /// Requested total-balance change.
-    pub total: OpenPitParamAdjustmentAmount,
-    /// Requested reserved-balance change.
-    pub reserved: OpenPitParamAdjustmentAmount,
-    /// Requested pending-balance change.
-    pub pending: OpenPitParamAdjustmentAmount,
+    /// Requested balance change.
+    pub balance: OpenPitParamAdjustmentAmount,
+    /// Requested held-balance change.
+    pub held: OpenPitParamAdjustmentAmount,
+    /// Requested incoming-balance change.
+    pub incoming: OpenPitParamAdjustmentAmount,
 }
 
 #[repr(C)]
@@ -108,18 +108,18 @@ pub struct OpenPitAccountAdjustmentAmount {
 ///
 /// The group is absent when every bound is absent.
 pub struct OpenPitAccountAdjustmentBounds {
-    /// Optional upper bound for total balance.
-    pub total_upper: OpenPitParamPositionSizeOptional,
-    /// Optional lower bound for total balance.
-    pub total_lower: OpenPitParamPositionSizeOptional,
-    /// Optional upper bound for reserved balance.
-    pub reserved_upper: OpenPitParamPositionSizeOptional,
-    /// Optional lower bound for reserved balance.
-    pub reserved_lower: OpenPitParamPositionSizeOptional,
-    /// Optional upper bound for pending balance.
-    pub pending_upper: OpenPitParamPositionSizeOptional,
-    /// Optional lower bound for pending balance.
-    pub pending_lower: OpenPitParamPositionSizeOptional,
+    /// Optional upper bound for balance.
+    pub balance_upper: OpenPitParamPositionSizeOptional,
+    /// Optional lower bound for balance.
+    pub balance_lower: OpenPitParamPositionSizeOptional,
+    /// Optional upper bound for held balance.
+    pub held_upper: OpenPitParamPositionSizeOptional,
+    /// Optional lower bound for held balance.
+    pub held_lower: OpenPitParamPositionSizeOptional,
+    /// Optional upper bound for incoming balance.
+    pub incoming_upper: OpenPitParamPositionSizeOptional,
+    /// Optional lower bound for incoming balance.
+    pub incoming_lower: OpenPitParamPositionSizeOptional,
 }
 
 #[repr(C)]
@@ -259,9 +259,9 @@ fn import_amount(
 
     Ok(AccountAdjustmentAmountAccess::Populated(
         AccountAdjustmentAmount {
-            total: import_adjustment_amount(value.value.total)?,
-            reserved: import_adjustment_amount(value.value.reserved)?,
-            pending: import_adjustment_amount(value.value.pending)?,
+            balance: import_adjustment_amount(value.value.balance)?,
+            held: import_adjustment_amount(value.value.held)?,
+            incoming: import_adjustment_amount(value.value.incoming)?,
         },
     ))
 }
@@ -282,12 +282,12 @@ fn import_bounds(
 
     Ok(AccountAdjustmentBoundsAccess::Populated(
         AccountAdjustmentBounds {
-            total_upper: import_bound(value.value.total_upper)?,
-            total_lower: import_bound(value.value.total_lower)?,
-            reserved_upper: import_bound(value.value.reserved_upper)?,
-            reserved_lower: import_bound(value.value.reserved_lower)?,
-            pending_upper: import_bound(value.value.pending_upper)?,
-            pending_lower: import_bound(value.value.pending_lower)?,
+            balance_upper: import_bound(value.value.balance_upper)?,
+            balance_lower: import_bound(value.value.balance_lower)?,
+            held_upper: import_bound(value.value.held_upper)?,
+            held_lower: import_bound(value.value.held_lower)?,
+            incoming_upper: import_bound(value.value.incoming_upper)?,
+            incoming_lower: import_bound(value.value.incoming_lower)?,
         },
     ))
 }
@@ -331,9 +331,9 @@ fn export_position_operation(
 
 fn export_amount(value: &AccountAdjustmentAmount) -> OpenPitAccountAdjustmentAmount {
     OpenPitAccountAdjustmentAmount {
-        total: export_adjustment_amount(value.total),
-        reserved: export_adjustment_amount(value.reserved),
-        pending: export_adjustment_amount(value.pending),
+        balance: export_adjustment_amount(value.balance),
+        held: export_adjustment_amount(value.held),
+        incoming: export_adjustment_amount(value.incoming),
     }
 }
 
@@ -349,12 +349,12 @@ fn export_bound(value: Option<PositionSize>) -> OpenPitParamPositionSizeOptional
 
 fn export_bounds(value: &AccountAdjustmentBounds) -> OpenPitAccountAdjustmentBounds {
     OpenPitAccountAdjustmentBounds {
-        total_upper: export_bound(value.total_upper),
-        total_lower: export_bound(value.total_lower),
-        reserved_upper: export_bound(value.reserved_upper),
-        reserved_lower: export_bound(value.reserved_lower),
-        pending_upper: export_bound(value.pending_upper),
-        pending_lower: export_bound(value.pending_lower),
+        balance_upper: export_bound(value.balance_upper),
+        balance_lower: export_bound(value.balance_lower),
+        held_upper: export_bound(value.held_upper),
+        held_lower: export_bound(value.held_lower),
+        incoming_upper: export_bound(value.incoming_upper),
+        incoming_lower: export_bound(value.incoming_lower),
     }
 }
 
@@ -500,7 +500,7 @@ mod tests {
             amount: OpenPitAccountAdjustmentAmountOptional {
                 is_set: true,
                 value: OpenPitAccountAdjustmentAmount {
-                    total: OpenPitParamAdjustmentAmount {
+                    balance: OpenPitParamAdjustmentAmount {
                         value: OpenPitParamPositionSize(
                             PositionSize::from_str("1")
                                 .expect("size")
@@ -509,7 +509,7 @@ mod tests {
                         ),
                         kind: OpenPitParamAdjustmentAmountKind::Delta,
                     },
-                    reserved: OpenPitParamAdjustmentAmount {
+                    held: OpenPitParamAdjustmentAmount {
                         value: OpenPitParamPositionSize(
                             PositionSize::from_str("2")
                                 .expect("size")
@@ -518,13 +518,13 @@ mod tests {
                         ),
                         kind: OpenPitParamAdjustmentAmountKind::Absolute,
                     },
-                    pending: OpenPitParamAdjustmentAmount::default(),
+                    incoming: OpenPitParamAdjustmentAmount::default(),
                 },
             },
             bounds: OpenPitAccountAdjustmentBoundsOptional {
                 is_set: true,
                 value: OpenPitAccountAdjustmentBounds {
-                    total_upper: OpenPitParamPositionSizeOptional {
+                    balance_upper: OpenPitParamPositionSizeOptional {
                         is_set: true,
                         value: OpenPitParamPositionSize(
                             PositionSize::from_str("100")
@@ -533,11 +533,11 @@ mod tests {
                                 .into(),
                         ),
                     },
-                    total_lower: OpenPitParamPositionSizeOptional::default(),
-                    reserved_upper: OpenPitParamPositionSizeOptional::default(),
-                    reserved_lower: OpenPitParamPositionSizeOptional::default(),
-                    pending_upper: OpenPitParamPositionSizeOptional::default(),
-                    pending_lower: OpenPitParamPositionSizeOptional::default(),
+                    balance_lower: OpenPitParamPositionSizeOptional::default(),
+                    held_upper: OpenPitParamPositionSizeOptional::default(),
+                    held_lower: OpenPitParamPositionSizeOptional::default(),
+                    incoming_upper: OpenPitParamPositionSizeOptional::default(),
+                    incoming_lower: OpenPitParamPositionSizeOptional::default(),
                 },
             },
             user_data: std::ptr::null_mut(),
@@ -570,13 +570,13 @@ mod tests {
         assert_eq!(
             *amount,
             AccountAdjustmentAmount {
-                total: Some(AdjustmentAmount::Delta(
+                balance: Some(AdjustmentAmount::Delta(
                     PositionSize::from_str("1").expect("size"),
                 )),
-                reserved: Some(AdjustmentAmount::Absolute(
+                held: Some(AdjustmentAmount::Absolute(
                     PositionSize::from_str("2").expect("size"),
                 )),
-                pending: None,
+                incoming: None,
             }
         );
 
@@ -588,12 +588,12 @@ mod tests {
         assert_eq!(
             *bounds,
             AccountAdjustmentBounds {
-                total_upper: Some(PositionSize::from_str("100").expect("size")),
-                total_lower: None,
-                reserved_upper: None,
-                reserved_lower: None,
-                pending_upper: None,
-                pending_lower: None,
+                balance_upper: Some(PositionSize::from_str("100").expect("size")),
+                balance_lower: None,
+                held_upper: None,
+                held_lower: None,
+                incoming_upper: None,
+                incoming_lower: None,
             }
         );
     }
@@ -718,21 +718,21 @@ mod tests {
             openpit_interop::AccountAdjustment {
                 operation: AccountAdjustmentOperationAccess::Absent,
                 amount: AccountAdjustmentAmountAccess::Populated(AccountAdjustmentAmount {
-                    total: Some(AdjustmentAmount::Absolute(
+                    balance: Some(AdjustmentAmount::Absolute(
                         PositionSize::from_str("4").expect("size"),
                     )),
-                    reserved: None,
-                    pending: Some(AdjustmentAmount::Delta(
+                    held: None,
+                    incoming: Some(AdjustmentAmount::Delta(
                         PositionSize::from_str("1").expect("size"),
                     )),
                 }),
                 bounds: AccountAdjustmentBoundsAccess::Populated(AccountAdjustmentBounds {
-                    total_upper: Some(PositionSize::from_str("8").expect("size")),
-                    total_lower: None,
-                    reserved_upper: None,
-                    reserved_lower: None,
-                    pending_upper: None,
-                    pending_lower: Some(PositionSize::from_str("-2").expect("size")),
+                    balance_upper: Some(PositionSize::from_str("8").expect("size")),
+                    balance_lower: None,
+                    held_upper: None,
+                    held_lower: None,
+                    incoming_upper: None,
+                    incoming_lower: Some(PositionSize::from_str("-2").expect("size")),
                 }),
             },
             std::ptr::null_mut(),

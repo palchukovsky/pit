@@ -96,6 +96,7 @@ prevented at compile time.
 
 ## Usage
 
+<!-- Test mirror: pit/crates/openpit/tests/examples_readme.rs -->
 ```rust
 use std::time::Duration;
 

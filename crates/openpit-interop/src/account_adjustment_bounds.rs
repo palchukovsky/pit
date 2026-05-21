@@ -19,10 +19,10 @@
 
 use openpit::param::PositionSize;
 use openpit::{
-    AccountAdjustmentBounds, HasAccountAdjustmentPendingLowerBound,
-    HasAccountAdjustmentPendingUpperBound, HasAccountAdjustmentReservedLowerBound,
-    HasAccountAdjustmentReservedUpperBound, HasAccountAdjustmentTotalLowerBound,
-    HasAccountAdjustmentTotalUpperBound, RequestFieldAccessError,
+    AccountAdjustmentBounds, HasAccountAdjustmentBalanceLowerBound,
+    HasAccountAdjustmentBalanceUpperBound, HasAccountAdjustmentHeldLowerBound,
+    HasAccountAdjustmentHeldUpperBound, HasAccountAdjustmentIncomingLowerBound,
+    HasAccountAdjustmentIncomingUpperBound, RequestFieldAccessError,
 };
 
 /// Runtime access to an account adjustment's bounds group.
@@ -40,56 +40,56 @@ pub enum AccountAdjustmentBoundsAccess {
     Absent,
 }
 
-impl HasAccountAdjustmentTotalUpperBound for AccountAdjustmentBoundsAccess {
-    fn total_upper(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
+impl HasAccountAdjustmentBalanceUpperBound for AccountAdjustmentBoundsAccess {
+    fn balance_upper(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
         match self {
-            Self::Populated(b) => Ok(b.total_upper),
-            Self::Absent => Err(RequestFieldAccessError::new("bounds.total_upper")),
+            Self::Populated(b) => Ok(b.balance_upper),
+            Self::Absent => Err(RequestFieldAccessError::new("bounds.balance_upper")),
         }
     }
 }
 
-impl HasAccountAdjustmentTotalLowerBound for AccountAdjustmentBoundsAccess {
-    fn total_lower(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
+impl HasAccountAdjustmentBalanceLowerBound for AccountAdjustmentBoundsAccess {
+    fn balance_lower(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
         match self {
-            Self::Populated(b) => Ok(b.total_lower),
-            Self::Absent => Err(RequestFieldAccessError::new("bounds.total_lower")),
+            Self::Populated(b) => Ok(b.balance_lower),
+            Self::Absent => Err(RequestFieldAccessError::new("bounds.balance_lower")),
         }
     }
 }
 
-impl HasAccountAdjustmentReservedUpperBound for AccountAdjustmentBoundsAccess {
-    fn reserved_upper(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
+impl HasAccountAdjustmentHeldUpperBound for AccountAdjustmentBoundsAccess {
+    fn held_upper(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
         match self {
-            Self::Populated(b) => Ok(b.reserved_upper),
-            Self::Absent => Err(RequestFieldAccessError::new("bounds.reserved_upper")),
+            Self::Populated(b) => Ok(b.held_upper),
+            Self::Absent => Err(RequestFieldAccessError::new("bounds.held_upper")),
         }
     }
 }
 
-impl HasAccountAdjustmentReservedLowerBound for AccountAdjustmentBoundsAccess {
-    fn reserved_lower(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
+impl HasAccountAdjustmentHeldLowerBound for AccountAdjustmentBoundsAccess {
+    fn held_lower(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
         match self {
-            Self::Populated(b) => Ok(b.reserved_lower),
-            Self::Absent => Err(RequestFieldAccessError::new("bounds.reserved_lower")),
+            Self::Populated(b) => Ok(b.held_lower),
+            Self::Absent => Err(RequestFieldAccessError::new("bounds.held_lower")),
         }
     }
 }
 
-impl HasAccountAdjustmentPendingUpperBound for AccountAdjustmentBoundsAccess {
-    fn pending_upper(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
+impl HasAccountAdjustmentIncomingUpperBound for AccountAdjustmentBoundsAccess {
+    fn incoming_upper(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
         match self {
-            Self::Populated(b) => Ok(b.pending_upper),
-            Self::Absent => Err(RequestFieldAccessError::new("bounds.pending_upper")),
+            Self::Populated(b) => Ok(b.incoming_upper),
+            Self::Absent => Err(RequestFieldAccessError::new("bounds.incoming_upper")),
         }
     }
 }
 
-impl HasAccountAdjustmentPendingLowerBound for AccountAdjustmentBoundsAccess {
-    fn pending_lower(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
+impl HasAccountAdjustmentIncomingLowerBound for AccountAdjustmentBoundsAccess {
+    fn incoming_lower(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
         match self {
-            Self::Populated(b) => Ok(b.pending_lower),
-            Self::Absent => Err(RequestFieldAccessError::new("bounds.pending_lower")),
+            Self::Populated(b) => Ok(b.incoming_lower),
+            Self::Absent => Err(RequestFieldAccessError::new("bounds.incoming_lower")),
         }
     }
 }
@@ -103,29 +103,29 @@ mod tests {
     #[test]
     fn populated_returns_ok() {
         let access = AccountAdjustmentBoundsAccess::Populated(AccountAdjustmentBounds {
-            total_upper: Some(PositionSize::from_str("100").expect("valid")),
-            total_lower: Some(PositionSize::from_str("-10").expect("valid")),
-            reserved_upper: Some(PositionSize::from_str("90").expect("valid")),
-            reserved_lower: Some(PositionSize::from_str("-9").expect("valid")),
-            pending_upper: Some(PositionSize::from_str("80").expect("valid")),
-            pending_lower: Some(PositionSize::from_str("-8").expect("valid")),
+            balance_upper: Some(PositionSize::from_str("100").expect("valid")),
+            balance_lower: Some(PositionSize::from_str("-10").expect("valid")),
+            held_upper: Some(PositionSize::from_str("90").expect("valid")),
+            held_lower: Some(PositionSize::from_str("-9").expect("valid")),
+            incoming_upper: Some(PositionSize::from_str("80").expect("valid")),
+            incoming_lower: Some(PositionSize::from_str("-8").expect("valid")),
         });
-        assert!(access.total_upper().unwrap().is_some());
-        assert!(access.total_lower().unwrap().is_some());
-        assert!(access.reserved_upper().unwrap().is_some());
-        assert!(access.reserved_lower().unwrap().is_some());
-        assert!(access.pending_upper().unwrap().is_some());
-        assert!(access.pending_lower().unwrap().is_some());
+        assert!(access.balance_upper().unwrap().is_some());
+        assert!(access.balance_lower().unwrap().is_some());
+        assert!(access.held_upper().unwrap().is_some());
+        assert!(access.held_lower().unwrap().is_some());
+        assert!(access.incoming_upper().unwrap().is_some());
+        assert!(access.incoming_lower().unwrap().is_some());
     }
 
     #[test]
     fn absent_returns_err_for_all() {
         let access = AccountAdjustmentBoundsAccess::Absent;
-        assert!(access.total_upper().is_err());
-        assert!(access.total_lower().is_err());
-        assert!(access.reserved_upper().is_err());
-        assert!(access.reserved_lower().is_err());
-        assert!(access.pending_upper().is_err());
-        assert!(access.pending_lower().is_err());
+        assert!(access.balance_upper().is_err());
+        assert!(access.balance_lower().is_err());
+        assert!(access.held_upper().is_err());
+        assert!(access.held_lower().is_err());
+        assert!(access.incoming_upper().is_err());
+        assert!(access.incoming_lower().is_err());
     }
 }

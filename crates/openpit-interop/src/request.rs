@@ -20,12 +20,12 @@ use openpit::param::{
     PositionSide, PositionSize, Price, Side, Trade, TradeAmount,
 };
 use openpit::{
-    HasAccountAdjustmentBalanceAverageEntryPrice, HasAccountAdjustmentPending,
-    HasAccountAdjustmentPendingLowerBound, HasAccountAdjustmentPendingUpperBound,
-    HasAccountAdjustmentPositionLeverage, HasAccountAdjustmentReserved,
-    HasAccountAdjustmentReservedLowerBound, HasAccountAdjustmentReservedUpperBound,
-    HasAccountAdjustmentTotal, HasAccountAdjustmentTotalLowerBound,
-    HasAccountAdjustmentTotalUpperBound, HasAccountId, HasAutoBorrow, HasAverageEntryPrice,
+    HasAccountAdjustmentBalance, HasAccountAdjustmentBalanceAverageEntryPrice,
+    HasAccountAdjustmentBalanceLowerBound, HasAccountAdjustmentBalanceUpperBound,
+    HasAccountAdjustmentHeld, HasAccountAdjustmentHeldLowerBound,
+    HasAccountAdjustmentHeldUpperBound, HasAccountAdjustmentIncoming,
+    HasAccountAdjustmentIncomingLowerBound, HasAccountAdjustmentIncomingUpperBound,
+    HasAccountAdjustmentPositionLeverage, HasAccountId, HasAutoBorrow, HasAverageEntryPrice,
     HasBalanceAsset, HasClosePosition, HasCollateralAsset, HasExecutionReportIsFinal,
     HasExecutionReportLastTrade, HasExecutionReportPositionEffect, HasExecutionReportPositionSide,
     HasFee, HasInstrument, HasOrderCollateralAsset, HasOrderLeverage, HasOrderPositionSide,
@@ -257,57 +257,57 @@ impl HasAccountAdjustmentPositionLeverage for AccountAdjustment {
     }
 }
 
-impl HasAccountAdjustmentTotal for AccountAdjustment {
-    fn total(&self) -> Result<Option<AdjustmentAmount>, RequestFieldAccessError> {
-        self.amount.total()
+impl HasAccountAdjustmentBalance for AccountAdjustment {
+    fn balance(&self) -> Result<Option<AdjustmentAmount>, RequestFieldAccessError> {
+        self.amount.balance()
     }
 }
 
-impl HasAccountAdjustmentReserved for AccountAdjustment {
-    fn reserved(&self) -> Result<Option<AdjustmentAmount>, RequestFieldAccessError> {
-        self.amount.reserved()
+impl HasAccountAdjustmentHeld for AccountAdjustment {
+    fn held(&self) -> Result<Option<AdjustmentAmount>, RequestFieldAccessError> {
+        self.amount.held()
     }
 }
 
-impl HasAccountAdjustmentPending for AccountAdjustment {
-    fn pending(&self) -> Result<Option<AdjustmentAmount>, RequestFieldAccessError> {
-        self.amount.pending()
+impl HasAccountAdjustmentIncoming for AccountAdjustment {
+    fn incoming(&self) -> Result<Option<AdjustmentAmount>, RequestFieldAccessError> {
+        self.amount.incoming()
     }
 }
 
-impl HasAccountAdjustmentTotalUpperBound for AccountAdjustment {
-    fn total_upper(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
-        self.bounds.total_upper()
+impl HasAccountAdjustmentBalanceUpperBound for AccountAdjustment {
+    fn balance_upper(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
+        self.bounds.balance_upper()
     }
 }
 
-impl HasAccountAdjustmentTotalLowerBound for AccountAdjustment {
-    fn total_lower(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
-        self.bounds.total_lower()
+impl HasAccountAdjustmentBalanceLowerBound for AccountAdjustment {
+    fn balance_lower(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
+        self.bounds.balance_lower()
     }
 }
 
-impl HasAccountAdjustmentReservedUpperBound for AccountAdjustment {
-    fn reserved_upper(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
-        self.bounds.reserved_upper()
+impl HasAccountAdjustmentHeldUpperBound for AccountAdjustment {
+    fn held_upper(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
+        self.bounds.held_upper()
     }
 }
 
-impl HasAccountAdjustmentReservedLowerBound for AccountAdjustment {
-    fn reserved_lower(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
-        self.bounds.reserved_lower()
+impl HasAccountAdjustmentHeldLowerBound for AccountAdjustment {
+    fn held_lower(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
+        self.bounds.held_lower()
     }
 }
 
-impl HasAccountAdjustmentPendingUpperBound for AccountAdjustment {
-    fn pending_upper(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
-        self.bounds.pending_upper()
+impl HasAccountAdjustmentIncomingUpperBound for AccountAdjustment {
+    fn incoming_upper(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
+        self.bounds.incoming_upper()
     }
 }
 
-impl HasAccountAdjustmentPendingLowerBound for AccountAdjustment {
-    fn pending_lower(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
-        self.bounds.pending_lower()
+impl HasAccountAdjustmentIncomingLowerBound for AccountAdjustment {
+    fn incoming_lower(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
+        self.bounds.incoming_lower()
     }
 }
 
@@ -493,69 +493,69 @@ impl<R: HasAccountAdjustmentPositionLeverage, P> HasAccountAdjustmentPositionLev
     }
 }
 
-impl<R: HasAccountAdjustmentTotal, P> HasAccountAdjustmentTotal for RequestWithPayload<R, P> {
-    fn total(&self) -> Result<Option<AdjustmentAmount>, RequestFieldAccessError> {
-        self.request.total()
+impl<R: HasAccountAdjustmentBalance, P> HasAccountAdjustmentBalance for RequestWithPayload<R, P> {
+    fn balance(&self) -> Result<Option<AdjustmentAmount>, RequestFieldAccessError> {
+        self.request.balance()
     }
 }
 
-impl<R: HasAccountAdjustmentReserved, P> HasAccountAdjustmentReserved for RequestWithPayload<R, P> {
-    fn reserved(&self) -> Result<Option<AdjustmentAmount>, RequestFieldAccessError> {
-        self.request.reserved()
+impl<R: HasAccountAdjustmentHeld, P> HasAccountAdjustmentHeld for RequestWithPayload<R, P> {
+    fn held(&self) -> Result<Option<AdjustmentAmount>, RequestFieldAccessError> {
+        self.request.held()
     }
 }
 
-impl<R: HasAccountAdjustmentPending, P> HasAccountAdjustmentPending for RequestWithPayload<R, P> {
-    fn pending(&self) -> Result<Option<AdjustmentAmount>, RequestFieldAccessError> {
-        self.request.pending()
+impl<R: HasAccountAdjustmentIncoming, P> HasAccountAdjustmentIncoming for RequestWithPayload<R, P> {
+    fn incoming(&self) -> Result<Option<AdjustmentAmount>, RequestFieldAccessError> {
+        self.request.incoming()
     }
 }
 
-impl<R: HasAccountAdjustmentTotalUpperBound, P> HasAccountAdjustmentTotalUpperBound
+impl<R: HasAccountAdjustmentBalanceUpperBound, P> HasAccountAdjustmentBalanceUpperBound
     for RequestWithPayload<R, P>
 {
-    fn total_upper(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
-        self.request.total_upper()
+    fn balance_upper(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
+        self.request.balance_upper()
     }
 }
 
-impl<R: HasAccountAdjustmentTotalLowerBound, P> HasAccountAdjustmentTotalLowerBound
+impl<R: HasAccountAdjustmentBalanceLowerBound, P> HasAccountAdjustmentBalanceLowerBound
     for RequestWithPayload<R, P>
 {
-    fn total_lower(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
-        self.request.total_lower()
+    fn balance_lower(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
+        self.request.balance_lower()
     }
 }
 
-impl<R: HasAccountAdjustmentReservedUpperBound, P> HasAccountAdjustmentReservedUpperBound
+impl<R: HasAccountAdjustmentHeldUpperBound, P> HasAccountAdjustmentHeldUpperBound
     for RequestWithPayload<R, P>
 {
-    fn reserved_upper(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
-        self.request.reserved_upper()
+    fn held_upper(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
+        self.request.held_upper()
     }
 }
 
-impl<R: HasAccountAdjustmentReservedLowerBound, P> HasAccountAdjustmentReservedLowerBound
+impl<R: HasAccountAdjustmentHeldLowerBound, P> HasAccountAdjustmentHeldLowerBound
     for RequestWithPayload<R, P>
 {
-    fn reserved_lower(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
-        self.request.reserved_lower()
+    fn held_lower(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
+        self.request.held_lower()
     }
 }
 
-impl<R: HasAccountAdjustmentPendingUpperBound, P> HasAccountAdjustmentPendingUpperBound
+impl<R: HasAccountAdjustmentIncomingUpperBound, P> HasAccountAdjustmentIncomingUpperBound
     for RequestWithPayload<R, P>
 {
-    fn pending_upper(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
-        self.request.pending_upper()
+    fn incoming_upper(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
+        self.request.incoming_upper()
     }
 }
 
-impl<R: HasAccountAdjustmentPendingLowerBound, P> HasAccountAdjustmentPendingLowerBound
+impl<R: HasAccountAdjustmentIncomingLowerBound, P> HasAccountAdjustmentIncomingLowerBound
     for RequestWithPayload<R, P>
 {
-    fn pending_lower(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
-        self.request.pending_lower()
+    fn incoming_lower(&self) -> Result<Option<PositionSize>, RequestFieldAccessError> {
+        self.request.incoming_lower()
     }
 }
 
@@ -563,7 +563,7 @@ impl<R: HasAccountAdjustmentPendingLowerBound, P> HasAccountAdjustmentPendingLow
 mod tests {
     use openpit::param::{AccountId, Asset, Quantity, Side, TradeAmount};
     use openpit::{
-        HasAccountAdjustmentTotal, HasAccountAdjustmentTotalUpperBound, HasAccountId,
+        HasAccountAdjustmentBalance, HasAccountAdjustmentBalanceUpperBound, HasAccountId,
         HasBalanceAsset, HasInstrument, HasOrderPrice, HasSide, HasTradeAmount, Instrument,
     };
 
@@ -668,7 +668,7 @@ mod tests {
         };
         let wrapped = RequestWithPayload::new(adjustment, ());
         assert!(wrapped.balance_asset().is_err());
-        assert!(wrapped.total().is_err());
-        assert!(wrapped.total_upper().is_err());
+        assert!(wrapped.balance().is_err());
+        assert!(wrapped.balance_upper().is_err());
     }
 }

@@ -941,17 +941,17 @@ struct OpenPitParamAdjustmentAmount {
  */
 struct OpenPitAccountAdjustmentAmount {
     /**
-     * Requested total-balance change.
+     * Requested balance change.
      */
-    OpenPitParamAdjustmentAmount total;
+    OpenPitParamAdjustmentAmount balance;
     /**
-     * Requested reserved-balance change.
+     * Requested held-balance change.
      */
-    OpenPitParamAdjustmentAmount reserved;
+    OpenPitParamAdjustmentAmount held;
     /**
-     * Requested pending-balance change.
+     * Requested incoming-balance change.
      */
-    OpenPitParamAdjustmentAmount pending;
+    OpenPitParamAdjustmentAmount incoming;
 };
 
 /**
@@ -961,29 +961,29 @@ struct OpenPitAccountAdjustmentAmount {
  */
 struct OpenPitAccountAdjustmentBounds {
     /**
-     * Optional upper bound for total balance.
+     * Optional upper bound for balance.
      */
-    OpenPitParamPositionSizeOptional total_upper;
+    OpenPitParamPositionSizeOptional balance_upper;
     /**
-     * Optional lower bound for total balance.
+     * Optional lower bound for balance.
      */
-    OpenPitParamPositionSizeOptional total_lower;
+    OpenPitParamPositionSizeOptional balance_lower;
     /**
-     * Optional upper bound for reserved balance.
+     * Optional upper bound for held balance.
      */
-    OpenPitParamPositionSizeOptional reserved_upper;
+    OpenPitParamPositionSizeOptional held_upper;
     /**
-     * Optional lower bound for reserved balance.
+     * Optional lower bound for held balance.
      */
-    OpenPitParamPositionSizeOptional reserved_lower;
+    OpenPitParamPositionSizeOptional held_lower;
     /**
-     * Optional upper bound for pending balance.
+     * Optional upper bound for incoming balance.
      */
-    OpenPitParamPositionSizeOptional pending_upper;
+    OpenPitParamPositionSizeOptional incoming_upper;
     /**
-     * Optional lower bound for pending balance.
+     * Optional lower bound for incoming balance.
      */
-    OpenPitParamPositionSizeOptional pending_lower;
+    OpenPitParamPositionSizeOptional incoming_lower;
 };
 
 struct OpenPitAccountAdjustmentAmountOptional {

@@ -33,6 +33,16 @@ import (
 	"go.openpit.dev/openpit/tx"
 )
 
+// Mirrors public Go examples from:
+// - ../pit.wiki/Account-Adjustments.md
+// - ../pit.wiki/Custom-Go-Types.md
+// - ../pit.wiki/Domain-Types.md
+// - ../pit.wiki/Getting-Started.md
+// - ../pit.wiki/Policies.md
+// - ../pit.wiki/Policy-API.md
+// - ../pit.wiki/Pre-trade-Pipeline.md
+// If this file changes, update every linked documentation snippet.
+
 // --- Policy-API: Custom Order and Execution Report Models ---
 
 type wikiStrategyOrder struct {
@@ -1058,4 +1068,204 @@ func TestExampleWikiCustomGoTypes(t *testing.T) {
 			blockedRejects[0].Code, reject.CodeComplianceRestriction,
 		)
 	}
+}
+
+// Used in: pit.wiki/Domain-Types.md — Work With Directional Types
+func TestExampleWikiDomainTypesDirectionalTypes(t *testing.T) {
+	side := param.SideBuy
+	positionSide := param.PositionSideLong
+
+	if side != param.SideBuy {
+		t.Fatalf("side = %v, want %v", side, param.SideBuy)
+	}
+	if positionSide != param.PositionSideLong {
+		t.Fatalf("positionSide = %v, want %v", positionSide, param.PositionSideLong)
+	}
+}
+
+// Used in: pit.wiki/Domain-Types.md — Create Leverage
+func TestExampleWikiDomainTypesLeverage(t *testing.T) {
+	fromMultiplier := param.NewLeverageFromInt(100)
+	fromFloat := param.NewLeverageFromFloat32(100.5)
+
+	if got := fromMultiplier.Value(); got != 100.0 {
+		t.Fatalf("fromMultiplier.Value() = %v, want %v", got, 100.0)
+	}
+	if got := fromFloat.Value(); got != 100.5 {
+		t.Fatalf("fromFloat.Value() = %v, want %v", got, 100.5)
+	}
+}
+
+// Used in: pit.wiki/Account-Adjustments.md — Examples → Go
+func TestExampleWikiAccountAdjustments(t *testing.T) {
+	acceptAll := &wikiCumulativeLimitPolicy{name: "accept-all", totals: make(map[string]param.Volume)}
+	engine, err := NewEngineBuilder().FullSync().PreTrade(acceptAll).Build()
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	defer engine.Stop()
+
+	accountID := param.NewAccountIDFromInt(99224416)
+
+	usd, err := param.NewAsset("USD")
+	if err != nil {
+		t.Fatalf("NewAsset(USD) error = %v", err)
+	}
+	spx, err := param.NewAsset("SPX")
+	if err != nil {
+		t.Fatalf("NewAsset(SPX) error = %v", err)
+	}
+	entryPrice, err := param.NewPriceFromString("95000")
+	if err != nil {
+		t.Fatalf("NewPriceFromString() error = %v", err)
+	}
+	totalCash, err := param.NewPositionSizeFromString("10000")
+	if err != nil {
+		t.Fatalf("NewPositionSizeFromString(10000) error = %v", err)
+	}
+	totalPosition, err := param.NewPositionSizeFromString("-3")
+	if err != nil {
+		t.Fatalf("NewPositionSizeFromString(-3) error = %v", err)
+	}
+
+	cashAdj, err := model.NewAccountAdjustmentFromValues(model.AccountAdjustmentValues{
+		BalanceOperation: optional.Some(
+			model.NewAccountAdjustmentBalanceOperationFromValues(
+				model.AccountAdjustmentBalanceOperationValues{
+					Asset: optional.Some(usd),
+				},
+			),
+		),
+		Amount: optional.Some(
+			model.NewAccountAdjustmentAmountFromValues(model.AccountAdjustmentAmountValues{
+				Balance: optional.Some(param.NewAbsoluteAdjustmentAmount(totalCash)),
+			}),
+		),
+	})
+	if err != nil {
+		t.Fatalf("NewAccountAdjustmentFromValues(cash) error = %v", err)
+	}
+
+	posAdj, err := model.NewAccountAdjustmentFromValues(model.AccountAdjustmentValues{
+		PositionOperation: optional.Some(
+			model.NewAccountAdjustmentPositionOperationFromValues(
+				model.AccountAdjustmentPositionOperationValues{
+					Instrument:        optional.Some(param.NewInstrument(spx, usd)),
+					CollateralAsset:   optional.Some(usd),
+					AverageEntryPrice: optional.Some(entryPrice),
+					Mode:              optional.Some(param.PositionModeHedged),
+				},
+			),
+		),
+		Amount: optional.Some(
+			model.NewAccountAdjustmentAmountFromValues(model.AccountAdjustmentAmountValues{
+				Balance: optional.Some(param.NewAbsoluteAdjustmentAmount(totalPosition)),
+			}),
+		),
+	})
+	if err != nil {
+		t.Fatalf("NewAccountAdjustmentFromValues(position) error = %v", err)
+	}
+
+	rejects, err := engine.ApplyAccountAdjustment(
+		accountID,
+		[]model.AccountAdjustment{cashAdj, posAdj},
+	)
+	if err != nil {
+		t.Fatalf("ApplyAccountAdjustment() error = %v", err)
+	}
+	if rejects.IsSet() {
+		t.Fatalf("ApplyAccountAdjustment() rejects = %v, want none", rejects)
+	}
+}
+
+// Used in: pit.wiki/Account-Adjustments.md — Example: Balance Limit Policy → Go
+func TestExampleWikiAccountAdjustmentsBalanceLimitPolicy(t *testing.T) {
+	policy := &wikiCumulativeLimitPolicy{
+		name:   "CumulativeLimitPolicy",
+		totals: make(map[string]param.Volume),
+	}
+
+	engine, err := NewEngineBuilder().FullSync().PreTrade(policy).Build()
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	defer engine.Stop()
+
+	usd, err := param.NewAsset("USD")
+	if err != nil {
+		t.Fatalf("NewAsset(USD) error = %v", err)
+	}
+	totalCash, err := param.NewPositionSizeFromString("100")
+	if err != nil {
+		t.Fatalf("NewPositionSizeFromString() error = %v", err)
+	}
+
+	adj, err := model.NewAccountAdjustmentFromValues(model.AccountAdjustmentValues{
+		BalanceOperation: optional.Some(
+			model.NewAccountAdjustmentBalanceOperationFromValues(
+				model.AccountAdjustmentBalanceOperationValues{
+					Asset: optional.Some(usd),
+				},
+			),
+		),
+		Amount: optional.Some(
+			model.NewAccountAdjustmentAmountFromValues(model.AccountAdjustmentAmountValues{
+				Balance: optional.Some(param.NewAbsoluteAdjustmentAmount(totalCash)),
+			}),
+		),
+	})
+	if err != nil {
+		t.Fatalf("NewAccountAdjustmentFromValues() error = %v", err)
+	}
+
+	rejects, err := engine.ApplyAccountAdjustment(
+		param.NewAccountIDFromInt(99224416),
+		[]model.AccountAdjustment{adj},
+	)
+	if err != nil {
+		t.Fatalf("ApplyAccountAdjustment() error = %v", err)
+	}
+	if rejects.IsSet() {
+		t.Fatalf("ApplyAccountAdjustment() rejects = %v, want none", rejects)
+	}
+}
+
+type wikiCumulativeLimitPolicy struct {
+	name   string
+	totals map[string]param.Volume
+}
+
+func (wikiCumulativeLimitPolicy) Close() {}
+
+func (p *wikiCumulativeLimitPolicy) Name() string { return p.name }
+
+func (*wikiCumulativeLimitPolicy) CheckPreTradeStart(
+	pretrade.Context,
+	model.Order,
+) []reject.Reject {
+	return nil
+}
+
+func (*wikiCumulativeLimitPolicy) PerformPreTradeCheck(
+	pretrade.Context,
+	model.Order,
+	tx.Mutations,
+) []reject.Reject {
+	return nil
+}
+
+func (*wikiCumulativeLimitPolicy) ApplyExecutionReport(
+	model.ExecutionReport,
+) []reject.AccountBlock {
+	return nil
+}
+
+func (*wikiCumulativeLimitPolicy) ApplyAccountAdjustment(
+	_ accountadjustment.Context,
+	_ param.AccountID,
+	_ model.AccountAdjustment,
+	_ tx.Mutations,
+) []reject.Reject {
+	return nil
 }

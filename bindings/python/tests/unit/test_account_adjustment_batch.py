@@ -6,7 +6,7 @@ def _make_adjustment(*, pending: str | None = None) -> openpit.AccountAdjustment
     amount = None
     if pending is not None:
         amount = openpit.AccountAdjustmentAmount(
-            pending=openpit.param.AdjustmentAmount.delta(
+            incoming=openpit.param.AdjustmentAmount.delta(
                 openpit.param.PositionSize(pending)
             )
         )
@@ -50,11 +50,11 @@ class RejectOnPendingPolicy(openpit.pretrade.Policy):
         _ = account_id
         pending = (
             None
-            if adjustment.amount is None or adjustment.amount.pending is None
+            if adjustment.amount is None or adjustment.amount.incoming is None
             else (
-                str(adjustment.amount.pending.as_delta)
-                if adjustment.amount.pending.is_delta
-                and adjustment.amount.pending.as_delta is not None
+                str(adjustment.amount.incoming.as_delta)
+                if adjustment.amount.incoming.is_delta
+                and adjustment.amount.incoming.as_delta is not None
                 else None
             )
         )

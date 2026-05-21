@@ -682,9 +682,9 @@ func NewAccountAdjustmentAmount() AccountAdjustmentAmount {
 }
 
 type AccountAdjustmentAmountValues struct {
-	Total    optional.Option[param.AdjustmentAmount]
-	Reserved optional.Option[param.AdjustmentAmount]
-	Pending  optional.Option[param.AdjustmentAmount]
+	Balance  optional.Option[param.AdjustmentAmount]
+	Held     optional.Option[param.AdjustmentAmount]
+	Incoming optional.Option[param.AdjustmentAmount]
 }
 
 func NewAccountAdjustmentAmountFromValues(
@@ -709,59 +709,59 @@ func (a *AccountAdjustmentAmount) SetValues(values AccountAdjustmentAmountValues
 }
 
 func (a *AccountAdjustmentAmount) setValues(values AccountAdjustmentAmountValues) {
-	if value, ok := values.Total.Get(); ok {
-		a.SetTotal(value)
+	if value, ok := values.Balance.Get(); ok {
+		a.SetBalance(value)
 	}
-	if value, ok := values.Reserved.Get(); ok {
-		a.SetReserved(value)
+	if value, ok := values.Held.Get(); ok {
+		a.SetHeld(value)
 	}
-	if value, ok := values.Pending.Get(); ok {
-		a.SetPending(value)
+	if value, ok := values.Incoming.Get(); ok {
+		a.SetIncoming(value)
 	}
 }
 
 func (a AccountAdjustmentAmount) Values() AccountAdjustmentAmountValues {
 	return AccountAdjustmentAmountValues{
-		Total:    a.Total(),
-		Reserved: a.Reserved(),
-		Pending:  a.Pending(),
+		Balance:  a.Balance(),
+		Held:     a.Held(),
+		Incoming: a.Incoming(),
 	}
 }
 
-func (a AccountAdjustmentAmount) Total() optional.Option[param.AdjustmentAmount] {
-	return param.NewAdjustmentAmountFromHandle(native.AccountAdjustmentAmountGetTotal(a.value))
+func (a AccountAdjustmentAmount) Balance() optional.Option[param.AdjustmentAmount] {
+	return param.NewAdjustmentAmountFromHandle(native.AccountAdjustmentAmountGetBalance(a.value))
 }
 
-func (a *AccountAdjustmentAmount) SetTotal(value param.AdjustmentAmount) {
-	native.AccountAdjustmentAmountSetTotal(&a.value, value.Handle())
+func (a *AccountAdjustmentAmount) SetBalance(value param.AdjustmentAmount) {
+	native.AccountAdjustmentAmountSetBalance(&a.value, value.Handle())
 }
 
-func (a *AccountAdjustmentAmount) UnsetTotal() {
-	native.AccountAdjustmentAmountUnsetTotal(&a.value)
+func (a *AccountAdjustmentAmount) UnsetBalance() {
+	native.AccountAdjustmentAmountUnsetBalance(&a.value)
 }
 
-func (a AccountAdjustmentAmount) Reserved() optional.Option[param.AdjustmentAmount] {
-	return param.NewAdjustmentAmountFromHandle(native.AccountAdjustmentAmountGetReserved(a.value))
+func (a AccountAdjustmentAmount) Held() optional.Option[param.AdjustmentAmount] {
+	return param.NewAdjustmentAmountFromHandle(native.AccountAdjustmentAmountGetHeld(a.value))
 }
 
-func (a *AccountAdjustmentAmount) SetReserved(value param.AdjustmentAmount) {
-	native.AccountAdjustmentAmountSetReserved(&a.value, value.Handle())
+func (a *AccountAdjustmentAmount) SetHeld(value param.AdjustmentAmount) {
+	native.AccountAdjustmentAmountSetHeld(&a.value, value.Handle())
 }
 
-func (a *AccountAdjustmentAmount) UnsetReserved() {
-	native.AccountAdjustmentAmountUnsetReserved(&a.value)
+func (a *AccountAdjustmentAmount) UnsetHeld() {
+	native.AccountAdjustmentAmountUnsetHeld(&a.value)
 }
 
-func (a AccountAdjustmentAmount) Pending() optional.Option[param.AdjustmentAmount] {
-	return param.NewAdjustmentAmountFromHandle(native.AccountAdjustmentAmountGetPending(a.value))
+func (a AccountAdjustmentAmount) Incoming() optional.Option[param.AdjustmentAmount] {
+	return param.NewAdjustmentAmountFromHandle(native.AccountAdjustmentAmountGetIncoming(a.value))
 }
 
-func (a *AccountAdjustmentAmount) SetPending(value param.AdjustmentAmount) {
-	native.AccountAdjustmentAmountSetPending(&a.value, value.Handle())
+func (a *AccountAdjustmentAmount) SetIncoming(value param.AdjustmentAmount) {
+	native.AccountAdjustmentAmountSetIncoming(&a.value, value.Handle())
 }
 
-func (a *AccountAdjustmentAmount) UnsetPending() {
-	native.AccountAdjustmentAmountUnsetPending(&a.value)
+func (a *AccountAdjustmentAmount) UnsetIncoming() {
+	native.AccountAdjustmentAmountUnsetIncoming(&a.value)
 }
 
 type AccountAdjustmentAmountView struct {
@@ -778,40 +778,40 @@ func (a *AccountAdjustmentAmountView) Reset() {
 	native.AccountAdjustmentAmountReset(a.ref)
 }
 
-func (a AccountAdjustmentAmountView) Total() optional.Option[param.AdjustmentAmount] {
-	return param.NewAdjustmentAmountFromHandle(native.AccountAdjustmentAmountGetTotal(*a.ref))
+func (a AccountAdjustmentAmountView) Balance() optional.Option[param.AdjustmentAmount] {
+	return param.NewAdjustmentAmountFromHandle(native.AccountAdjustmentAmountGetBalance(*a.ref))
 }
 
-func (a *AccountAdjustmentAmountView) SetTotal(value param.AdjustmentAmount) {
-	native.AccountAdjustmentAmountSetTotal(a.ref, value.Handle())
+func (a *AccountAdjustmentAmountView) SetBalance(value param.AdjustmentAmount) {
+	native.AccountAdjustmentAmountSetBalance(a.ref, value.Handle())
 }
 
-func (a *AccountAdjustmentAmountView) UnsetTotal() {
-	native.AccountAdjustmentAmountUnsetTotal(a.ref)
+func (a *AccountAdjustmentAmountView) UnsetBalance() {
+	native.AccountAdjustmentAmountUnsetBalance(a.ref)
 }
 
-func (a AccountAdjustmentAmountView) Reserved() optional.Option[param.AdjustmentAmount] {
-	return param.NewAdjustmentAmountFromHandle(native.AccountAdjustmentAmountGetReserved(*a.ref))
+func (a AccountAdjustmentAmountView) Held() optional.Option[param.AdjustmentAmount] {
+	return param.NewAdjustmentAmountFromHandle(native.AccountAdjustmentAmountGetHeld(*a.ref))
 }
 
-func (a *AccountAdjustmentAmountView) SetReserved(value param.AdjustmentAmount) {
-	native.AccountAdjustmentAmountSetReserved(a.ref, value.Handle())
+func (a *AccountAdjustmentAmountView) SetHeld(value param.AdjustmentAmount) {
+	native.AccountAdjustmentAmountSetHeld(a.ref, value.Handle())
 }
 
-func (a *AccountAdjustmentAmountView) UnsetReserved() {
-	native.AccountAdjustmentAmountUnsetReserved(a.ref)
+func (a *AccountAdjustmentAmountView) UnsetHeld() {
+	native.AccountAdjustmentAmountUnsetHeld(a.ref)
 }
 
-func (a AccountAdjustmentAmountView) Pending() optional.Option[param.AdjustmentAmount] {
-	return param.NewAdjustmentAmountFromHandle(native.AccountAdjustmentAmountGetPending(*a.ref))
+func (a AccountAdjustmentAmountView) Incoming() optional.Option[param.AdjustmentAmount] {
+	return param.NewAdjustmentAmountFromHandle(native.AccountAdjustmentAmountGetIncoming(*a.ref))
 }
 
-func (a *AccountAdjustmentAmountView) SetPending(value param.AdjustmentAmount) {
-	native.AccountAdjustmentAmountSetPending(a.ref, value.Handle())
+func (a *AccountAdjustmentAmountView) SetIncoming(value param.AdjustmentAmount) {
+	native.AccountAdjustmentAmountSetIncoming(a.ref, value.Handle())
 }
 
-func (a *AccountAdjustmentAmountView) UnsetPending() {
-	native.AccountAdjustmentAmountUnsetPending(a.ref)
+func (a *AccountAdjustmentAmountView) UnsetIncoming() {
+	native.AccountAdjustmentAmountUnsetIncoming(a.ref)
 }
 
 //------------------------------------------------------------------------------
@@ -826,12 +826,12 @@ func NewAccountAdjustmentBounds() AccountAdjustmentBounds {
 }
 
 type AccountAdjustmentBoundsValues struct {
-	TotalUpper    optional.Option[param.PositionSize]
-	TotalLower    optional.Option[param.PositionSize]
-	ReservedUpper optional.Option[param.PositionSize]
-	ReservedLower optional.Option[param.PositionSize]
-	PendingUpper  optional.Option[param.PositionSize]
-	PendingLower  optional.Option[param.PositionSize]
+	BalanceUpper  optional.Option[param.PositionSize]
+	BalanceLower  optional.Option[param.PositionSize]
+	HeldUpper     optional.Option[param.PositionSize]
+	HeldLower     optional.Option[param.PositionSize]
+	IncomingUpper optional.Option[param.PositionSize]
+	IncomingLower optional.Option[param.PositionSize]
 }
 
 func NewAccountAdjustmentBoundsFromValues(
@@ -852,12 +852,12 @@ func (b *AccountAdjustmentBounds) Reset() {
 
 func (b AccountAdjustmentBounds) Values() AccountAdjustmentBoundsValues {
 	return AccountAdjustmentBoundsValues{
-		TotalUpper:    b.TotalUpper(),
-		TotalLower:    b.TotalLower(),
-		ReservedUpper: b.ReservedUpper(),
-		ReservedLower: b.ReservedLower(),
-		PendingUpper:  b.PendingUpper(),
-		PendingLower:  b.PendingLower(),
+		BalanceUpper:  b.BalanceUpper(),
+		BalanceLower:  b.BalanceLower(),
+		HeldUpper:     b.HeldUpper(),
+		HeldLower:     b.HeldLower(),
+		IncomingUpper: b.IncomingUpper(),
+		IncomingLower: b.IncomingLower(),
 	}
 }
 
@@ -867,108 +867,108 @@ func (b *AccountAdjustmentBounds) SetValues(values AccountAdjustmentBoundsValues
 }
 
 func (b AccountAdjustmentBounds) setValues(values AccountAdjustmentBoundsValues) {
-	if value, ok := values.TotalUpper.Get(); ok {
-		b.SetTotalUpper(value)
+	if value, ok := values.BalanceUpper.Get(); ok {
+		b.SetBalanceUpper(value)
 	}
-	if value, ok := values.TotalLower.Get(); ok {
-		b.SetTotalLower(value)
+	if value, ok := values.BalanceLower.Get(); ok {
+		b.SetBalanceLower(value)
 	}
-	if value, ok := values.ReservedUpper.Get(); ok {
-		b.SetReservedUpper(value)
+	if value, ok := values.HeldUpper.Get(); ok {
+		b.SetHeldUpper(value)
 	}
-	if value, ok := values.ReservedLower.Get(); ok {
-		b.SetReservedLower(value)
+	if value, ok := values.HeldLower.Get(); ok {
+		b.SetHeldLower(value)
 	}
-	if value, ok := values.PendingUpper.Get(); ok {
-		b.SetPendingUpper(value)
+	if value, ok := values.IncomingUpper.Get(); ok {
+		b.SetIncomingUpper(value)
 	}
-	if value, ok := values.PendingLower.Get(); ok {
-		b.SetPendingLower(value)
+	if value, ok := values.IncomingLower.Get(); ok {
+		b.SetIncomingLower(value)
 	}
 }
 
-func (b AccountAdjustmentBounds) TotalUpper() optional.Option[param.PositionSize] {
+func (b AccountAdjustmentBounds) BalanceUpper() optional.Option[param.PositionSize] {
 	return param.NewPositionSizeOptionFromHandle(
-		native.AccountAdjustmentBoundsGetTotalUpper(b.value),
+		native.AccountAdjustmentBoundsGetBalanceUpper(b.value),
 	)
 }
 
-func (b *AccountAdjustmentBounds) SetTotalUpper(bound param.PositionSize) {
-	native.AccountAdjustmentBoundsSetTotalUpper(&b.value, bound.Handle())
+func (b *AccountAdjustmentBounds) SetBalanceUpper(bound param.PositionSize) {
+	native.AccountAdjustmentBoundsSetBalanceUpper(&b.value, bound.Handle())
 }
 
-func (b *AccountAdjustmentBounds) UnsetTotalUpper() {
-	native.AccountAdjustmentBoundsUnsetTotalUpper(&b.value)
+func (b *AccountAdjustmentBounds) UnsetBalanceUpper() {
+	native.AccountAdjustmentBoundsUnsetBalanceUpper(&b.value)
 }
 
-func (b AccountAdjustmentBounds) TotalLower() optional.Option[param.PositionSize] {
+func (b AccountAdjustmentBounds) BalanceLower() optional.Option[param.PositionSize] {
 	return param.NewPositionSizeOptionFromHandle(
-		native.AccountAdjustmentBoundsGetTotalLower(b.value),
+		native.AccountAdjustmentBoundsGetBalanceLower(b.value),
 	)
 }
 
-func (b *AccountAdjustmentBounds) SetTotalLower(bound param.PositionSize) {
-	native.AccountAdjustmentBoundsSetTotalLower(&b.value, bound.Handle())
+func (b *AccountAdjustmentBounds) SetBalanceLower(bound param.PositionSize) {
+	native.AccountAdjustmentBoundsSetBalanceLower(&b.value, bound.Handle())
 }
 
-func (b *AccountAdjustmentBounds) UnsetTotalLower() {
-	native.AccountAdjustmentBoundsUnsetTotalLower(&b.value)
+func (b *AccountAdjustmentBounds) UnsetBalanceLower() {
+	native.AccountAdjustmentBoundsUnsetBalanceLower(&b.value)
 }
 
-func (b AccountAdjustmentBounds) ReservedUpper() optional.Option[param.PositionSize] {
+func (b AccountAdjustmentBounds) HeldUpper() optional.Option[param.PositionSize] {
 	return param.NewPositionSizeOptionFromHandle(
-		native.AccountAdjustmentBoundsGetReservedUpper(b.value),
+		native.AccountAdjustmentBoundsGetHeldUpper(b.value),
 	)
 }
 
-func (b *AccountAdjustmentBounds) SetReservedUpper(bound param.PositionSize) {
-	native.AccountAdjustmentBoundsSetReservedUpper(&b.value, bound.Handle())
+func (b *AccountAdjustmentBounds) SetHeldUpper(bound param.PositionSize) {
+	native.AccountAdjustmentBoundsSetHeldUpper(&b.value, bound.Handle())
 }
 
-func (b *AccountAdjustmentBounds) UnsetReservedUpper() {
-	native.AccountAdjustmentBoundsUnsetReservedUpper(&b.value)
+func (b *AccountAdjustmentBounds) UnsetHeldUpper() {
+	native.AccountAdjustmentBoundsUnsetHeldUpper(&b.value)
 }
 
-func (b AccountAdjustmentBounds) ReservedLower() optional.Option[param.PositionSize] {
+func (b AccountAdjustmentBounds) HeldLower() optional.Option[param.PositionSize] {
 	return param.NewPositionSizeOptionFromHandle(
-		native.AccountAdjustmentBoundsGetReservedLower(b.value),
+		native.AccountAdjustmentBoundsGetHeldLower(b.value),
 	)
 }
 
-func (b *AccountAdjustmentBounds) SetReservedLower(bound param.PositionSize) {
-	native.AccountAdjustmentBoundsSetReservedLower(&b.value, bound.Handle())
+func (b *AccountAdjustmentBounds) SetHeldLower(bound param.PositionSize) {
+	native.AccountAdjustmentBoundsSetHeldLower(&b.value, bound.Handle())
 }
 
-func (b *AccountAdjustmentBounds) UnsetReservedLower() {
-	native.AccountAdjustmentBoundsUnsetReservedLower(&b.value)
+func (b *AccountAdjustmentBounds) UnsetHeldLower() {
+	native.AccountAdjustmentBoundsUnsetHeldLower(&b.value)
 }
 
-func (b AccountAdjustmentBounds) PendingUpper() optional.Option[param.PositionSize] {
+func (b AccountAdjustmentBounds) IncomingUpper() optional.Option[param.PositionSize] {
 	return param.NewPositionSizeOptionFromHandle(
-		native.AccountAdjustmentBoundsGetPendingUpper(b.value),
+		native.AccountAdjustmentBoundsGetIncomingUpper(b.value),
 	)
 }
 
-func (b *AccountAdjustmentBounds) SetPendingUpper(bound param.PositionSize) {
-	native.AccountAdjustmentBoundsSetPendingUpper(&b.value, bound.Handle())
+func (b *AccountAdjustmentBounds) SetIncomingUpper(bound param.PositionSize) {
+	native.AccountAdjustmentBoundsSetIncomingUpper(&b.value, bound.Handle())
 }
 
-func (b *AccountAdjustmentBounds) UnsetPendingUpper() {
-	native.AccountAdjustmentBoundsUnsetPendingUpper(&b.value)
+func (b *AccountAdjustmentBounds) UnsetIncomingUpper() {
+	native.AccountAdjustmentBoundsUnsetIncomingUpper(&b.value)
 }
 
-func (b AccountAdjustmentBounds) PendingLower() optional.Option[param.PositionSize] {
+func (b AccountAdjustmentBounds) IncomingLower() optional.Option[param.PositionSize] {
 	return param.NewPositionSizeOptionFromHandle(
-		native.AccountAdjustmentBoundsGetPendingLower(b.value),
+		native.AccountAdjustmentBoundsGetIncomingLower(b.value),
 	)
 }
 
-func (b *AccountAdjustmentBounds) SetPendingLower(bound param.PositionSize) {
-	native.AccountAdjustmentBoundsSetPendingLower(&b.value, bound.Handle())
+func (b *AccountAdjustmentBounds) SetIncomingLower(bound param.PositionSize) {
+	native.AccountAdjustmentBoundsSetIncomingLower(&b.value, bound.Handle())
 }
 
-func (b *AccountAdjustmentBounds) UnsetPendingLower() {
-	native.AccountAdjustmentBoundsUnsetPendingLower(&b.value)
+func (b *AccountAdjustmentBounds) UnsetIncomingLower() {
+	native.AccountAdjustmentBoundsUnsetIncomingLower(&b.value)
 }
 
 type AccountAdjustmentBoundsView struct {
@@ -985,88 +985,88 @@ func (b *AccountAdjustmentBoundsView) Reset() {
 	native.AccountAdjustmentBoundsReset(b.ref)
 }
 
-func (b AccountAdjustmentBoundsView) TotalUpper() optional.Option[param.PositionSize] {
+func (b AccountAdjustmentBoundsView) BalanceUpper() optional.Option[param.PositionSize] {
 	return param.NewPositionSizeOptionFromHandle(
-		native.AccountAdjustmentBoundsGetTotalUpper(*b.ref),
+		native.AccountAdjustmentBoundsGetBalanceUpper(*b.ref),
 	)
 }
 
-func (b *AccountAdjustmentBoundsView) SetTotalUpper(bound param.PositionSize) {
-	native.AccountAdjustmentBoundsSetTotalUpper(b.ref, bound.Handle())
+func (b *AccountAdjustmentBoundsView) SetBalanceUpper(bound param.PositionSize) {
+	native.AccountAdjustmentBoundsSetBalanceUpper(b.ref, bound.Handle())
 }
 
-func (b *AccountAdjustmentBoundsView) UnsetTotalUpper() {
-	native.AccountAdjustmentBoundsUnsetTotalUpper(b.ref)
+func (b *AccountAdjustmentBoundsView) UnsetBalanceUpper() {
+	native.AccountAdjustmentBoundsUnsetBalanceUpper(b.ref)
 }
 
-func (b AccountAdjustmentBoundsView) TotalLower() optional.Option[param.PositionSize] {
+func (b AccountAdjustmentBoundsView) BalanceLower() optional.Option[param.PositionSize] {
 	return param.NewPositionSizeOptionFromHandle(
-		native.AccountAdjustmentBoundsGetTotalLower(*b.ref),
+		native.AccountAdjustmentBoundsGetBalanceLower(*b.ref),
 	)
 }
 
-func (b *AccountAdjustmentBoundsView) SetTotalLower(bound param.PositionSize) {
-	native.AccountAdjustmentBoundsSetTotalLower(b.ref, bound.Handle())
+func (b *AccountAdjustmentBoundsView) SetBalanceLower(bound param.PositionSize) {
+	native.AccountAdjustmentBoundsSetBalanceLower(b.ref, bound.Handle())
 }
 
-func (b *AccountAdjustmentBoundsView) UnsetTotalLower() {
-	native.AccountAdjustmentBoundsUnsetTotalLower(b.ref)
+func (b *AccountAdjustmentBoundsView) UnsetBalanceLower() {
+	native.AccountAdjustmentBoundsUnsetBalanceLower(b.ref)
 }
 
-func (b AccountAdjustmentBoundsView) ReservedUpper() optional.Option[param.PositionSize] {
+func (b AccountAdjustmentBoundsView) HeldUpper() optional.Option[param.PositionSize] {
 	return param.NewPositionSizeOptionFromHandle(
-		native.AccountAdjustmentBoundsGetReservedUpper(*b.ref),
+		native.AccountAdjustmentBoundsGetHeldUpper(*b.ref),
 	)
 }
 
-func (b *AccountAdjustmentBoundsView) SetReservedUpper(bound param.PositionSize) {
-	native.AccountAdjustmentBoundsSetReservedUpper(b.ref, bound.Handle())
+func (b *AccountAdjustmentBoundsView) SetHeldUpper(bound param.PositionSize) {
+	native.AccountAdjustmentBoundsSetHeldUpper(b.ref, bound.Handle())
 }
 
-func (b *AccountAdjustmentBoundsView) UnsetReservedUpper() {
-	native.AccountAdjustmentBoundsUnsetReservedUpper(b.ref)
+func (b *AccountAdjustmentBoundsView) UnsetHeldUpper() {
+	native.AccountAdjustmentBoundsUnsetHeldUpper(b.ref)
 }
 
-func (b AccountAdjustmentBoundsView) ReservedLower() optional.Option[param.PositionSize] {
+func (b AccountAdjustmentBoundsView) HeldLower() optional.Option[param.PositionSize] {
 	return param.NewPositionSizeOptionFromHandle(
-		native.AccountAdjustmentBoundsGetReservedLower(*b.ref),
+		native.AccountAdjustmentBoundsGetHeldLower(*b.ref),
 	)
 }
 
-func (b *AccountAdjustmentBoundsView) SetReservedLower(bound param.PositionSize) {
-	native.AccountAdjustmentBoundsSetReservedLower(b.ref, bound.Handle())
+func (b *AccountAdjustmentBoundsView) SetHeldLower(bound param.PositionSize) {
+	native.AccountAdjustmentBoundsSetHeldLower(b.ref, bound.Handle())
 }
 
-func (b *AccountAdjustmentBoundsView) UnsetReservedLower() {
-	native.AccountAdjustmentBoundsUnsetReservedLower(b.ref)
+func (b *AccountAdjustmentBoundsView) UnsetHeldLower() {
+	native.AccountAdjustmentBoundsUnsetHeldLower(b.ref)
 }
 
-func (b AccountAdjustmentBoundsView) PendingUpper() optional.Option[param.PositionSize] {
+func (b AccountAdjustmentBoundsView) IncomingUpper() optional.Option[param.PositionSize] {
 	return param.NewPositionSizeOptionFromHandle(
-		native.AccountAdjustmentBoundsGetPendingUpper(*b.ref),
+		native.AccountAdjustmentBoundsGetIncomingUpper(*b.ref),
 	)
 }
 
-func (b *AccountAdjustmentBoundsView) SetPendingUpper(bound param.PositionSize) {
-	native.AccountAdjustmentBoundsSetPendingUpper(b.ref, bound.Handle())
+func (b *AccountAdjustmentBoundsView) SetIncomingUpper(bound param.PositionSize) {
+	native.AccountAdjustmentBoundsSetIncomingUpper(b.ref, bound.Handle())
 }
 
-func (b *AccountAdjustmentBoundsView) UnsetPendingUpper() {
-	native.AccountAdjustmentBoundsUnsetPendingUpper(b.ref)
+func (b *AccountAdjustmentBoundsView) UnsetIncomingUpper() {
+	native.AccountAdjustmentBoundsUnsetIncomingUpper(b.ref)
 }
 
-func (b AccountAdjustmentBoundsView) PendingLower() optional.Option[param.PositionSize] {
+func (b AccountAdjustmentBoundsView) IncomingLower() optional.Option[param.PositionSize] {
 	return param.NewPositionSizeOptionFromHandle(
-		native.AccountAdjustmentBoundsGetPendingLower(*b.ref),
+		native.AccountAdjustmentBoundsGetIncomingLower(*b.ref),
 	)
 }
 
-func (b *AccountAdjustmentBoundsView) SetPendingLower(bound param.PositionSize) {
-	native.AccountAdjustmentBoundsSetPendingLower(b.ref, bound.Handle())
+func (b *AccountAdjustmentBoundsView) SetIncomingLower(bound param.PositionSize) {
+	native.AccountAdjustmentBoundsSetIncomingLower(b.ref, bound.Handle())
 }
 
-func (b *AccountAdjustmentBoundsView) UnsetPendingLower() {
-	native.AccountAdjustmentBoundsUnsetPendingLower(b.ref)
+func (b *AccountAdjustmentBoundsView) UnsetIncomingLower() {
+	native.AccountAdjustmentBoundsUnsetIncomingLower(b.ref)
 }
 
 //------------------------------------------------------------------------------

@@ -71,9 +71,9 @@ The group is absent when every field is absent.
 
 ```c
 typedef struct OpenPitAccountAdjustmentAmount {
-    OpenPitParamAdjustmentAmount total;
-    OpenPitParamAdjustmentAmount reserved;
-    OpenPitParamAdjustmentAmount pending;
+    OpenPitParamAdjustmentAmount balance;
+    OpenPitParamAdjustmentAmount held;
+    OpenPitParamAdjustmentAmount incoming;
 } OpenPitAccountAdjustmentAmount;
 ```
 
@@ -85,12 +85,12 @@ The group is absent when every bound is absent.
 
 ```c
 typedef struct OpenPitAccountAdjustmentBounds {
-    OpenPitParamPositionSizeOptional total_upper;
-    OpenPitParamPositionSizeOptional total_lower;
-    OpenPitParamPositionSizeOptional reserved_upper;
-    OpenPitParamPositionSizeOptional reserved_lower;
-    OpenPitParamPositionSizeOptional pending_upper;
-    OpenPitParamPositionSizeOptional pending_lower;
+    OpenPitParamPositionSizeOptional balance_upper;
+    OpenPitParamPositionSizeOptional balance_lower;
+    OpenPitParamPositionSizeOptional held_upper;
+    OpenPitParamPositionSizeOptional held_lower;
+    OpenPitParamPositionSizeOptional incoming_upper;
+    OpenPitParamPositionSizeOptional incoming_lower;
 } OpenPitAccountAdjustmentBounds;
 ```
 

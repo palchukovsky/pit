@@ -29,6 +29,11 @@ use openpit::{
     WithFinancialImpact,
 };
 
+// Mirrors public examples from:
+// - crates/openpit/README.md
+// - ../pit.wiki/Getting-Started.md
+// If this test changes, update every linked documentation snippet.
+
 #[test]
 fn example_readme_quickstart() -> Result<(), Box<dyn std::error::Error>> {
     // Source: crates/openpit/README.md — Usage

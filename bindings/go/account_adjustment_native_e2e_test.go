@@ -51,7 +51,7 @@ func TestAccountAdjustmentNativeE2E_BatchAppliesAndInvokesPolicyPerItem(t *testi
 			Amount: optional.Some(
 				model.NewAccountAdjustmentAmountFromValues(
 					model.AccountAdjustmentAmountValues{
-						Total: optional.Some(
+						Balance: optional.Some(
 							param.NewDeltaAdjustmentAmount(
 								mustAdjustmentNativePositionSize(t, "10"),
 							),
@@ -88,10 +88,10 @@ func TestAccountAdjustmentNativeE2E_BatchAppliesAndInvokesPolicyPerItem(t *testi
 			Bounds: optional.Some(
 				model.NewAccountAdjustmentBoundsFromValues(
 					model.AccountAdjustmentBoundsValues{
-						TotalUpper:   optional.Some(mustAdjustmentNativePositionSize(t, "100")),
-						TotalLower:   optional.Some(mustAdjustmentNativePositionSize(t, "20")),
-						PendingUpper: optional.Some(mustAdjustmentNativePositionSize(t, "50")),
-						PendingLower: optional.Some(mustAdjustmentNativePositionSize(t, "5")),
+						BalanceUpper:  optional.Some(mustAdjustmentNativePositionSize(t, "100")),
+						BalanceLower:  optional.Some(mustAdjustmentNativePositionSize(t, "20")),
+						IncomingUpper: optional.Some(mustAdjustmentNativePositionSize(t, "50")),
+						IncomingLower: optional.Some(mustAdjustmentNativePositionSize(t, "5")),
 					},
 				),
 			),

@@ -53,12 +53,12 @@ pub use order::{
     WithOrderPosition,
 };
 pub use request_trait::{
-    HasAccountAdjustmentBalanceAverageEntryPrice, HasAccountAdjustmentPending,
-    HasAccountAdjustmentPendingLowerBound, HasAccountAdjustmentPendingUpperBound,
-    HasAccountAdjustmentPositionLeverage, HasAccountAdjustmentReserved,
-    HasAccountAdjustmentReservedLowerBound, HasAccountAdjustmentReservedUpperBound,
-    HasAccountAdjustmentTotal, HasAccountAdjustmentTotalLowerBound,
-    HasAccountAdjustmentTotalUpperBound, HasAccountId, HasAutoBorrow, HasAverageEntryPrice,
+    HasAccountAdjustmentBalance, HasAccountAdjustmentBalanceAverageEntryPrice,
+    HasAccountAdjustmentBalanceLowerBound, HasAccountAdjustmentBalanceUpperBound,
+    HasAccountAdjustmentHeld, HasAccountAdjustmentHeldLowerBound,
+    HasAccountAdjustmentHeldUpperBound, HasAccountAdjustmentIncoming,
+    HasAccountAdjustmentIncomingLowerBound, HasAccountAdjustmentIncomingUpperBound,
+    HasAccountAdjustmentPositionLeverage, HasAccountId, HasAutoBorrow, HasAverageEntryPrice,
     HasBalanceAsset, HasClosePosition, HasCollateralAsset, HasExecutionReportIsFinal,
     HasExecutionReportLastTrade, HasExecutionReportPositionEffect, HasExecutionReportPositionSide,
     HasFee, HasInstrument, HasLeavesQuantity, HasLock, HasOrderCollateralAsset, HasOrderLeverage,

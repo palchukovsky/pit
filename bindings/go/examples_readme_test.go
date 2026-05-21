@@ -27,6 +27,11 @@ import (
 	"go.openpit.dev/openpit/pretrade/policies"
 )
 
+// Mirrors public examples from:
+// - bindings/go/README.md
+// - ../pit.wiki/Getting-Started.md
+// If this test changes, update every linked documentation snippet.
+
 // Source: bindings/go/README.md - Usage
 func TestReadmeQuickstart(t *testing.T) {
 	usd, err := param.NewAsset("USD")

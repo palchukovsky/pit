@@ -94,6 +94,7 @@ correctly without exposing locks to policy code.
 
 ## Usage
 
+<!-- Test mirror: pit/bindings/go/examples_readme_test.go -->
 ```go
 package main
 

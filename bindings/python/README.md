@@ -108,6 +108,9 @@ engine is genuinely shared across OS threads.
 
 ## Usage
 
+<!--
+Test mirror: pit/bindings/python/tests/integration/test_examples_readme.py
+-->
 ```python
 import datetime
 import openpit

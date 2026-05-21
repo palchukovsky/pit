@@ -19,6 +19,15 @@
 import openpit
 import pytest
 
+# Mirrors public Python examples from:
+# - ../pit.wiki/Account-Adjustments.md
+# - ../pit.wiki/Domain-Types.md
+# - ../pit.wiki/Getting-Started.md
+# - ../pit.wiki/Policies.md
+# - ../pit.wiki/Policy-API.md
+# - ../pit.wiki/Pre-trade-Pipeline.md
+# If this file changes, update every linked documentation snippet.
+
 # --- Shared helpers ---
 
 
@@ -370,7 +379,7 @@ def test_example_wiki_account_adjustments() -> None:
                 asset="USD",
             ),
             amount=openpit.AccountAdjustmentAmount(
-                total=openpit.param.AdjustmentAmount.absolute(
+                balance=openpit.param.AdjustmentAmount.absolute(
                     openpit.param.PositionSize(10000)
                 )
             ),
@@ -386,7 +395,7 @@ def test_example_wiki_account_adjustments() -> None:
                 mode=openpit.param.PositionMode.HEDGED,
             ),
             amount=openpit.AccountAdjustmentAmount(
-                total=openpit.param.AdjustmentAmount.absolute(
+                balance=openpit.param.AdjustmentAmount.absolute(
                     openpit.param.PositionSize(-3)
                 )
             ),
@@ -418,7 +427,7 @@ def test_example_wiki_account_adjustments_cumulative_limit() -> None:
                 asset="USD",
             ),
             amount=openpit.AccountAdjustmentAmount(
-                total=openpit.param.AdjustmentAmount.absolute(
+                balance=openpit.param.AdjustmentAmount.absolute(
                     openpit.param.PositionSize(100)
                 )
             ),
@@ -670,6 +679,45 @@ def test_example_wiki_policies_order_size_limit() -> None:
     start_result = engine.start_pre_trade(order=order)
     assert start_result.ok
     start_result.request.execute().reservation.commit()
+
+
+@pytest.mark.integration
+def test_example_wiki_pipeline_apply_post_trade_feedback() -> None:
+    # Used in: pit.wiki/Pre-trade-Pipeline.md — Apply Post-Trade Feedback
+    # Used in: pit.wiki/Getting-Started.md — Apply Post-Trade Feedback
+    engine = (
+        openpit.Engine.builder()
+        .no_sync()
+        .builtin(openpit.pretrade.policies.build_order_validation())
+        .build()
+    )
+    report = _aapl_usd_report("-50", "3.4")
+
+    # Execution reports feed realized outcomes back into cumulative policy state.
+    result = engine.apply_execution_report(report=report)
+    if result.account_blocks:
+        print("halt new orders until the blocked state is cleared")
+
+    assert not result.account_blocks
+
+
+@pytest.mark.integration
+def test_example_wiki_getting_started_run_order() -> None:
+    # Used in: pit.wiki/Getting-Started.md — Run an Order Through the Engine
+    engine = (
+        openpit.Engine.builder()
+        .no_sync()
+        .builtin(openpit.pretrade.policies.build_order_validation())
+        .build()
+    )
+    order = _aapl_usd_order("100", "185")
+
+    start_result = engine.start_pre_trade(order=order)
+    assert start_result.ok
+
+    execute_result = start_result.request.execute()
+    assert execute_result.ok
+    execute_result.reservation.commit()
 
 
 @pytest.mark.integration

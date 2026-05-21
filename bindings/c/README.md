@@ -123,6 +123,7 @@ the threading contract on the SDK handle.
 
 ## Usage
 
+<!-- Test mirror: none; C snippets are intentionally not mirrored. -->
 ```c
 #include <stdbool.h>
 #include <stdint.h>

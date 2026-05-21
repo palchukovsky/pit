@@ -936,29 +936,29 @@ class Trade:
         """Trade quantity."""
 
 class AccountAdjustmentAmount:
-    """Grouped amount payload (`total + reserved + pending`)."""
+    """Grouped amount payload (balance + held + incoming)."""
 
     def __init__(
         self,
         *,
-        total: AdjustmentAmount | None = None,
-        reserved: AdjustmentAmount | None = None,
-        pending: AdjustmentAmount | None = None,
+        balance: AdjustmentAmount | None = None,
+        held: AdjustmentAmount | None = None,
+        incoming: AdjustmentAmount | None = None,
     ) -> None:
-        _ = (total, reserved, pending)
+        _ = (balance, held, incoming)
 
     @property
-    def total(self) -> AdjustmentAmount | None: ...
-    @total.setter
-    def total(self, value: AdjustmentAmount | None) -> None: ...
+    def balance(self) -> AdjustmentAmount | None: ...
+    @balance.setter
+    def balance(self, value: AdjustmentAmount | None) -> None: ...
     @property
-    def reserved(self) -> AdjustmentAmount | None: ...
-    @reserved.setter
-    def reserved(self, value: AdjustmentAmount | None) -> None: ...
+    def held(self) -> AdjustmentAmount | None: ...
+    @held.setter
+    def held(self, value: AdjustmentAmount | None) -> None: ...
     @property
-    def pending(self) -> AdjustmentAmount | None: ...
-    @pending.setter
-    def pending(self, value: AdjustmentAmount | None) -> None: ...
+    def incoming(self) -> AdjustmentAmount | None: ...
+    @incoming.setter
+    def incoming(self, value: AdjustmentAmount | None) -> None: ...
 
 class AccountAdjustmentBalanceOperation:
     """Physical-balance account-adjustment operation group."""
@@ -1033,46 +1033,46 @@ class AccountAdjustmentBounds:
     def __init__(
         self,
         *,
-        total_upper: param.PositionSize | None = None,
-        total_lower: param.PositionSize | None = None,
-        reserved_upper: param.PositionSize | None = None,
-        reserved_lower: param.PositionSize | None = None,
-        pending_upper: param.PositionSize | None = None,
-        pending_lower: param.PositionSize | None = None,
+        balance_upper: param.PositionSize | None = None,
+        balance_lower: param.PositionSize | None = None,
+        held_upper: param.PositionSize | None = None,
+        held_lower: param.PositionSize | None = None,
+        incoming_upper: param.PositionSize | None = None,
+        incoming_lower: param.PositionSize | None = None,
     ) -> None:
         _ = (
-            total_upper,
-            total_lower,
-            reserved_upper,
-            reserved_lower,
-            pending_upper,
-            pending_lower,
+            balance_upper,
+            balance_lower,
+            held_upper,
+            held_lower,
+            incoming_upper,
+            incoming_lower,
         )
 
     @property
-    def total_upper(self) -> param.PositionSize | None: ...
-    @total_upper.setter
-    def total_upper(self, value: param.PositionSize | None) -> None: ...
+    def balance_upper(self) -> param.PositionSize | None: ...
+    @balance_upper.setter
+    def balance_upper(self, value: param.PositionSize | None) -> None: ...
     @property
-    def total_lower(self) -> param.PositionSize | None: ...
-    @total_lower.setter
-    def total_lower(self, value: param.PositionSize | None) -> None: ...
+    def balance_lower(self) -> param.PositionSize | None: ...
+    @balance_lower.setter
+    def balance_lower(self, value: param.PositionSize | None) -> None: ...
     @property
-    def reserved_upper(self) -> param.PositionSize | None: ...
-    @reserved_upper.setter
-    def reserved_upper(self, value: param.PositionSize | None) -> None: ...
+    def held_upper(self) -> param.PositionSize | None: ...
+    @held_upper.setter
+    def held_upper(self, value: param.PositionSize | None) -> None: ...
     @property
-    def reserved_lower(self) -> param.PositionSize | None: ...
-    @reserved_lower.setter
-    def reserved_lower(self, value: param.PositionSize | None) -> None: ...
+    def held_lower(self) -> param.PositionSize | None: ...
+    @held_lower.setter
+    def held_lower(self, value: param.PositionSize | None) -> None: ...
     @property
-    def pending_upper(self) -> param.PositionSize | None: ...
-    @pending_upper.setter
-    def pending_upper(self, value: param.PositionSize | None) -> None: ...
+    def incoming_upper(self) -> param.PositionSize | None: ...
+    @incoming_upper.setter
+    def incoming_upper(self, value: param.PositionSize | None) -> None: ...
     @property
-    def pending_lower(self) -> param.PositionSize | None: ...
-    @pending_lower.setter
-    def pending_lower(self, value: param.PositionSize | None) -> None: ...
+    def incoming_lower(self) -> param.PositionSize | None: ...
+    @incoming_lower.setter
+    def incoming_lower(self, value: param.PositionSize | None) -> None: ...
 
 class AccountAdjustment:
     """Extensible non-trading account-adjustment record."""

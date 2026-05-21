@@ -16,7 +16,6 @@
 // Please see https://github.com/openpitkit and the OWNERS file for details.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 use openpit::param::{AccountId, Asset, Fee, Pnl, Price, Quantity, Side, TradeAmount, Volume};
@@ -29,6 +28,17 @@ use openpit::{
     HasTradeAmount, Instrument, Mutation, Mutations, OrderOperation, WithExecutionReportOperation,
     WithFinancialImpact,
 };
+
+// Mirrors public Rust examples from:
+// - ../pit.wiki/Account-Adjustments.md
+// - ../pit.wiki/Custom-Rust-Types.md
+// - ../pit.wiki/Domain-Types.md
+// - ../pit.wiki/Getting-Started.md
+// - ../pit.wiki/Policies.md
+// - ../pit.wiki/Policy-API.md
+// - ../pit.wiki/Pre-trade-Pipeline.md
+// - ../pit.wiki/Storage.md
+// If this file changes, update every linked documentation snippet.
 
 type PitExecutionReport = WithExecutionReportOperation<WithFinancialImpact<()>>;
 
@@ -416,9 +426,9 @@ fn example_wiki_account_adjustments() -> Result<(), Box<dyn std::error::Error>> 
                 average_entry_price: None,
             }),
             amount: AccountAdjustmentAmount {
-                total: Some(AdjustmentAmount::Absolute(PositionSize::from_f64(10000.0)?)),
-                reserved: None,
-                pending: None,
+                balance: Some(AdjustmentAmount::Absolute(PositionSize::from_f64(10000.0)?)),
+                held: None,
+                incoming: None,
             },
         },
         AccountAdjustment {
@@ -430,9 +440,9 @@ fn example_wiki_account_adjustments() -> Result<(), Box<dyn std::error::Error>> 
                 leverage: None,
             }),
             amount: AccountAdjustmentAmount {
-                total: Some(AdjustmentAmount::Absolute(PositionSize::from_f64(-3.0)?)),
-                reserved: None,
-                pending: None,
+                balance: Some(AdjustmentAmount::Absolute(PositionSize::from_f64(-3.0)?)),
+                held: None,
+                incoming: None,
             },
         },
     ];
@@ -470,6 +480,9 @@ fn example_wiki_account_adjustments_balance_limit_policy() -> Result<(), Box<dyn
 {
     // Wiki example: pit.wiki/Account-Adjustments.md — Balance Limit Policy → Rust
     // Keep this example in sync with the matching wiki example.
+    use std::sync::Arc;
+
+    use openpit::storage::{CreateStorageFor, LockingPolicyFactory, Storage, StorageBuilder};
 
     /// Adjustment type must expose an asset and a delta amount.
     trait HasAssetDelta {
@@ -477,22 +490,36 @@ fn example_wiki_account_adjustments_balance_limit_policy() -> Result<(), Box<dyn
         fn delta(&self) -> Volume;
     }
 
-    struct BalanceLimitPolicy {
+    struct BalanceLimitPolicy<StorageLockingPolicyFactory>
+    where
+        StorageLockingPolicyFactory: LockingPolicyFactory,
+    {
         max_total: Volume,
-        totals: Rc<RefCell<HashMap<String, Volume>>>,
+        totals: Arc<Storage<String, Volume, StorageLockingPolicyFactory::Policy>>,
     }
 
-    impl BalanceLimitPolicy {
-        fn new(max_total: Volume) -> Self {
+    impl<StorageLockingPolicyFactory> BalanceLimitPolicy<StorageLockingPolicyFactory>
+    where
+        StorageLockingPolicyFactory: LockingPolicyFactory + CreateStorageFor<String>,
+    {
+        fn new(
+            max_total: Volume,
+            storage_builder: &StorageBuilder<StorageLockingPolicyFactory>,
+        ) -> Self {
             Self {
                 max_total,
-                totals: Rc::new(RefCell::new(HashMap::new())),
+                totals: Arc::new(storage_builder.create()),
             }
         }
     }
 
-    impl<Order, ExecutionReport, A: HasAssetDelta> PreTradePolicy<Order, ExecutionReport, A>
-        for BalanceLimitPolicy
+    impl<Order, ExecutionReport, A, StorageLockingPolicyFactory>
+        PreTradePolicy<Order, ExecutionReport, A>
+        for BalanceLimitPolicy<StorageLockingPolicyFactory>
+    where
+        A: HasAssetDelta,
+        StorageLockingPolicyFactory: LockingPolicyFactory + CreateStorageFor<String>,
+        StorageLockingPolicyFactory::Policy: 'static,
     {
         fn name(&self) -> &str {
             "BalanceLimitPolicy"
@@ -505,23 +532,27 @@ fn example_wiki_account_adjustments_balance_limit_policy() -> Result<(), Box<dyn
             adjustment: &A,
             mutations: &mut Mutations,
         ) -> Result<(), Rejects> {
-            // Use the asset as the aggregation key for the cumulative limit.
             let asset_id = adjustment.asset_id().to_owned();
             let delta = adjustment.delta();
 
-            let prev_total = {
-                let totals = self.totals.borrow();
-                totals
-                    .get(&asset_id)
-                    .copied()
-                    .unwrap_or(Volume::from_str("0").unwrap())
-            };
+            let prev_total = self
+                .totals
+                .with(&asset_id, |total| *total)
+                .unwrap_or(Volume::ZERO);
 
-            let new_total = prev_total; // simplified: prev_total + delta
+            let new_total = prev_total.checked_add(delta).map_err(|error| {
+                Rejects::from(Reject::new(
+                    "BalanceLimitPolicy",
+                    RejectScope::Account,
+                    RejectCode::RiskLimitExceeded,
+                    "invalid adjustment total",
+                    error.to_string(),
+                ))
+            })?;
 
             if new_total > self.max_total {
                 return Err(Rejects::from(Reject::new(
-                    <Self as PreTradePolicy<(), (), A>>::name(self),
+                    "BalanceLimitPolicy",
                     RejectScope::Account,
                     RejectCode::RiskLimitExceeded,
                     "cumulative adjustment exceeds limit",
@@ -530,27 +561,32 @@ fn example_wiki_account_adjustments_balance_limit_policy() -> Result<(), Box<dyn
             }
 
             // Apply immediately so later adjustments in the same batch see the updated total.
-            self.totals.borrow_mut().insert(asset_id.clone(), new_total);
+            self.totals.with_mut(
+                asset_id.clone(),
+                || Volume::ZERO,
+                |entry, _is_new| {
+                    *entry = new_total;
+                },
+            );
 
             // Register rollback: restore previous absolute value.
             // Safe because account adjustment batches are fully internal.
-            let rollback_totals = Rc::clone(&self.totals);
-            let commit_totals = Rc::clone(&self.totals);
-            let rollback_asset = asset_id.clone();
-            let commit_asset = asset_id;
-            let _ = delta;
+            let rollback_totals = Arc::clone(&self.totals);
+            let rollback_asset = asset_id;
 
             mutations.push(Mutation::new(
-                move || {
+                || {
                     // Commit is empty: state was applied eagerly.
-                    let _ = commit_totals;
-                    let _ = commit_asset;
                 },
                 move || {
                     // Rollback: restore absolute value captured before modification.
-                    rollback_totals
-                        .borrow_mut()
-                        .insert(rollback_asset, prev_total);
+                    rollback_totals.with_mut(
+                        rollback_asset,
+                        || Volume::ZERO,
+                        |entry, _is_new| {
+                            *entry = prev_total;
+                        },
+                    );
                 },
             ));
 
@@ -572,11 +608,9 @@ fn example_wiki_account_adjustments_balance_limit_policy() -> Result<(), Box<dyn
         }
     }
 
-    let policy = BalanceLimitPolicy::new(Volume::from_str("1000000")?);
-    let engine = Engine::builder::<(), (), SimpleAdjustment>()
-        .no_sync()
-        .pre_trade(policy)
-        .build()?;
+    let builder = Engine::builder::<(), (), SimpleAdjustment>().no_sync();
+    let policy = BalanceLimitPolicy::new(Volume::from_str("1000000")?, builder.storage_builder());
+    let engine = builder.pre_trade(policy).build()?;
 
     let result = engine.apply_account_adjustment(
         AccountId::from_u64(99224416),
@@ -921,7 +955,7 @@ fn example_wiki_custom_types_account_adjustment_wrapper() -> Result<(), Box<dyn 
     // Keep this example in sync with the matching wiki example.
     use openpit::param::{AdjustmentAmount, PositionSize};
     use openpit::{
-        HasAccountAdjustmentPending, HasAccountAdjustmentReserved, HasAccountAdjustmentTotal,
+        HasAccountAdjustmentBalance, HasAccountAdjustmentHeld, HasAccountAdjustmentIncoming,
         HasBalanceAsset, RequestFieldAccessError, RequestFields,
     };
 
@@ -943,9 +977,9 @@ fn example_wiki_custom_types_account_adjustment_wrapper() -> Result<(), Box<dyn 
         inner: T,
         // Expose the standard account-adjustment amount fields through capability traits.
         #[openpit(
-            HasAccountAdjustmentTotal(total -> Result<Option<AdjustmentAmount>, RequestFieldAccessError>),
-            HasAccountAdjustmentReserved(reserved -> Result<Option<AdjustmentAmount>, RequestFieldAccessError>),
-            HasAccountAdjustmentPending(pending -> Result<Option<AdjustmentAmount>, RequestFieldAccessError>)
+            HasAccountAdjustmentBalance(balance -> Result<Option<AdjustmentAmount>, RequestFieldAccessError>),
+            HasAccountAdjustmentHeld(held -> Result<Option<AdjustmentAmount>, RequestFieldAccessError>),
+            HasAccountAdjustmentIncoming(incoming -> Result<Option<AdjustmentAmount>, RequestFieldAccessError>)
         )]
         amount: openpit::AccountAdjustmentAmount,
     }
@@ -955,23 +989,23 @@ fn example_wiki_custom_types_account_adjustment_wrapper() -> Result<(), Box<dyn 
             asset: Asset::new("USD")?,
         },
         amount: openpit::AccountAdjustmentAmount {
-            total: Some(AdjustmentAmount::Absolute(PositionSize::from_str("100")?)),
-            reserved: Some(AdjustmentAmount::Delta(PositionSize::from_str("-20")?)),
-            pending: Some(AdjustmentAmount::Delta(PositionSize::from_str("5")?)),
+            balance: Some(AdjustmentAmount::Absolute(PositionSize::from_str("100")?)),
+            held: Some(AdjustmentAmount::Delta(PositionSize::from_str("-20")?)),
+            incoming: Some(AdjustmentAmount::Delta(PositionSize::from_str("5")?)),
         },
     };
 
     assert_eq!(wrapper.balance_asset()?, &Asset::new("USD")?);
     assert_eq!(
-        wrapper.total()?,
+        wrapper.balance()?,
         Some(AdjustmentAmount::Absolute(PositionSize::from_str("100")?))
     );
     assert_eq!(
-        wrapper.reserved()?,
+        wrapper.held()?,
         Some(AdjustmentAmount::Delta(PositionSize::from_str("-20")?))
     );
     assert_eq!(
-        wrapper.pending()?,
+        wrapper.incoming()?,
         Some(AdjustmentAmount::Delta(PositionSize::from_str("5")?))
     );
     Ok(())

@@ -19,8 +19,8 @@
 
 use openpit::param::AdjustmentAmount;
 use openpit::{
-    AccountAdjustmentAmount, HasAccountAdjustmentPending, HasAccountAdjustmentReserved,
-    HasAccountAdjustmentTotal, RequestFieldAccessError,
+    AccountAdjustmentAmount, HasAccountAdjustmentBalance, HasAccountAdjustmentHeld,
+    HasAccountAdjustmentIncoming, RequestFieldAccessError,
 };
 
 /// Runtime access to an account adjustment's amount group.
@@ -38,29 +38,29 @@ pub enum AccountAdjustmentAmountAccess {
     Absent,
 }
 
-impl HasAccountAdjustmentTotal for AccountAdjustmentAmountAccess {
-    fn total(&self) -> Result<Option<AdjustmentAmount>, RequestFieldAccessError> {
+impl HasAccountAdjustmentBalance for AccountAdjustmentAmountAccess {
+    fn balance(&self) -> Result<Option<AdjustmentAmount>, RequestFieldAccessError> {
         match self {
-            Self::Populated(a) => Ok(a.total),
-            Self::Absent => Err(RequestFieldAccessError::new("amount.total")),
+            Self::Populated(a) => Ok(a.balance),
+            Self::Absent => Err(RequestFieldAccessError::new("amount.balance")),
         }
     }
 }
 
-impl HasAccountAdjustmentReserved for AccountAdjustmentAmountAccess {
-    fn reserved(&self) -> Result<Option<AdjustmentAmount>, RequestFieldAccessError> {
+impl HasAccountAdjustmentHeld for AccountAdjustmentAmountAccess {
+    fn held(&self) -> Result<Option<AdjustmentAmount>, RequestFieldAccessError> {
         match self {
-            Self::Populated(a) => Ok(a.reserved),
-            Self::Absent => Err(RequestFieldAccessError::new("amount.reserved")),
+            Self::Populated(a) => Ok(a.held),
+            Self::Absent => Err(RequestFieldAccessError::new("amount.held")),
         }
     }
 }
 
-impl HasAccountAdjustmentPending for AccountAdjustmentAmountAccess {
-    fn pending(&self) -> Result<Option<AdjustmentAmount>, RequestFieldAccessError> {
+impl HasAccountAdjustmentIncoming for AccountAdjustmentAmountAccess {
+    fn incoming(&self) -> Result<Option<AdjustmentAmount>, RequestFieldAccessError> {
         match self {
-            Self::Populated(a) => Ok(a.pending),
-            Self::Absent => Err(RequestFieldAccessError::new("amount.pending")),
+            Self::Populated(a) => Ok(a.incoming),
+            Self::Absent => Err(RequestFieldAccessError::new("amount.incoming")),
         }
     }
 }
@@ -74,22 +74,22 @@ mod tests {
     #[test]
     fn populated_returns_ok_with_some_values() {
         let access = AccountAdjustmentAmountAccess::Populated(AccountAdjustmentAmount {
-            total: Some(AdjustmentAmount::Absolute(
+            balance: Some(AdjustmentAmount::Absolute(
                 PositionSize::from_str("10").expect("valid"),
             )),
-            reserved: None,
-            pending: None,
+            held: None,
+            incoming: None,
         });
-        assert!(access.total().unwrap().is_some());
-        assert!(access.reserved().unwrap().is_none());
-        assert!(access.pending().unwrap().is_none());
+        assert!(access.balance().unwrap().is_some());
+        assert!(access.held().unwrap().is_none());
+        assert!(access.incoming().unwrap().is_none());
     }
 
     #[test]
     fn absent_returns_err() {
         let access = AccountAdjustmentAmountAccess::Absent;
-        assert!(access.total().is_err());
-        assert!(access.reserved().is_err());
-        assert!(access.pending().is_err());
+        assert!(access.balance().is_err());
+        assert!(access.held().is_err());
+        assert!(access.incoming().is_err());
     }
 }

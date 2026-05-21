@@ -943,9 +943,9 @@ fn extract_python_account_adjustment(obj: &Bound<'_, PyAny>) -> PyResult<Account
         Some(py_amount) => {
             let value = py_amount.bind(py).borrow();
             AccountAdjustmentAmountAccess::Populated(openpit::AccountAdjustmentAmount {
-                total: value.total,
-                reserved: value.reserved,
-                pending: value.pending,
+                balance: value.balance,
+                held: value.held,
+                incoming: value.incoming,
             })
         }
     };
@@ -955,12 +955,12 @@ fn extract_python_account_adjustment(obj: &Bound<'_, PyAny>) -> PyResult<Account
         Some(py_bounds) => {
             let value = py_bounds.bind(py).borrow();
             AccountAdjustmentBoundsAccess::Populated(openpit::AccountAdjustmentBounds {
-                total_upper: value.total_upper,
-                total_lower: value.total_lower,
-                reserved_upper: value.reserved_upper,
-                reserved_lower: value.reserved_lower,
-                pending_upper: value.pending_upper,
-                pending_lower: value.pending_lower,
+                balance_upper: value.balance_upper,
+                balance_lower: value.balance_lower,
+                held_upper: value.held_upper,
+                held_lower: value.held_lower,
+                incoming_upper: value.incoming_upper,
+                incoming_lower: value.incoming_lower,
             })
         }
     };
@@ -1994,9 +1994,9 @@ struct PyTradeAmount {
 #[pyclass(name = "AccountAdjustmentAmount", module = "openpit.core", subclass)]
 #[derive(Clone)]
 struct PyAccountAdjustmentAmount {
-    total: Option<AdjustmentAmount>,
-    reserved: Option<AdjustmentAmount>,
-    pending: Option<AdjustmentAmount>,
+    balance: Option<AdjustmentAmount>,
+    held: Option<AdjustmentAmount>,
+    incoming: Option<AdjustmentAmount>,
 }
 
 #[pyclass(
@@ -2028,12 +2028,12 @@ struct PyAccountAdjustmentPositionOperation {
 #[pyclass(name = "AccountAdjustmentBounds", module = "openpit.core", subclass)]
 #[derive(Clone)]
 struct PyAccountAdjustmentBounds {
-    total_upper: Option<PositionSize>,
-    total_lower: Option<PositionSize>,
-    reserved_upper: Option<PositionSize>,
-    reserved_lower: Option<PositionSize>,
-    pending_upper: Option<PositionSize>,
-    pending_lower: Option<PositionSize>,
+    balance_upper: Option<PositionSize>,
+    balance_lower: Option<PositionSize>,
+    held_upper: Option<PositionSize>,
+    held_lower: Option<PositionSize>,
+    incoming_upper: Option<PositionSize>,
+    incoming_lower: Option<PositionSize>,
 }
 
 enum PyAccountAdjustmentOperation {
@@ -3238,58 +3238,58 @@ impl PyTradeAmount {
 #[pymethods]
 impl PyAccountAdjustmentAmount {
     #[new]
-    #[pyo3(signature = (*, total = None, reserved = None, pending = None))]
+    #[pyo3(signature = (*, balance = None, held = None, incoming = None))]
     fn new(
-        total: Option<&Bound<'_, PyAny>>,
-        reserved: Option<&Bound<'_, PyAny>>,
-        pending: Option<&Bound<'_, PyAny>>,
+        balance: Option<&Bound<'_, PyAny>>,
+        held: Option<&Bound<'_, PyAny>>,
+        incoming: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Self> {
         Ok(Self {
-            total: total.map(parse_adjustment_amount_input).transpose()?,
-            reserved: reserved.map(parse_adjustment_amount_input).transpose()?,
-            pending: pending.map(parse_adjustment_amount_input).transpose()?,
+            balance: balance.map(parse_adjustment_amount_input).transpose()?,
+            held: held.map(parse_adjustment_amount_input).transpose()?,
+            incoming: incoming.map(parse_adjustment_amount_input).transpose()?,
         })
     }
 
     #[getter]
-    fn total(&self) -> Option<PyAdjustmentAmount> {
-        self.total.map(|inner| PyAdjustmentAmount { inner })
+    fn balance(&self) -> Option<PyAdjustmentAmount> {
+        self.balance.map(|inner| PyAdjustmentAmount { inner })
     }
 
     #[setter]
-    fn set_total(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
-        self.total = value.map(parse_adjustment_amount_input).transpose()?;
+    fn set_balance(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.balance = value.map(parse_adjustment_amount_input).transpose()?;
         Ok(())
     }
 
     #[getter]
-    fn reserved(&self) -> Option<PyAdjustmentAmount> {
-        self.reserved.map(|inner| PyAdjustmentAmount { inner })
+    fn held(&self) -> Option<PyAdjustmentAmount> {
+        self.held.map(|inner| PyAdjustmentAmount { inner })
     }
 
     #[setter]
-    fn set_reserved(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
-        self.reserved = value.map(parse_adjustment_amount_input).transpose()?;
+    fn set_held(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.held = value.map(parse_adjustment_amount_input).transpose()?;
         Ok(())
     }
 
     #[getter]
-    fn pending(&self) -> Option<PyAdjustmentAmount> {
-        self.pending.map(|inner| PyAdjustmentAmount { inner })
+    fn incoming(&self) -> Option<PyAdjustmentAmount> {
+        self.incoming.map(|inner| PyAdjustmentAmount { inner })
     }
 
     #[setter]
-    fn set_pending(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
-        self.pending = value.map(parse_adjustment_amount_input).transpose()?;
+    fn set_incoming(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.incoming = value.map(parse_adjustment_amount_input).transpose()?;
         Ok(())
     }
 
     fn __repr__(&self) -> String {
         format!(
-            "AccountAdjustmentAmount(total={:?}, reserved={:?}, pending={:?})",
-            self.total().map(|v| v.__repr__()),
-            self.reserved().map(|v| v.__repr__()),
-            self.pending().map(|v| v.__repr__()),
+            "AccountAdjustmentAmount(balance={:?}, held={:?}, incoming={:?})",
+            self.balance().map(|v| v.__repr__()),
+            self.held().map(|v| v.__repr__()),
+            self.incoming().map(|v| v.__repr__()),
         )
     }
 }
@@ -3457,89 +3457,89 @@ impl PyAccountAdjustmentPositionOperation {
 #[pymethods]
 impl PyAccountAdjustmentBounds {
     #[new]
-    #[pyo3(signature = (*, total_upper = None, total_lower = None, reserved_upper = None, reserved_lower = None, pending_upper = None, pending_lower = None))]
+    #[pyo3(signature = (*, balance_upper = None, balance_lower = None, held_upper = None, held_lower = None, incoming_upper = None, incoming_lower = None))]
     fn new(
-        total_upper: Option<&Bound<'_, PyAny>>,
-        total_lower: Option<&Bound<'_, PyAny>>,
-        reserved_upper: Option<&Bound<'_, PyAny>>,
-        reserved_lower: Option<&Bound<'_, PyAny>>,
-        pending_upper: Option<&Bound<'_, PyAny>>,
-        pending_lower: Option<&Bound<'_, PyAny>>,
+        balance_upper: Option<&Bound<'_, PyAny>>,
+        balance_lower: Option<&Bound<'_, PyAny>>,
+        held_upper: Option<&Bound<'_, PyAny>>,
+        held_lower: Option<&Bound<'_, PyAny>>,
+        incoming_upper: Option<&Bound<'_, PyAny>>,
+        incoming_lower: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Self> {
         Ok(Self {
-            total_upper: total_upper.map(parse_position_size_input).transpose()?,
-            total_lower: total_lower.map(parse_position_size_input).transpose()?,
-            reserved_upper: reserved_upper.map(parse_position_size_input).transpose()?,
-            reserved_lower: reserved_lower.map(parse_position_size_input).transpose()?,
-            pending_upper: pending_upper.map(parse_position_size_input).transpose()?,
-            pending_lower: pending_lower.map(parse_position_size_input).transpose()?,
+            balance_upper: balance_upper.map(parse_position_size_input).transpose()?,
+            balance_lower: balance_lower.map(parse_position_size_input).transpose()?,
+            held_upper: held_upper.map(parse_position_size_input).transpose()?,
+            held_lower: held_lower.map(parse_position_size_input).transpose()?,
+            incoming_upper: incoming_upper.map(parse_position_size_input).transpose()?,
+            incoming_lower: incoming_lower.map(parse_position_size_input).transpose()?,
         })
     }
 
     #[getter]
-    fn total_upper(&self) -> Option<PyPositionSize> {
-        self.total_upper.map(|inner| PyPositionSize { inner })
+    fn balance_upper(&self) -> Option<PyPositionSize> {
+        self.balance_upper.map(|inner| PyPositionSize { inner })
     }
     #[setter]
-    fn set_total_upper(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
-        self.total_upper = value.map(parse_position_size_input).transpose()?;
+    fn set_balance_upper(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.balance_upper = value.map(parse_position_size_input).transpose()?;
         Ok(())
     }
     #[getter]
-    fn total_lower(&self) -> Option<PyPositionSize> {
-        self.total_lower.map(|inner| PyPositionSize { inner })
+    fn balance_lower(&self) -> Option<PyPositionSize> {
+        self.balance_lower.map(|inner| PyPositionSize { inner })
     }
     #[setter]
-    fn set_total_lower(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
-        self.total_lower = value.map(parse_position_size_input).transpose()?;
+    fn set_balance_lower(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.balance_lower = value.map(parse_position_size_input).transpose()?;
         Ok(())
     }
     #[getter]
-    fn reserved_upper(&self) -> Option<PyPositionSize> {
-        self.reserved_upper.map(|inner| PyPositionSize { inner })
+    fn held_upper(&self) -> Option<PyPositionSize> {
+        self.held_upper.map(|inner| PyPositionSize { inner })
     }
     #[setter]
-    fn set_reserved_upper(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
-        self.reserved_upper = value.map(parse_position_size_input).transpose()?;
+    fn set_held_upper(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.held_upper = value.map(parse_position_size_input).transpose()?;
         Ok(())
     }
     #[getter]
-    fn reserved_lower(&self) -> Option<PyPositionSize> {
-        self.reserved_lower.map(|inner| PyPositionSize { inner })
+    fn held_lower(&self) -> Option<PyPositionSize> {
+        self.held_lower.map(|inner| PyPositionSize { inner })
     }
     #[setter]
-    fn set_reserved_lower(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
-        self.reserved_lower = value.map(parse_position_size_input).transpose()?;
+    fn set_held_lower(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.held_lower = value.map(parse_position_size_input).transpose()?;
         Ok(())
     }
     #[getter]
-    fn pending_upper(&self) -> Option<PyPositionSize> {
-        self.pending_upper.map(|inner| PyPositionSize { inner })
+    fn incoming_upper(&self) -> Option<PyPositionSize> {
+        self.incoming_upper.map(|inner| PyPositionSize { inner })
     }
     #[setter]
-    fn set_pending_upper(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
-        self.pending_upper = value.map(parse_position_size_input).transpose()?;
+    fn set_incoming_upper(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.incoming_upper = value.map(parse_position_size_input).transpose()?;
         Ok(())
     }
     #[getter]
-    fn pending_lower(&self) -> Option<PyPositionSize> {
-        self.pending_lower.map(|inner| PyPositionSize { inner })
+    fn incoming_lower(&self) -> Option<PyPositionSize> {
+        self.incoming_lower.map(|inner| PyPositionSize { inner })
     }
     #[setter]
-    fn set_pending_lower(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
-        self.pending_lower = value.map(parse_position_size_input).transpose()?;
+    fn set_incoming_lower(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.incoming_lower = value.map(parse_position_size_input).transpose()?;
         Ok(())
     }
 
     fn __repr__(&self) -> String {
         format!(
-            "AccountAdjustmentBounds(total_upper={:?}, total_lower={:?}, reserved_upper={:?}, reserved_lower={:?}, pending_upper={:?}, pending_lower={:?})",
-            self.total_upper().map(|v| v.inner.to_string()),
-            self.total_lower().map(|v| v.inner.to_string()),
-            self.reserved_upper().map(|v| v.inner.to_string()),
-            self.reserved_lower().map(|v| v.inner.to_string()),
-            self.pending_upper().map(|v| v.inner.to_string()),
-            self.pending_lower().map(|v| v.inner.to_string()),
+            "AccountAdjustmentBounds(balance_upper={:?}, balance_lower={:?}, held_upper={:?}, held_lower={:?}, incoming_upper={:?}, incoming_lower={:?})",
+            self.balance_upper().map(|v| v.inner.to_string()),
+            self.balance_lower().map(|v| v.inner.to_string()),
+            self.held_upper().map(|v| v.inner.to_string()),
+            self.held_lower().map(|v| v.inner.to_string()),
+            self.incoming_upper().map(|v| v.inner.to_string()),
+            self.incoming_lower().map(|v| v.inner.to_string()),
         )
     }
 }

@@ -19,6 +19,6 @@ package native
 
 /*
 #cgo darwin LDFLAGS: -Wl,-undefined,dynamic_lookup
-#cgo linux LDFLAGS: -Wl,--unresolved-symbols=ignore-all -Wl,-z,lazy
+#cgo linux LDFLAGS: -Wl,--unresolved-symbols=ignore-all
 */
 import "C"

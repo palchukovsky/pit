@@ -42,10 +42,10 @@ type Price struct {
 	native native.ParamPrice
 }
 
-var priceZero = sync.OnceValue(func() Price { return newPriceOrPanic(NewPriceFromInt(0)) })
+var newPriceZero = sync.OnceValue(func() Price { return newPriceOrPanic(NewPriceFromInt(0)) })
 
-// PriceZero returns the canonical zero value of Price.
-func PriceZero() Price { return priceZero() }
+// NewPriceZero returns the canonical zero value of Price.
+func NewPriceZero() Price { return newPriceZero() }
 
 func newPriceOrPanic(value Price, err error) Price {
 	if err != nil {

@@ -47,10 +47,10 @@ type Notional struct {
 	native native.ParamNotional
 }
 
-var notionalZero = sync.OnceValue(func() Notional { return newNotionalOrPanic(NewNotionalFromInt(0)) })
+var newNotionalZero = sync.OnceValue(func() Notional { return newNotionalOrPanic(NewNotionalFromInt(0)) })
 
-// NotionalZero returns the canonical zero value of Notional.
-func NotionalZero() Notional { return notionalZero() }
+// NewNotionalZero returns the canonical zero value of Notional.
+func NewNotionalZero() Notional { return newNotionalZero() }
 
 func newNotionalOrPanic(value Notional, err error) Notional {
 	if err != nil {

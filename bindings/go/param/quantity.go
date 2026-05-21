@@ -42,10 +42,10 @@ type Quantity struct {
 	native native.ParamQuantity
 }
 
-var quantityZero = sync.OnceValue(func() Quantity { return newQuantityOrPanic(NewQuantityFromInt(0)) })
+var newQuantityZero = sync.OnceValue(func() Quantity { return newQuantityOrPanic(NewQuantityFromInt(0)) })
 
-// QuantityZero returns the canonical zero value of Quantity.
-func QuantityZero() Quantity { return quantityZero() }
+// NewQuantityZero returns the canonical zero value of Quantity.
+func NewQuantityZero() Quantity { return newQuantityZero() }
 
 func newQuantityOrPanic(value Quantity, err error) Quantity {
 	if err != nil {

@@ -42,10 +42,10 @@ type Pnl struct {
 	native native.ParamPnl
 }
 
-var pnlZero = sync.OnceValue(func() Pnl { return newPnlOrPanic(NewPnlFromInt(0)) })
+var newPnlZero = sync.OnceValue(func() Pnl { return newPnlOrPanic(NewPnlFromInt(0)) })
 
-// PnlZero returns the canonical zero value of Pnl.
-func PnlZero() Pnl { return pnlZero() }
+// NewPnlZero returns the canonical zero value of Pnl.
+func NewPnlZero() Pnl { return newPnlZero() }
 
 func newPnlOrPanic(value Pnl, err error) Pnl {
 	if err != nil {

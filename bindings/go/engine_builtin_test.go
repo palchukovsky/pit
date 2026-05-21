@@ -502,10 +502,10 @@ func TestBuiltinPnlBoundsKillswitchBrokerOnlyTriggersAndBlocksAccount(t *testing
 	if len(rejects) != 1 {
 		t.Fatalf("post-kill reject len = %d, want 1", len(rejects))
 	}
-	if rejects[0].Code != reject.CodeAccountBlocked {
+	if rejects[0].Code != reject.CodePnlKillSwitchTriggered {
 		t.Fatalf(
 			"reject code = %v, want %v",
-			rejects[0].Code, reject.CodeAccountBlocked,
+			rejects[0].Code, reject.CodePnlKillSwitchTriggered,
 		)
 	}
 }
@@ -546,10 +546,10 @@ func TestBuiltinPnlBoundsKillswitchAccountBarrierIndependentOfOtherAccounts(
 	if len(rejects) != 1 {
 		t.Fatalf("acct 1001 reject len = %d, want 1", len(rejects))
 	}
-	if rejects[0].Code != reject.CodeAccountBlocked {
+	if rejects[0].Code != reject.CodePnlKillSwitchTriggered {
 		t.Fatalf(
 			"reject code = %v, want %v",
-			rejects[0].Code, reject.CodeAccountBlocked,
+			rejects[0].Code, reject.CodePnlKillSwitchTriggered,
 		)
 	}
 

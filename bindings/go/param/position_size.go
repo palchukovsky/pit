@@ -42,10 +42,10 @@ type PositionSize struct {
 	native native.ParamPositionSize
 }
 
-var positionSizeZero = sync.OnceValue(func() PositionSize { return newPositionSizeOrPanic(NewPositionSizeFromInt(0)) })
+var newPositionSizeZero = sync.OnceValue(func() PositionSize { return newPositionSizeOrPanic(NewPositionSizeFromInt(0)) })
 
-// PositionSizeZero returns the canonical zero value of PositionSize.
-func PositionSizeZero() PositionSize { return positionSizeZero() }
+// NewPositionSizeZero returns the canonical zero value of PositionSize.
+func NewPositionSizeZero() PositionSize { return newPositionSizeZero() }
 
 func newPositionSizeOrPanic(value PositionSize, err error) PositionSize {
 	if err != nil {

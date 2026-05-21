@@ -42,10 +42,10 @@ type Fee struct {
 	native native.ParamFee
 }
 
-var feeZero = sync.OnceValue(func() Fee { return newFeeOrPanic(NewFeeFromInt(0)) })
+var newFeeZero = sync.OnceValue(func() Fee { return newFeeOrPanic(NewFeeFromInt(0)) })
 
-// FeeZero returns the canonical zero value of Fee.
-func FeeZero() Fee { return feeZero() }
+// NewFeeZero returns the canonical zero value of Fee.
+func NewFeeZero() Fee { return newFeeZero() }
 
 func newFeeOrPanic(value Fee, err error) Fee {
 	if err != nil {

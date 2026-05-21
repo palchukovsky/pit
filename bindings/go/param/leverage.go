@@ -66,8 +66,8 @@ type Leverage struct {
 	native native.ParamLeverage
 }
 
-// LeverageZero returns the canonical zero value of Leverage (`not set` state).
-func LeverageZero() Leverage { return Leverage{} }
+// NewLeverageZero returns the canonical zero value of Leverage (`not set` state).
+func NewLeverageZero() Leverage { return Leverage{} }
 
 // NewLeverageFromHandle wraps native leverage payload as Leverage.
 //

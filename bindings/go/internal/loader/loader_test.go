@@ -21,6 +21,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	goruntime "runtime"
 	"strings"
 	"sync"
@@ -28,6 +29,46 @@ import (
 
 	pitruntime "go.openpit.dev/openpit/internal/runtime"
 )
+
+func TestSDKVersionMatchesOpenpitCrateVersionAndReleaseReplacement(t *testing.T) {
+	loaderSource, err := os.ReadFile("loader.go")
+	if err != nil {
+		t.Fatalf("read loader.go: %v", err)
+	}
+
+	sdkVersionMatch := regexp.MustCompile(`const SDKVersion = "([^"]+)"`).FindSubmatch(loaderSource)
+	if sdkVersionMatch == nil {
+		t.Fatal("loader.go must declare const SDKVersion")
+	}
+	if got := string(sdkVersionMatch[1]); got != SDKVersion {
+		t.Fatalf("loader.go SDKVersion = %q, want %q", got, SDKVersion)
+	}
+
+	cargoTomlPath := filepath.Join("..", "..", "..", "..", "crates", "openpit", "Cargo.toml")
+	cargoToml, err := os.ReadFile(cargoTomlPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", cargoTomlPath, err)
+	}
+
+	crateVersionMatch := regexp.MustCompile(`(?m)^version = "([^"]+)"`).FindSubmatch(cargoToml)
+	if crateVersionMatch == nil {
+		t.Fatalf("%s must declare package version", cargoTomlPath)
+	}
+	if got := string(crateVersionMatch[1]); got != SDKVersion {
+		t.Fatalf("openpit crate version = %q, want Go SDKVersion %q", got, SDKVersion)
+	}
+
+	for _, want := range []string{
+		`file = "../../bindings/go/internal/loader/loader.go"`,
+		`search = 'const SDKVersion = "[0-9]+\.[0-9]+\.[0-9]+"'`,
+		`replace = "const SDKVersion = \"{{version}}\""`,
+		`exactly = 1`,
+	} {
+		if !strings.Contains(string(cargoToml), want) {
+			t.Fatalf("%s cargo-release replacement must contain %q", cargoTomlPath, want)
+		}
+	}
+}
 
 // ---------------------------------------------------------------------------
 // ensureVersionedPath

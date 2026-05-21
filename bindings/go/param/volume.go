@@ -42,10 +42,10 @@ type Volume struct {
 	native native.ParamVolume
 }
 
-var volumeZero = sync.OnceValue(func() Volume { return newVolumeOrPanic(NewVolumeFromInt(0)) })
+var newVolumeZero = sync.OnceValue(func() Volume { return newVolumeOrPanic(NewVolumeFromInt(0)) })
 
-// VolumeZero returns the canonical zero value of Volume.
-func VolumeZero() Volume { return volumeZero() }
+// NewVolumeZero returns the canonical zero value of Volume.
+func NewVolumeZero() Volume { return newVolumeZero() }
 
 func newVolumeOrPanic(value Volume, err error) Volume {
 	if err != nil {

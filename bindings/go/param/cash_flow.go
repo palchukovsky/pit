@@ -42,10 +42,10 @@ type CashFlow struct {
 	native native.ParamCashFlow
 }
 
-var cashFlowZero = sync.OnceValue(func() CashFlow { return newCashFlowOrPanic(NewCashFlowFromInt(0)) })
+var newCashFlowZero = sync.OnceValue(func() CashFlow { return newCashFlowOrPanic(NewCashFlowFromInt(0)) })
 
-// CashFlowZero returns the canonical zero value of CashFlow.
-func CashFlowZero() CashFlow { return cashFlowZero() }
+// NewCashFlowZero returns the canonical zero value of CashFlow.
+func NewCashFlowZero() CashFlow { return newCashFlowZero() }
 
 func newCashFlowOrPanic(value CashFlow, err error) CashFlow {
 	if err != nil {

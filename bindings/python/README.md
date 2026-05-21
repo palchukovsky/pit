@@ -18,19 +18,15 @@ For conceptual and architectural pages, see
 
 ## Versioning Policy (Pre‑1.0)
 
-Until OpenPit reaches a stable `1.0` release, the project follows a relaxed
-interpretation of Semantic Versioning.
+Before the `1.0` release OpenPit follows a relaxed Semantic Versioning:
 
-During this phase:
+- `PATCH` releases carry bug fixes and small internal corrections.
+- `MINOR` releases may introduce new features **and may also change the
+  public interface**.
 
-- `PATCH` releases are used for bug fixes and small internal corrections.
-- `MINOR` releases may introduce new features **and may also change the public
-  interface**.
-
-This means that breaking API changes can appear in minor releases before `1.0`.
-Consumers of the library should take this into account when declaring
-dependencies and consider using version constraints that tolerate API
-evolution during the pre‑stable phase.
+Breaking API changes can appear in minor releases before `1.0`. Pick
+version constraints that tolerate API evolution during the pre-stable
+phase.
 
 ## Getting Started
 
@@ -68,46 +64,47 @@ maturin develop --release --manifest-path bindings/python/Cargo.toml
 
 The engine evaluates an order through a deterministic pre-trade pipeline:
 
-- `engine.start_pre_trade(order=...)` runs start-stage checks and makes
-  lightweight check policies
+- `engine.start_pre_trade(order=...)` runs lightweight start-stage checks
 - `request.execute()` runs main-stage check policies
 - `reservation.commit()` applies reserved state
 - `reservation.rollback()` reverts reserved state
-- `engine.apply_execution_report(report=...)` updates post-trade policy state
+- `engine.apply_execution_report(report=...)` updates post-trade policy
+  state
 
-Start-stage checks aggregate rejects from all registered policies. Main-stage
-checks aggregate rejects and run rollback mutations in reverse order when any
-reject is produced.
+Start-stage checks aggregate rejects from all registered policies.
+Main-stage checks aggregate rejects and run rollback mutations in reverse
+order when any reject is produced.
 
-Built-in policies currently include:
+Built-in policies:
 
 - `OrderValidationPolicy`
 - `PnlBoundsKillSwitchPolicy`
 - `RateLimitPolicy`
 - `OrderSizeLimitPolicy`
 
-The primary integration model is to write project-specific policies against the
-public Python policy API described in the manual: [Custom Python policies](https://github.com/openpitkit/pit/wiki/Policies#python-custom-policy-api).
+The primary integration model is to write project-specific policies against
+the public Python policy API:
+[Custom Python policies](https://github.com/openpitkit/pit/wiki/Policies#python-custom-policy-api).
 
-There are two types of rejections: a full kill switch for the account and a
-rejection of only the current request. This is useful in algorithmic trading
-when automatic order submission must be halted until the situation is analyzed.
+Two types of rejections are supported: a full kill switch for the account
+and a rejection of only the current request. Kill switches are intended
+for algorithmic trading where automatic order submission must be halted
+until the situation is analyzed.
 
 ## Threading
 
 Canonical contract: [Threading Contract](https://github.com/openpitkit/pit/wiki/Threading-Contract).
 
-The Python binding follows the same SDK threading contract.
-Public methods acquire the GIL when needed; the SDK does not release the GIL
-across callback boundaries, so Python policies execute on the calling thread.
+Public methods acquire the GIL when needed; the SDK does not release the
+GIL across callback boundaries, so Python policies execute on the calling
+thread.
 
-Custom policies that need internal state across calls can use the
-built-in [Storage](https://github.com/openpitkit/pit/wiki/Storage)
-abstraction. In typical Python usage - synchronous code or an asyncio
-loop pinned to one thread - the no-sync policy is sufficient and the
-storage compiles down to direct dictionary access. A synchronizing
-policy is needed only when the engine is genuinely shared across OS
-threads.
+Custom policies that need internal state across calls can use the built-in
+[Storage](https://github.com/openpitkit/pit/wiki/Storage) abstraction. In
+typical Python usage (synchronous code or an asyncio loop pinned to one
+thread) the no-sync policy is sufficient and the storage compiles down to
+direct dictionary access. A synchronizing policy is needed only when the
+engine is genuinely shared across OS threads.
 
 ## Usage
 

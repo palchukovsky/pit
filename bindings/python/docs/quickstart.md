@@ -1,7 +1,8 @@
 # Quickstart
 
-This example builds an engine with payload validation, checks one order, commits
-the reservation, and sends a post-trade report back to the engine.
+A minimal end-to-end flow: build an engine with payload validation, check
+one order, commit the reservation, and feed a post-trade report back into
+the engine.
 
 ```python
 import openpit

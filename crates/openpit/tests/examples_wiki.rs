@@ -838,6 +838,81 @@ fn example_wiki_policies_pnl_bounds_killswitch() -> Result<(), Box<dyn std::erro
     Ok(())
 }
 
+#[test]
+fn example_wiki_storage_custom_policy() -> Result<(), Box<dyn std::error::Error>> {
+    // Wiki example: pit.wiki/Storage.md — Custom Policy with Storage
+    // Keep this example in sync with the matching wiki example.
+    use openpit::param::{AccountId, Asset, Pnl};
+    use openpit::storage::{LockingPolicyFactory, Storage, StorageBuilder};
+
+    pub struct MyPolicy<StorageLockingPolicyFactory>
+    where
+        StorageLockingPolicyFactory: LockingPolicyFactory,
+    {
+        realized: Storage<(AccountId, Asset), Pnl, StorageLockingPolicyFactory::Policy>,
+    }
+
+    impl<StorageLockingPolicyFactory> MyPolicy<StorageLockingPolicyFactory>
+    where
+        StorageLockingPolicyFactory:
+            LockingPolicyFactory + openpit::storage::CreateStorageFor<(AccountId, Asset)>,
+    {
+        pub fn new(storage_builder: &StorageBuilder<StorageLockingPolicyFactory>) -> Self {
+            Self {
+                realized: storage_builder.create(),
+            }
+        }
+
+        pub fn record_pnl(&self, account: AccountId, settlement: Asset, delta: Pnl) {
+            self.realized.with_mut(
+                (account, settlement),
+                || Pnl::ZERO,
+                |entry, _is_new| {
+                    if let Ok(updated) = entry.checked_add(delta) {
+                        *entry = updated;
+                    }
+                },
+            );
+        }
+
+        pub fn current_pnl(&self, account: AccountId, settlement: &Asset) -> Pnl {
+            let key = (account, settlement.clone());
+            self.realized
+                .with(&key, |entry| *entry)
+                .unwrap_or(Pnl::ZERO)
+        }
+    }
+
+    let builder = Engine::builder::<(), (), ()>().no_sync();
+    let policy = MyPolicy::new(builder.storage_builder());
+
+    let account = AccountId::from_u64(1);
+    let usd = Asset::new("USD")?;
+    policy.record_pnl(account, usd.clone(), Pnl::from_str("-50")?);
+    assert_eq!(policy.current_pnl(account, &usd), Pnl::from_str("-50")?);
+    Ok(())
+}
+
+#[test]
+fn example_wiki_storage_engine_builder() -> Result<(), Box<dyn std::error::Error>> {
+    // Wiki example: pit.wiki/Storage.md — Engine-Owned Builder Use
+    // Keep this example in sync with the matching wiki example.
+    let builder = Engine::builder::<(), (), ()>().full_sync();
+    let counters = builder.storage_builder().create::<&'static str, u64>();
+
+    counters.with_mut(
+        "ticks",
+        || 0,
+        |value, _is_new| {
+            *value += 1;
+        },
+    );
+
+    assert_eq!(counters.with(&"ticks", |value| *value), Some(1));
+    assert!(counters.remove(&"ticks"));
+    Ok(())
+}
+
 #[cfg(feature = "derive")]
 #[test]
 fn example_wiki_custom_types_account_adjustment_wrapper() -> Result<(), Box<dyn std::error::Error>>

@@ -6,7 +6,7 @@
 
 > **Read-only mirror.** This repository is a mirror of [`bindings/go/`](https://github.com/openpitkit/pit/tree/main/bindings/go)
 > from the [openpitkit/pit](https://github.com/openpitkit/pit) monorepo.
-> **Do not open pull requests here** — contribute to the monorepo instead.
+> **Do not open pull requests here** - contribute to the monorepo instead.
 
 `openpit` is an embeddable pre-trade risk SDK for integrating policy-driven
 risk checks into trading systems from Go.
@@ -18,19 +18,15 @@ For the public Go module source, see [go.openpit.dev/openpit](https://go.openpit
 
 ## Versioning Policy (Pre‑1.0)
 
-Until OpenPit reaches a stable `1.0` release, the project follows a relaxed
-interpretation of Semantic Versioning.
+Before the `1.0` release OpenPit follows a relaxed Semantic Versioning:
 
-During this phase:
+- `PATCH` releases carry bug fixes and small internal corrections.
+- `MINOR` releases may introduce new features **and may also change the
+  public interface**.
 
-- `PATCH` releases are used for bug fixes and small internal corrections.
-- `MINOR` releases may introduce new features **and may also change the public
-  interface**.
-
-This means that breaking API changes can appear in minor releases before `1.0`.
-Consumers of the library should take this into account when declaring
-dependencies and consider using version constraints that tolerate API
-evolution during the pre‑stable phase.
+Breaking API changes can appear in minor releases before `1.0`. Pick
+version constraints that tolerate API evolution during the pre-stable
+phase.
 
 ## Getting Started
 
@@ -63,38 +59,38 @@ The engine evaluates an order through a deterministic pre-trade pipeline:
 - `engine.ExecutePreTrade(order)` is a shortcut that composes both stages
 - `engine.ApplyExecutionReport(report)` updates post-trade policy state
 
-Start-stage policies aggregate rejects from all registered policies. Main-stage
-policies aggregate rejects and roll back registered mutations in reverse order
-when any reject is produced.
+Start-stage policies aggregate rejects from all registered policies.
+Main-stage policies aggregate rejects and roll back registered mutations
+in reverse order when any reject is produced.
 
-Built-in start-stage policies currently include:
+Built-in start-stage policies:
 
 - `policies.BuildOrderValidation()`
 - `policies.BuildPnlBoundsKillswitch()...`
 - `policies.BuildRateLimit()...`
 - `policies.BuildOrderSizeLimit()...`
 
-The primary integration model is to write project-specific policies against the
-public Go policy API described in the wiki:
+The primary integration model is to write project-specific policies against
+the public Go policy API:
 [Custom Go policies](https://github.com/openpitkit/pit/wiki/Policy-API#go-interface).
 
-There are two types of rejections: a full kill switch for the account and a
-rejection of only the current request. This is useful in algorithmic trading
-when automatic order submission must be halted until the situation is analyzed.
+Two types of rejections are supported: a full kill switch for the account
+and a rejection of only the current request. Kill switches are intended
+for algorithmic trading where automatic order submission must be halted
+until the situation is analyzed.
 
 ## Threading
 
 Canonical contract: [Threading Contract](https://github.com/openpitkit/pit/wiki/Threading-Contract).
 
-The Go binding follows the same SDK threading contract. Goroutine migration
-between OS threads during one SDK call is supported, and callbacks invoked by
-the SDK may run on a different OS thread than the goroutine that initiated the
-call.
+Goroutine migration between OS threads during one SDK call is supported,
+and callbacks invoked by the SDK may run on a different OS thread than the
+goroutine that initiated the call.
 
 Custom policies that need internal state across calls use the built-in
-[Storage](https://github.com/openpitkit/pit/wiki/Storage) abstraction -
+[Storage](https://github.com/openpitkit/pit/wiki/Storage) abstraction:
 synchronization-aware key-value storage that handles goroutine migration
-correctly without exposing locks to the policy code.
+correctly without exposing locks to policy code.
 
 ## Usage
 
@@ -257,7 +253,7 @@ func main() {
  // 8. After each execution report is applied, the system may report that it
  // has been determined in advance that all subsequent requests will be
  // rejected if the account status does not change.
- if result.KillSwitchTriggered {
+ if len(result.AccountBlocks) > 0 {
   fmt.Println("halt new orders until the blocked state is cleared")
  }
 }
@@ -296,7 +292,7 @@ Subsequent process starts find the cached file and skip extraction.
 
 Environment overrides:
 
-- `OPENPIT_RUNTIME_LIBRARY_PATH` — use an explicit pre-extracted library path
-  instead of the embedded copy; extraction is skipped entirely.
-- `OPENPIT_RUNTIME_CACHE_DIR` — override the root directory for extraction
+- `OPENPIT_RUNTIME_LIBRARY_PATH` - use an explicit pre-extracted library
+  path instead of the embedded copy; extraction is skipped entirely.
+- `OPENPIT_RUNTIME_CACHE_DIR` - override the root directory for extraction
   instead of the OS user cache directory.

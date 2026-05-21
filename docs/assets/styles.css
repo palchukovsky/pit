@@ -70,11 +70,15 @@ a:hover {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  width: 100%;
   padding: 28px 24px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 6px;
+  color: inherit;
   cursor: pointer;
+  font: inherit;
+  text-align: left;
   transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
 }
 

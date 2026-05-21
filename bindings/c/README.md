@@ -19,19 +19,15 @@ For the split C reference manual, see
 
 ## Versioning Policy (Pre‑1.0)
 
-Until OpenPit reaches a stable `1.0` release, the project follows a relaxed
-interpretation of Semantic Versioning.
+Before the `1.0` release OpenPit follows a relaxed Semantic Versioning:
 
-During this phase:
+- `PATCH` releases carry bug fixes and small internal corrections.
+- `MINOR` releases may introduce new features **and may also change the
+  public interface**.
 
-- `PATCH` releases are used for bug fixes and small internal corrections.
-- `MINOR` releases may introduce new features **and may also change the public
-  interface**.
-
-This means that breaking API changes can appear in minor releases before `1.0`.
-Consumers of the library should take this into account when declaring
-dependencies and consider using version constraints that tolerate API
-evolution during the pre‑stable phase.
+Breaking API changes can appear in minor releases before `1.0`. Pick
+version constraints that tolerate API evolution during the pre-stable
+phase.
 
 ## Getting Started
 
@@ -99,29 +95,31 @@ The engine evaluates an order through a deterministic pre-trade pipeline:
 - `openpit_pretrade_pre_trade_reservation_rollback(...)` reverts reserved state
 - `openpit_engine_apply_execution_report(...)` updates post-trade policy state
 
-Start-stage policies aggregate rejects from all registered policies. Main-stage
-policies aggregate rejects and run rollback mutations in reverse order when any
-reject is produced.
+Start-stage policies aggregate rejects from all registered policies.
+Main-stage policies aggregate rejects and run rollback mutations in
+reverse order when any reject is produced.
 
-Built-in policies currently include:
+Built-in policies:
 
 - order validation
 - P&L kill switch
 - sliding-window rate limit
 - per-settlement order size limits
 
-The primary integration model is to build project-specific policies against the
-public C API described in the manual: [the C API docs](https://github.com/openpitkit/pit/blob/main/docs/c-api/index.md).
+The primary integration model is to build project-specific policies against
+the public C API:
+[the C API docs](https://github.com/openpitkit/pit/blob/main/docs/c-api/index.md).
 
-There are two types of rejections: a full kill switch for the account and a
-rejection of only the current request. This is useful in algorithmic trading
-when automatic order submission must be halted until the situation is analyzed.
+Two types of rejections are supported: a full kill switch for the account
+and a rejection of only the current request. Kill switches are intended
+for algorithmic trading where automatic order submission must be halted
+until the situation is analyzed.
 
-Built-in policies that need to maintain state across calls use the SDK's
+Built-in policies that maintain state across calls use the SDK's
 [Storage](https://github.com/openpitkit/pit/wiki/Storage) abstraction
-internally. The runtime library performs the necessary memory
-synchronization for policy state itself; the C consumer is responsible
-only for the threading contract on the SDK handle.
+internally. The runtime library handles the necessary memory
+synchronization for policy state; the C consumer is responsible only for
+the threading contract on the SDK handle.
 
 ## Usage
 
@@ -428,7 +426,8 @@ int main(void) {
     report.financial_impact.value.fee.is_set = true;
     report.financial_impact.value.fee.value = fee;
 
-    if (!openpit_engine_apply_execution_report(engine, &report, &account_blocks, &error)) {
+    if (!openpit_engine_apply_execution_report(
+            engine, &report, &account_blocks, &error)) {
         report_out_error("openpit_engine_apply_execution_report", error);
         error = NULL;
         goto cleanup;
@@ -481,8 +480,8 @@ For the full type and ownership reference, use the generated C manual:
 
 ## Errors
 
-Business rejects are returned through `OpenPitPretradeRejectList*` and related APIs such
-as `openpit_engine_start_pre_trade(...)` and
+Business rejects are returned through `OpenPitPretradeRejectList*` and
+related APIs such as `openpit_engine_start_pre_trade(...)` and
 `openpit_pretrade_pre_trade_request_execute(...)`.
 
 Input validation errors and API misuse are reported through two channels:

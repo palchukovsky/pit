@@ -16,19 +16,15 @@ For conceptual and architectural pages, see
 
 ## Versioning Policy (Pre‑1.0)
 
-Until OpenPit reaches a stable `1.0` release, the project follows a relaxed
-interpretation of Semantic Versioning.
+Before the `1.0` release OpenPit follows a relaxed Semantic Versioning:
 
-During this phase:
+- `PATCH` releases carry bug fixes and small internal corrections.
+- `MINOR` releases may introduce new features **and may also change the
+  public interface**.
 
-- `PATCH` releases are used for bug fixes and small internal corrections.
-- `MINOR` releases may introduce new features **and may also change the public
-  interface**.
-
-This means that breaking API changes can appear in minor releases before `1.0`.
-Consumers of the library should take this into account when declaring
-dependencies and consider using version constraints that tolerate API
-evolution during the pre‑stable phase.
+Breaking API changes can appear in minor releases before `1.0`. Pick
+version constraints that tolerate API evolution during the pre-stable
+phase.
 
 ## Getting Started
 
@@ -55,47 +51,48 @@ The engine evaluates an order through a deterministic pre-trade pipeline:
 - dropping `PreTradeReservation` rolls state back automatically
 - `apply_execution_report(report)` updates post-trade policy state
 
-Start-stage policies aggregate rejects from all registered policies. Main-stage
-policies aggregate rejects and roll back registered mutations in reverse order
-when any reject is produced.
+Start-stage policies aggregate rejects from all registered policies.
+Main-stage policies aggregate rejects and roll back registered mutations
+in reverse order when any reject is produced.
 
-Built-in start-stage policies currently include:
+Built-in start-stage policies:
 
 - `OrderValidationPolicy`
 - `PnlBoundsKillSwitchPolicy`
 - `RateLimitPolicy`
 - `OrderSizeLimitPolicy`
 
-The primary integration model is to write project-specific policies against the
-public Rust policy API described in the wiki: [Custom Rust policies](https://github.com/openpitkit/pit/wiki/Policies#rust-custom-policy-api).
+The primary integration model is to write project-specific policies against
+the public Rust policy API: [Custom Rust policies](https://github.com/openpitkit/pit/wiki/Policies#rust-custom-policy-api).
 
-There are two types of rejections: a full kill switch for the account and a
-rejection of only the current request. This is useful in algorithmic trading
-when automatic order submission must be halted until the situation is analyzed.
+Two types of rejections are supported: a full kill switch for the account
+and a rejection of only the current request. Kill switches are intended
+for algorithmic trading where automatic order submission must be halted
+until the situation is analyzed.
 
 ## Threading
 
 Canonical contract: [Threading Contract](https://github.com/openpitkit/pit/wiki/Threading-Contract).
 
 Custom policies that need internal state across calls use the built-in
-[Storage](https://github.com/openpitkit/pit/wiki/Storage) abstraction.
-The synchronization policy - no-sync, full-sync, or caller-sharded for
-per-key parallelism - is selected once at engine construction and applied
-transparently. The policy code never names a lock primitive; misuse is
+[Storage](https://github.com/openpitkit/pit/wiki/Storage) abstraction. The
+synchronization policy - no-sync, full-sync, or caller-sharded for per-key
+parallelism - is selected once at engine construction and applied
+transparently. Policy code never names a lock primitive; misuse is
 prevented at compile time.
 
-1. The SDK never spawns OS threads. Every public method runs on the OS thread
-   that invoked that method.
-2. Concurrent invocation of any public method on the same SDK handle is the
-   caller's responsibility to prevent. Entering one handle concurrently from
-   multiple threads is undefined behavior.
+1. The SDK never spawns OS threads. Every public method runs on the OS
+   thread that invoked it.
+2. Preventing concurrent invocation of any public method on the same SDK
+   handle is the caller's responsibility. Entering one handle concurrently
+   from multiple threads is undefined behavior.
 3. Sequential calls to public methods on the same handle from different OS
-   threads are supported. Handles, contexts, and callbacks are not pinned to a
-   specific thread.
+   threads are supported. Handles, contexts, and callbacks are not pinned
+   to a specific thread.
 4. `Reject.user_data` / `Order.user_data` / `ExecutionReport.user_data` /
    `AccountAdjustment.user_data` are opaque caller tokens. The SDK never
-   inspects, dereferences, or frees them. Lifetime, thread-safety, and meaning
-   are entirely caller-managed.
+   inspects, dereferences, or frees them. Lifetime, thread-safety, and
+   meaning are entirely caller-managed.
 
 ## Usage
 
@@ -199,7 +196,7 @@ let mut reservation = request.execute()?;
 // The rollback must be called otherwise to revert all performed reservations.
 reservation.commit();
 
-// 5. The order goes to the venue and returns with an execution report.
+// 7. The order goes to the venue and returns with an execution report.
 let report = WithExecutionReportOperation {
     inner: WithFinancialImpact {
         inner: (),
@@ -220,10 +217,10 @@ let report = WithExecutionReportOperation {
 
 let result = engine.apply_execution_report(&report);
 
-// 6. After each execution report is applied, the system may report that it has
+// 8. After each execution report is applied, the system may report that it has
 // been determined in advance that all subsequent requests will be rejected if
 // the account status does not change.
-assert!(!result.kill_switch_triggered);
+assert!(result.account_blocks.is_empty());
 # Ok(())
 # }
 ```

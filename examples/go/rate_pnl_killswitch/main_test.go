@@ -100,7 +100,7 @@ func TestScenarioTripsBothKillswitches(t *testing.T) {
 	}
 
 	// 999 * (-0.05) + (-460) = -509.95, just past the -500 floor.
-	want, _ := new(big.Rat).SetString("-509.95") //nolint:gosec // G113 - constant input
+	want, _ := new(big.Rat).SetString("-509.95")
 	if stats.Pnl.Cmp(want) != 0 {
 		t.Errorf("pnl = %s, want -509.95", stats.Pnl.FloatString(2))
 	}

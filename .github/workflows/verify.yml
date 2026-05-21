@@ -163,7 +163,7 @@ jobs:
         run: go vet -all ./...
 
       - name: Lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           version: v${{ env.CI_GOLANGCI_LINT }}
           working-directory: bindings/go
@@ -185,7 +185,7 @@ jobs:
         run: go vet -all ./...
 
       - name: Lint workspace Go examples
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           version: v${{ env.CI_GOLANGCI_LINT }}
           working-directory: examples/go/rate_pnl_killswitch

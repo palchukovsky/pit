@@ -411,7 +411,7 @@ func assertAssetOptionValuesEqual(
 	})
 }
 
-func assertOptionalBoolEqual(t *testing.T, got optional.Bool, want bool) { // nolint
+func assertOptionalBoolEqual(t *testing.T, got optional.Bool, want bool) {
 	t.Helper()
 	assertOptionalBoolValuesEqual(t, got, optional.BoolSome(want))
 }

@@ -15,12 +15,15 @@
 //
 // Please see https://github.com/openpitkit and the OWNERS file for details.
 
+// Package pretrade provides pre-trade risk checking types and interfaces.
 package pretrade
 
 import "go.openpit.dev/openpit/internal/native"
 
+// Context carries engine-provided context passed to policy callbacks.
 type Context struct{ handle native.PretradeContext }
 
+// NewContextFromHandle creates a Context from a native handle.
 func NewContextFromHandle(handle native.PretradeContext) Context {
 	return Context{handle: handle}
 }

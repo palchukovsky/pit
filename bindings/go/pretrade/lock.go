@@ -30,6 +30,7 @@ type Lock struct{ value native.PretradePreTradeLock }
 
 func newLock(value native.PretradePreTradeLock) Lock { return Lock{value: value} }
 
+// Price returns the optional locked price.
 func (l Lock) Price() optional.Option[param.Price] {
 	return param.NewPriceOptionFromHandle(native.PretradePreTradeLockGetPrice(l.value))
 }

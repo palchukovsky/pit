@@ -24,7 +24,7 @@ import (
 
 func TestImportStringEmptyReturnsNilPointerWithZeroLength(t *testing.T) {
 	view := importString("")
-	if unsafe.Pointer(view.ptr) != nil {
+	if unsafe.Pointer(view.ptr) != nil { //nolint:gosec // CGo string view layout check requires unsafe.Pointer
 		t.Fatal(`importString("").ptr != nil, want nil`)
 	}
 	if view.len != 0 {

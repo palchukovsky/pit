@@ -47,7 +47,7 @@ func CreateEngineBuilder(syncPolicy SyncPolicy) (EngineBuilder, error) {
 	var outError SharedString
 	builder := C.openpit_create_engine_builder(
 		syncPolicy,
-		C.OpenPitOutError(&outError), //nolint:gocritic
+		C.OpenPitOutError(&outError), //nolint:gocritic // CGo out-parameter requires address-of operator
 	)
 	if builder == nil {
 		return nil, consumeSharedStringAsError(outError, "openpit_create_engine_builder failed")
@@ -61,7 +61,7 @@ func DestroyEngineBuilder(builder EngineBuilder) {
 
 func EngineBuilderBuild(builder EngineBuilder) (Engine, error) {
 	var outError SharedString
-	e := C.openpit_engine_builder_build(builder, C.OpenPitOutError(&outError)) //nolint:gocritic
+	e := C.openpit_engine_builder_build(builder, C.OpenPitOutError(&outError)) //nolint:gocritic // CGo out-parameter requires address-of operator
 	if e == nil {
 		return nil, consumeSharedStringAsError(outError, "openpit_engine_builder_build failed")
 	}
@@ -70,7 +70,7 @@ func EngineBuilderBuild(builder EngineBuilder) (Engine, error) {
 
 func EngineBuilderAddPreTradePolicy(builder EngineBuilder, policy PretradePreTradePolicy) error {
 	var outError SharedString
-	if !C.openpit_engine_builder_add_pre_trade_policy(builder, policy, C.OpenPitOutError(&outError)) { //nolint:gocritic
+	if !C.openpit_engine_builder_add_pre_trade_policy(builder, policy, C.OpenPitOutError(&outError)) { //nolint:gocritic // CGo out-parameter requires address-of operator
 		return consumeSharedStringAsError(outError, "openpit_engine_builder_add_pre_trade_policy failed")
 	}
 	return nil
@@ -80,7 +80,7 @@ func EngineBuilderAddBuiltinOrderValidation(builder EngineBuilder) error {
 	var outError SharedString
 	if !C.openpit_engine_builder_add_builtin_order_validation_policy(
 		builder,
-		C.OpenPitOutError(&outError), //nolint:gocritic
+		C.OpenPitOutError(&outError), //nolint:gocritic // CGo out-parameter requires address-of operator
 	) {
 		return consumeSharedStringAsError(
 			outError,
@@ -120,7 +120,7 @@ func EngineBuilderAddBuiltinRateLimit(
 		C.size_t(len(accounts)),
 		accountAssetsPtr,
 		C.size_t(len(accountAssets)),
-		C.OpenPitOutError(&outError), //nolint:gocritic
+		C.OpenPitOutError(&outError), //nolint:gocritic // CGo out-parameter requires address-of operator
 	) {
 		return consumeSharedStringAsError(
 			outError,
@@ -155,7 +155,7 @@ func EngineBuilderAddBuiltinOrderSizeLimit(
 		C.size_t(len(assets)),
 		accountAssetsPtr,
 		C.size_t(len(accountAssets)),
-		C.OpenPitOutError(&outError), //nolint:gocritic
+		C.OpenPitOutError(&outError), //nolint:gocritic // CGo out-parameter requires address-of operator
 	) {
 		return consumeSharedStringAsError(
 			outError,
@@ -188,7 +188,7 @@ func EngineBuilderAddBuiltinPnlBoundsKillswitch(
 		C.size_t(len(brokerBarriers)),
 		accountPtr,
 		C.size_t(len(accountBarriers)),
-		C.OpenPitOutError(&outError), //nolint:gocritic
+		C.OpenPitOutError(&outError), //nolint:gocritic // CGo out-parameter requires address-of operator
 	) {
 		return consumeSharedStringAsError(
 			outError,
@@ -214,7 +214,7 @@ func EngineStartPreTrade(
 		&order,
 		&request,
 		&rejects,
-		C.OpenPitOutError(&outError), //nolint:gocritic
+		C.OpenPitOutError(&outError), //nolint:gocritic // CGo out-parameter requires address-of operator
 	)
 
 	switch status {
@@ -249,7 +249,7 @@ func EngineExecutePreTrade(
 		&order,
 		&reservation,
 		&rejects,
-		C.OpenPitOutError(&outError), //nolint:gocritic
+		C.OpenPitOutError(&outError), //nolint:gocritic // CGo out-parameter requires address-of operator
 	)
 
 	switch status {
@@ -286,7 +286,7 @@ func EngineApplyExecutionReport(
 		engine,
 		&report,
 		&outBlocks,
-		C.OpenPitOutError(&outError), //nolint:gocritic
+		C.OpenPitOutError(&outError), //nolint:gocritic // CGo out-parameter requires address-of operator
 	) {
 		return PretradePostTradeResult{},
 			consumeSharedStringAsError(outError, "openpit_engine_apply_execution_report failed")
@@ -323,14 +323,14 @@ func EngineApplyAccountAdjustment(
 		adjustmentsPtr,
 		C.size_t(len(adjustments)),
 		&reject,
-		C.OpenPitOutError(&outError), //nolint:gocritic
+		C.OpenPitOutError(&outError), //nolint:gocritic // CGo out-parameter requires address-of operator
 	)
 
 	switch status {
 	case C.OpenPitAccountAdjustmentApplyStatus_Error:
 		return nil, consumeSharedStringAsError(outError, "openpit_engine_apply_account_adjustment failed")
 	case C.OpenPitAccountAdjustmentApplyStatus_Applied:
-		return nil, nil
+		return nil, nil //nolint:nilnil // Applied status: nil rejection + nil error is the intended "success, no rejection" signal
 	case C.OpenPitAccountAdjustmentApplyStatus_Rejected:
 		return reject, nil
 	default:
@@ -354,7 +354,7 @@ func PretradePreTradeRequestExecute(
 		request,
 		&reservation,
 		&rejects,
-		C.OpenPitOutError(&outError), //nolint:gocritic
+		C.OpenPitOutError(&outError), //nolint:gocritic // CGo out-parameter requires address-of operator
 	)
 
 	switch status {
@@ -463,7 +463,7 @@ func MutationsPush(
 		*(*C.OpenPitMutationFn)(rollbackFnAddr),
 		userData,
 		*(*C.OpenPitMutationFreeFn)(freeFnAddr),
-		C.OpenPitOutError(&outError), //nolint:gocritic
+		C.OpenPitOutError(&outError), //nolint:gocritic // CGo out-parameter requires address-of operator
 	) {
 		return consumeSharedStringAsError(outError, "openpit_mutations_push failed")
 	}

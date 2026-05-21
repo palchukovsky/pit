@@ -258,7 +258,7 @@ func runReport(engine *openpit.Engine, ev Event, stats *Stats, react Reactor) er
 		// Inputs are short constants produced by the strategy/example, not
 		// untrusted external data, so the documented Rat.SetString
 		// memory-consumption advisory does not apply here.
-		if r, ok := new(big.Rat).SetString(ev.RealizedPnl); ok { //nolint:gosec // G113
+		if r, ok := new(big.Rat).SetString(ev.RealizedPnl); ok {
 			stats.Pnl.Add(stats.Pnl, r)
 		}
 	}
@@ -458,7 +458,8 @@ func runExample() error {
 	stream := newScenarioStream(&order, &report, &finalReport)
 
 	// Step 4 - run the loop. Replace loggingReactor with your venue client.
-	stats, err := Run(engine, stream, &loggingReactor{rejectCap: 4})
+	const exampleRejectCap = 4
+	stats, err := Run(engine, stream, &loggingReactor{rejectCap: exampleRejectCap})
 	if err != nil {
 		return err
 	}

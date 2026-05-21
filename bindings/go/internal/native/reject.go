@@ -93,7 +93,7 @@ func PretradeRejectListLen(list PretradeRejectList) int {
 
 func PretradeRejectListGet(list PretradeRejectList, index int) PretradeReject {
 	var out PretradeReject
-	if !C.openpit_pretrade_reject_list_get(list, C.size_t(index), &out) { //nolint:gocritic
+	if !C.openpit_pretrade_reject_list_get(list, C.size_t(index), &out) { //nolint:gocritic // CGo out-parameter requires address-of operator
 		return PretradeReject{}
 	}
 	return out
@@ -162,7 +162,7 @@ func PretradeAccountBlockListLen(list PretradeAccountBlockList) int {
 
 func PretradeAccountBlockListGet(list PretradeAccountBlockList, index int) PretradeAccountBlock {
 	var out PretradeAccountBlock
-	if !C.openpit_pretrade_account_block_list_get(list, C.size_t(index), &out) { //nolint:gocritic
+	if !C.openpit_pretrade_account_block_list_get(list, C.size_t(index), &out) { //nolint:gocritic // CGo out-parameter requires address-of operator
 		return PretradeAccountBlock{}
 	}
 	return out

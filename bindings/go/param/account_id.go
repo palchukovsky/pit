@@ -15,6 +15,7 @@
 //
 // Please see https://github.com/openpitkit and the OWNERS file for details.
 
+// Package param provides value types used as parameters throughout the SDK.
 package param
 
 import (
@@ -29,6 +30,7 @@ type AccountID struct {
 	native native.ParamAccountID
 }
 
+// ErrAccountIDEmpty is returned when an empty account ID string is provided.
 var ErrAccountIDEmpty = native.ErrAccountIdEmpty
 
 // NewAccountIDFromInt constructs an account identifier from an integer value.
@@ -56,10 +58,12 @@ func NewAccountIDFromString(source string) (AccountID, error) {
 	return NewAccountIDFromHandle(value), nil
 }
 
+// NewAccountIDFromHandle creates an AccountID from a native handle.
 func NewAccountIDFromHandle(source native.ParamAccountID) AccountID {
 	return AccountID{native: source}
 }
 
+// NewAccountIDOptionFromHandle creates an optional AccountID from a native optional handle.
 func NewAccountIDOptionFromHandle(
 	source native.ParamAccountIDOptional,
 ) optional.Option[AccountID] {

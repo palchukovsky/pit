@@ -15,6 +15,7 @@
 //
 // Please see https://github.com/openpitkit and the OWNERS file for details.
 
+// Package policies provides built-in pre-trade policy builders.
 package policies
 
 import (

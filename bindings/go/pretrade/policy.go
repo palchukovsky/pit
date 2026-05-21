@@ -25,6 +25,7 @@ import (
 	"go.openpit.dev/openpit/tx"
 )
 
+// Policy is the interface implemented by all pre-trade risk policies.
 type Policy interface {
 	// Close releases any resources held by the policy.
 	Close()

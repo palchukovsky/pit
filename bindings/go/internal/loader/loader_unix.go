@@ -61,7 +61,7 @@ func validateSharedLibraryMagic(path string) error {
 	if err != nil {
 		return fmt.Errorf("open: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var magic [4]byte
 	if _, err := io.ReadFull(f, magic[:]); err != nil {

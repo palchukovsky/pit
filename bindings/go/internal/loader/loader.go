@@ -41,6 +41,11 @@ const (
 	envRuntimeCache = "OPENPIT_RUNTIME_CACHE_DIR"
 )
 
+const (
+	cacheDirMode  = 0o750 // group-read, no world access
+	cacheFileMode = 0o755 // executable shared library
+)
+
 // Reason codes attached to *RuntimeLoadError. They are stable strings that
 // callers (and crash-log readers) can match against.
 const (
@@ -184,12 +189,12 @@ func resolvePath() (string, error) {
 			errEmbedNotFound, fileName, embeddedName)
 	}
 
-	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+	if err := os.MkdirAll(cacheDir, cacheDirMode); err != nil {
 		return targetPath, fmt.Errorf("%w: failed to create cache dir %q: %w",
 			errCacheWriteFailed, cacheDir, err)
 	}
 
-	if err := write(targetPath, data, 0o755); err != nil {
+	if err := write(targetPath, data, cacheFileMode); err != nil {
 		return targetPath, fmt.Errorf("%w: %w", errCacheWriteFailed, err)
 	}
 

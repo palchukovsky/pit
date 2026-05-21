@@ -31,6 +31,7 @@ import (
 	"go.openpit.dev/openpit/reject"
 )
 
+// ClientEngineOption configures a ClientEngine at build time.
 type ClientEngineOption func(*clientEngineOptions)
 
 // UnsafeFastClientPayloadCallbacks selects callback adapters that trust every
@@ -252,6 +253,7 @@ func (
 	}
 }
 
+// PreTrade registers client pre-trade policies and advances the builder to ClientReadyEngineBuilder.
 func (b *ClientSyncedEngineBuilder[Order, Report, Adjustment]) PreTrade(
 	policy ...pretrade.ClientPreTradePolicy[Order, Report],
 ) *ClientReadyEngineBuilder[Order, Report, Adjustment] {
@@ -302,6 +304,7 @@ func (b *ClientReadyEngineBuilder[Order, Report, Adjustment]) Build() (
 	return &ClientEngine[Order, Report, Adjustment]{engine: engine}, nil
 }
 
+// PreTrade appends additional client pre-trade policies to an already-ready builder.
 func (b *ClientReadyEngineBuilder[Order, Report, Adjustment]) PreTrade(
 	policy ...pretrade.ClientPreTradePolicy[Order, Report],
 ) *ClientReadyEngineBuilder[Order, Report, Adjustment] {

@@ -23,15 +23,20 @@ import (
 	"go.openpit.dev/openpit/internal/native"
 )
 
+// Scope identifies whether a reject applies to an order or an account.
 type Scope uint8
 
 const (
-	ScopeOrder   Scope = native.RejectScopeOrder
+	// ScopeOrder means the reject applies to a single order.
+	ScopeOrder Scope = native.RejectScopeOrder
+	// ScopeAccount means the reject applies at the account level.
 	ScopeAccount Scope = native.RejectScopeAccount
 )
 
+// Code is a stable machine-readable reject code.
 type Code native.PretradeRejectCode
 
+// Predefined reject codes used by built-in policies and available to custom policies.
 const (
 	CodeMissingRequiredField        Code = native.RejectCodeMissingRequiredField
 	CodeInvalidFieldFormat          Code = native.RejectCodeInvalidFieldFormat
@@ -76,6 +81,7 @@ const (
 	CodeOther                       Code = native.RejectCodeOther
 )
 
+// Reject represents a single pre-trade check rejection.
 type Reject struct {
 	// Human-readable reject reason.
 	Reason string
@@ -93,6 +99,7 @@ type Reject struct {
 	Scope Scope
 }
 
+// New creates a Reject with the given fields.
 func New(
 	code Code, // stable machine-readable reject code
 	policy string, // policy name that produced the reject
@@ -141,8 +148,6 @@ func (r Reject) NewHandle() native.PretradeReject {
 // Uses copy-on-write semantics. Original instance is unchanged.
 //
 // Caller manages lifetime of userData.
-//
-//nolint:revive // intentional copy-on-write
 func (r Reject) WithUserData(userData unsafe.Pointer) Reject {
 	r.UserData = userData
 	return r

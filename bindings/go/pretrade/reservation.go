@@ -21,10 +21,12 @@ import (
 	"go.openpit.dev/openpit/internal/native"
 )
 
+// Reservation holds a successfully validated pre-trade state reservation.
 type Reservation struct {
 	handle native.PretradePreTradeReservation
 }
 
+// NewReservationFromHandle creates a Reservation from a native handle.
 func NewReservationFromHandle(handle native.PretradePreTradeReservation) *Reservation {
 	return &Reservation{handle: handle}
 }

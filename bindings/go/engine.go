@@ -53,6 +53,7 @@ import (
 //------------------------------------------------------------------------------
 // Engine
 
+// Engine wraps a native pre-trade risk engine handle.
 type Engine struct{ handle native.Engine }
 
 func newEngineFromHandle(handle native.Engine) *Engine {
@@ -135,10 +136,12 @@ func (e *Engine) ExecutePreTrade(
 	return pretrade.NewReservationFromHandle(reservation), nil, nil
 }
 
+// PostTradeResult holds the outcome of a post-trade operation.
 type PostTradeResult struct {
 	AccountBlocks []reject.AccountBlock
 }
 
+// ApplyExecutionReport updates engine state from a completed execution report.
 func (e *Engine) ApplyExecutionReport(report model.ExecutionReport) (PostTradeResult, error) {
 	result, err := native.EngineApplyExecutionReport(e.handle, report.Handle())
 	runtime.KeepAlive(report)
@@ -154,6 +157,7 @@ func (e *Engine) ApplyExecutionReport(report model.ExecutionReport) (PostTradeRe
 	return PostTradeResult{AccountBlocks: accountBlocks}, nil
 }
 
+// ApplyAccountAdjustment applies balance/position adjustments for an account.
 func (e *Engine) ApplyAccountAdjustment(
 	accountID param.AccountID,
 	adjustments []model.AccountAdjustment,
@@ -244,6 +248,7 @@ type SyncedEngineBuilder struct {
 	syncPolicy native.SyncPolicy
 }
 
+// PreTrade registers pre-trade policies and advances the builder to ReadyEngineBuilder.
 func (b *SyncedEngineBuilder) PreTrade(policy ...pretrade.Policy) *ReadyEngineBuilder {
 	rb := newReadyEngineBuilder(b)
 	for _, p := range policy {
@@ -311,6 +316,7 @@ func (b *ReadyEngineBuilder) Build() (*Engine, error) {
 	return newEngineFromHandle(handle), nil
 }
 
+// PreTrade appends additional pre-trade policies to an already-ready builder.
 func (b *ReadyEngineBuilder) PreTrade(policy ...pretrade.Policy) *ReadyEngineBuilder {
 	for _, p := range policy {
 		// Every policy must go through addPolicy even after a previous failure

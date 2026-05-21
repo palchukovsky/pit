@@ -45,7 +45,7 @@ func TestSDKVersionMatchesOpenpitCrateVersionAndReleaseReplacement(t *testing.T)
 	}
 
 	cargoTomlPath := filepath.Join("..", "..", "..", "..", "crates", "openpit", "Cargo.toml")
-	cargoToml, err := os.ReadFile(cargoTomlPath)
+	cargoToml, err := os.ReadFile(cargoTomlPath) //nolint:gosec // path is a known repository-relative literal
 	if err != nil {
 		t.Fatalf("read %s: %v", cargoTomlPath, err)
 	}
@@ -172,7 +172,7 @@ func TestResolveCacheDir_OverrideWhitespace(t *testing.T) {
 
 func TestResolvePath_Override_FileExists(t *testing.T) {
 	overridePath := filepath.Join(t.TempDir(), "openpit")
-	if err := os.WriteFile(overridePath, []byte("fake-runtime"), 0o755); err != nil { // nolint
+	if err := os.WriteFile(overridePath, []byte("fake-runtime"), 0o755); err != nil { //nolint:gosec // test fixture, permission bits intentional
 		t.Fatalf("write override file: %v", err)
 	}
 
@@ -242,13 +242,13 @@ func TestResolvePath_CacheHit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolveCacheDir: %v", err)
 	}
-	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil { //nolint:gosec // test setup, exact mode not security-sensitive
 		t.Fatalf("mkdir: %v", err)
 	}
 
 	targetPath := filepath.Join(cacheDir, fileName)
 	originalContent := []byte("already-cached-runtime")
-	if err := os.WriteFile(targetPath, originalContent, 0o755); err != nil { // nolint
+	if err := os.WriteFile(targetPath, originalContent, 0o755); err != nil { //nolint:gosec // test fixture, permission bits intentional
 		t.Fatalf("write cached file: %v", err)
 	}
 
@@ -261,7 +261,7 @@ func TestResolvePath_CacheHit(t *testing.T) {
 	}
 
 	// Cached file must not be overwritten.
-	afterContent, err := os.ReadFile(targetPath)
+	afterContent, err := os.ReadFile(targetPath) //nolint:gosec // path derived from known test temp dir
 	if err != nil {
 		t.Fatalf("read cached file: %v", err)
 	}
@@ -283,7 +283,7 @@ func TestWrite_CreatesFile(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 
-	got, err := os.ReadFile(targetPath)
+	got, err := os.ReadFile(targetPath) //nolint:gosec // path derived from known test temp dir
 	if err != nil {
 		t.Fatalf("read result: %v", err)
 	}
@@ -325,7 +325,7 @@ func TestWrite_Idempotent(t *testing.T) {
 		t.Fatalf("second write: %v", err)
 	}
 
-	got, err := os.ReadFile(targetPath)
+	got, err := os.ReadFile(targetPath) //nolint:gosec // path derived from known test temp dir
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
@@ -384,7 +384,7 @@ func TestResolvePath_CacheMissWritesAndSecondCallUsesCache(t *testing.T) {
 	if filepath.Base(firstPath) != fileName {
 		t.Fatalf("first resolvePath() file = %q, want %q", filepath.Base(firstPath), fileName)
 	}
-	firstData, err := os.ReadFile(firstPath)
+	firstData, err := os.ReadFile(firstPath) //nolint:gosec // path from resolvePath, not user input
 	if err != nil {
 		t.Fatalf("ReadFile(firstPath) error = %v", err)
 	}
@@ -399,7 +399,7 @@ func TestResolvePath_CacheMissWritesAndSecondCallUsesCache(t *testing.T) {
 	if secondPath != firstPath {
 		t.Fatalf("second resolvePath() path = %q, want %q", secondPath, firstPath)
 	}
-	secondData, err := os.ReadFile(secondPath)
+	secondData, err := os.ReadFile(secondPath) //nolint:gosec // path from resolvePath, not user input
 	if err != nil {
 		t.Fatalf("ReadFile(secondPath) error = %v", err)
 	}
@@ -426,11 +426,11 @@ func TestLoad_PanicsForCorruptCachedRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolveCacheDir() error = %v", err)
 	}
-	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil { //nolint:gosec // test setup, exact mode not security-sensitive
 		t.Fatalf("MkdirAll(cacheDir) error = %v", err)
 	}
 	targetPath := filepath.Join(cacheDir, fileName)
-	if err := os.WriteFile(targetPath, []byte("not-a-shared-library"), 0o755); err != nil { // nolint
+	if err := os.WriteFile(targetPath, []byte("not-a-shared-library"), 0o755); err != nil { //nolint:gosec // test fixture, permission bits intentional
 		t.Fatalf("WriteFile(targetPath) error = %v", err)
 	}
 
@@ -510,7 +510,7 @@ func TestRuntimeLoadError_FieldsAndUnwrap(t *testing.T) {
 	if e.Path != "/tmp/libopenpit.so" {
 		t.Fatalf("Path = %q, want %q", e.Path, "/tmp/libopenpit.so")
 	}
-	if errors.Unwrap(e) != cause {
+	if errors.Unwrap(e) != cause { //nolint:errorlint // testing Unwrap directly, not just errors.Is
 		t.Fatalf("errors.Unwrap = %v, want %v", errors.Unwrap(e), cause)
 	}
 	if !errors.Is(e, cause) {

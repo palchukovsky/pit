@@ -78,7 +78,7 @@ func buildFullSyncAccountRateLimitEngine(t *testing.T, maxOrders uint, accounts 
 				MaxOrders: maxOrders,
 				Window:    time.Minute,
 			},
-			AccountID: param.NewAccountIDFromInt(uint64(i)), //nolint:gosec // i is always non-negative
+			AccountID: param.NewAccountIDFromInt(uint64(i)),
 		}
 	}
 	engine, err := NewEngineBuilder().FullSync().
@@ -99,7 +99,7 @@ func buildAccountSyncAccountRateLimitEngine(t *testing.T, maxOrders uint, accoun
 				MaxOrders: maxOrders,
 				Window:    time.Minute,
 			},
-			AccountID: param.NewAccountIDFromInt(uint64(i)), //nolint:gosec // i is always non-negative
+			AccountID: param.NewAccountIDFromInt(uint64(i)),
 		}
 	}
 	engine, err := NewEngineBuilder().AccountSync().
@@ -274,7 +274,7 @@ func TestEngineFullSyncConcurrentStartPreTradeIsSafe(t *testing.T) {
 
 	orders := make([]model.Order, totalGoroutines)
 	for i := 0; i < totalGoroutines; i++ {
-		orders[i] = multithreadTestOrder(t, uint64(i)) //nolint:gosec // i is always non-negative
+		orders[i] = multithreadTestOrder(t, uint64(i))
 	}
 
 	runConcurrentStartPreTradeLoad(t, engine, orders, perGoroutine)
@@ -291,12 +291,12 @@ func TestEngineFullSyncConcurrentAccountRateLimitIsSafe(t *testing.T) {
 
 	orders := make([]model.Order, multithreadAccounts)
 	for i := 0; i < multithreadAccounts; i++ {
-		orders[i] = multithreadTestOrder(t, uint64(i)) //nolint:gosec // i is always non-negative
+		orders[i] = multithreadTestOrder(t, uint64(i))
 	}
 
 	runConcurrentUnshardedAccountLoad(t, engine, orders, totalCalls, totalCallers)
 	for i := 0; i < multithreadAccounts; i++ {
-		assertRateLimitProbeRejects(t, engine, uint64(i)) //nolint:gosec // i is always non-negative
+		assertRateLimitProbeRejects(t, engine, uint64(i))
 	}
 }
 
@@ -313,11 +313,11 @@ func TestRateLimitAccountSyncConcurrentLoad(t *testing.T) {
 
 	orders := make([]model.Order, multithreadAccounts)
 	for i := 0; i < multithreadAccounts; i++ {
-		orders[i] = multithreadTestOrder(t, uint64(i)) //nolint:gosec // i is always non-negative
+		orders[i] = multithreadTestOrder(t, uint64(i))
 	}
 
 	runAccountShardedStartPreTradeLoad(t, engine, orders, perAccount, shards)
 	for i := 0; i < multithreadAccounts; i++ {
-		assertRateLimitProbeRejects(t, engine, uint64(i)) //nolint:gosec // i is always non-negative
+		assertRateLimitProbeRejects(t, engine, uint64(i))
 	}
 }

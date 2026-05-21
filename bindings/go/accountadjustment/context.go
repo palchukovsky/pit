@@ -15,14 +15,17 @@
 //
 // Please see https://github.com/openpitkit and the OWNERS file for details.
 
+// Package accountadjustment provides types for account adjustment callbacks.
 package accountadjustment
 
 import "go.openpit.dev/openpit/internal/native"
 
+// Context carries the native handle for an account adjustment callback invocation.
 type Context struct {
 	handle native.AccountAdjustmentContext
 }
 
+// NewContextFromHandle wraps a native handle into a Context.
 func NewContextFromHandle(handle native.AccountAdjustmentContext) Context {
 	return Context{handle: handle}
 }

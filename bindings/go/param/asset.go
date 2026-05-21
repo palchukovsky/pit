@@ -67,6 +67,7 @@ type Asset struct {
 	buf *native.String
 }
 
+// ErrAssetEmpty is returned when an empty asset identifier string is provided.
 var ErrAssetEmpty = native.ErrAssetEmpty
 
 // NewAsset validates v and creates an Asset whose bytes live in a C-heap

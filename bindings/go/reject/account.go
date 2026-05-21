@@ -15,6 +15,7 @@
 //
 // Please see https://github.com/openpitkit and the OWNERS file for details.
 
+// Package reject provides reject codes, scopes, and reject/block value types.
 package reject
 
 import (
@@ -75,11 +76,13 @@ func (b AccountBlock) WithUserData(userData unsafe.Pointer) AccountBlock {
 	return b
 }
 
+// AccountAdjustmentBatchError is returned when a batch adjustment is rejected.
 type AccountAdjustmentBatchError struct {
 	Rejects               []Reject
 	FailedAdjustmentIndex int
 }
 
+// NewAccountAdjustmentBatchErrorFromHandle creates an AccountAdjustmentBatchError from a native handle.
 func NewAccountAdjustmentBatchErrorFromHandle(
 	reject native.AccountAdjustmentBatchError,
 ) (AccountAdjustmentBatchError, error) {

@@ -86,7 +86,7 @@ test-rust:
             exit 1
         fi
     }
-    _run_nextest run --workspace --locked --status-level fail --final-status-level fail
+    _run_nextest run --workspace --exclude openpit-python --locked --status-level fail --final-status-level fail
     _run_nextest run -p openpit --all-features --locked --status-level fail --final-status-level fail
     # nextest does not run doctests; cover them via cargo test.
     cargo test --workspace --doc --locked

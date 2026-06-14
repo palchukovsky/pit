@@ -290,9 +290,9 @@ impl<Sync: SyncMode> Configurator<Sync> {
     ) -> Result<(), ConfigureError> {
         let _guard = ConfiguringGuard::enter()?;
         match self.registry.entry(name)? {
-            ConfigEntry::RateLimit(cell) => cell.update(f).map_err(|error| {
-                ConfigRegistry::<RegistryFactory<Sync>>::validation(name, error)
-            }),
+            ConfigEntry::RateLimit(cell) => cell
+                .update(f)
+                .map_err(|error| ConfigRegistry::<RegistryFactory<Sync>>::validation(name, error)),
             entry => Err(ConfigRegistry::<_>::type_mismatch::<RateLimitSettings>(
                 name, entry,
             )),
@@ -313,9 +313,9 @@ impl<Sync: SyncMode> Configurator<Sync> {
     ) -> Result<(), ConfigureError> {
         let _guard = ConfiguringGuard::enter()?;
         match self.registry.entry(name)? {
-            ConfigEntry::PnlBoundsKillSwitch { settings, .. } => settings.update(f).map_err(
-                |error| ConfigRegistry::<RegistryFactory<Sync>>::validation(name, error),
-            ),
+            ConfigEntry::PnlBoundsKillSwitch { settings, .. } => settings
+                .update(f)
+                .map_err(|error| ConfigRegistry::<RegistryFactory<Sync>>::validation(name, error)),
             entry => Err(ConfigRegistry::<_>::type_mismatch::<
                 PnlBoundsKillSwitchSettings,
             >(name, entry)),
@@ -383,9 +383,9 @@ impl<Sync: SyncMode> Configurator<Sync> {
     ) -> Result<(), ConfigureError> {
         let _guard = ConfiguringGuard::enter()?;
         match self.registry.entry(name)? {
-            ConfigEntry::SpotFunds(cell) => cell.update(f).map_err(|error| {
-                ConfigRegistry::<RegistryFactory<Sync>>::validation(name, error)
-            }),
+            ConfigEntry::SpotFunds(cell) => cell
+                .update(f)
+                .map_err(|error| ConfigRegistry::<RegistryFactory<Sync>>::validation(name, error)),
             entry => Err(ConfigRegistry::<_>::type_mismatch::<SpotFundsSettings>(
                 name, entry,
             )),
@@ -406,12 +406,10 @@ impl<Sync: SyncMode> Configurator<Sync> {
     ) -> Result<(), ConfigureError> {
         let _guard = ConfiguringGuard::enter()?;
         match self.registry.entry(name)? {
-            ConfigEntry::OrderSizeLimit(cell) => cell.update(f).map_err(|error| {
-                ConfigRegistry::<RegistryFactory<Sync>>::validation(name, error)
-            }),
-            entry => Err(ConfigRegistry::<_>::type_mismatch::<OrderSizeLimitSettings>(
-                name, entry,
-            )),
+            ConfigEntry::OrderSizeLimit(cell) => cell
+                .update(f)
+                .map_err(|error| ConfigRegistry::<RegistryFactory<Sync>>::validation(name, error)),
+            entry => Err(ConfigRegistry::<_>::type_mismatch::<OrderSizeLimitSettings>(name, entry)),
         }
     }
 }

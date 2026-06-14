@@ -587,11 +587,12 @@ SpotFundsOverrideTarget: typing.TypeAlias = (
     | SpotFundsOverrideTargetInstrumentAccount
     | SpotFundsOverrideTargetInstrumentAccountGroup
 )
+"""Union of all valid spot-funds cascade override target types."""
 
 
 @dataclasses.dataclass(frozen=True)
 class SpotFundsOverride:
-    """Override value applied at a :data:`SpotFundsOverrideTarget`.
+    """Override value applied at a ``SpotFundsOverrideTarget``.
 
     When ``slippage_bps`` is ``None`` the entry is ignored and the cascade
     falls through to the next tier.

@@ -384,7 +384,7 @@ func (c Configurator) SpotFunds(
 			if err != nil {
 				return &Error{
 					Kind:    ErrorKindValidation,
-					Message: fmt.Sprintf("spot funds override %d: %v", i, err),
+					Message: fmt.Sprintf("configure: spot funds override %d: %v", i, err),
 				}
 			}
 			nativeOverrides = append(nativeOverrides, override)

@@ -50,7 +50,7 @@ run-examples: run-examples-go run-examples-python
 # Lint all.
 [parallel]
 lint-all: lint-rust lint-python lint-go
-# Lint Rus.
+# Lint Rust.
 lint-rust:
     cargo fmt --all -- --check --quiet
     cargo clippy --workspace --all-targets --no-default-features --locked -q -- -D warnings

@@ -113,7 +113,7 @@ fn clear_python_callback_error() {
 
 struct DetachedFromGil<T>(T);
 
-// SAFETY: `Python::allow_threads` runs the closure synchronously on the current
+// SAFETY: `Python::detach` runs the closure synchronously on the current
 // OS thread and returns before Python-visible objects are constructed. This
 // wrapper is used only for Rust-owned SDK result handles that do not borrow the
 // Python token but are intentionally `!Send` as public SDK values.
@@ -123,7 +123,7 @@ fn allow_threads_detached<T, F>(py: Python<'_>, f: F) -> T
 where
     F: FnOnce() -> T + Send,
 {
-    py.allow_threads(|| DetachedFromGil(f())).0
+    py.detach(|| DetachedFromGil(f())).0
 }
 
 fn create_param_error(message: impl Into<String>) -> PyErr {
@@ -172,7 +172,14 @@ fn convert_account_block_error(error: openpit::AccountBlockError) -> PyErr {
     AccountBlockError::new_err(error.to_string())
 }
 
-#[pyclass(name = "ConfigureErrorKind", module = "openpit", frozen, eq, eq_int)]
+#[pyclass(
+    name = "ConfigureErrorKind",
+    module = "openpit",
+    frozen,
+    eq,
+    eq_int,
+    from_py_object
+)]
 #[derive(Clone, Copy, PartialEq, Eq)]
 // Integer values mirror the C `OpenPitConfigureErrorKind` so the Python,
 // Go, and C bindings agree on the discriminants.
@@ -207,7 +214,7 @@ impl PyConfigureErrorKind {
 fn convert_configure_error(error: ConfigureError) -> PyErr {
     let kind = PyConfigureErrorKind::of(&error);
     let err = PolicyConfigureError::new_err(error.to_string());
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         if let Err(set_err) = err.value(py).setattr("kind", kind) {
             set_err.restore(py);
         }
@@ -227,7 +234,12 @@ type AccountAdjustment =
 
 type PyEngineTrait = openpit_interop::InteropEngineTrait<Order, ExecutionReport, AccountAdjustment>;
 
-#[pyclass(name = "InstrumentId", module = "openpit.marketdata", frozen)]
+#[pyclass(
+    name = "InstrumentId",
+    module = "openpit.marketdata",
+    frozen,
+    from_py_object
+)]
 #[derive(Clone, Copy)]
 struct PyInstrumentId {
     inner: InstrumentId,
@@ -266,7 +278,12 @@ impl PyInstrumentId {
     }
 }
 
-#[pyclass(name = "QuoteTtl", module = "openpit.marketdata", frozen)]
+#[pyclass(
+    name = "QuoteTtl",
+    module = "openpit.marketdata",
+    frozen,
+    from_py_object
+)]
 #[derive(Clone, Copy)]
 struct PyQuoteTtl {
     inner: QuoteTtl,
@@ -304,7 +321,8 @@ impl PyQuoteTtl {
     module = "openpit.marketdata",
     frozen,
     eq,
-    eq_int
+    eq_int,
+    from_py_object
 )]
 #[derive(Clone, Copy, PartialEq, Eq)]
 // Variant names mirror `openpit::marketdata::QuoteResolution` so the generated
@@ -336,7 +354,7 @@ impl From<PyQuoteResolution> for QuoteResolution {
     }
 }
 
-#[pyclass(name = "Quote", module = "openpit.marketdata", frozen)]
+#[pyclass(name = "Quote", module = "openpit.marketdata", frozen, from_py_object)]
 #[derive(Clone, Copy)]
 struct PyQuote {
     inner: Quote,
@@ -402,7 +420,7 @@ impl PyQuote {
 /// bucket misses and the resolution/TTL-cascade needs the group.  Because the
 /// call reads back into Python, the GIL must be held for the entire duration of
 /// `MarketDataService::get` / `get_or_err` — callers must NOT use
-/// `py.allow_threads` around those calls.
+/// `py.detach` around those calls.
 ///
 /// Errors (attribute missing, wrong type, etc.) are stored in the thread-local
 /// `PY_CALLBACK_ERROR` slot and `group()` returns `None` so the core can
@@ -436,7 +454,11 @@ impl openpit::marketdata::AccountInfo for PyAccountInfo<'_> {
     }
 }
 
-#[pyclass(name = "MarketDataService", module = "openpit.marketdata")]
+#[pyclass(
+    name = "MarketDataService",
+    module = "openpit.marketdata",
+    from_py_object
+)]
 #[derive(Clone)]
 struct PyMarketDataService {
     inner: EngineHandle<MarketDataService<EngineLocking>>,
@@ -447,7 +469,7 @@ struct PyMarketDataService {
 impl PyMarketDataService {
     fn register(&self, py: Python<'_>, instrument: &Bound<'_, PyAny>) -> PyResult<PyInstrumentId> {
         let instrument = parse_instrument_input(instrument)?;
-        py.allow_threads(|| self.inner.register(instrument))
+        py.detach(|| self.inner.register(instrument))
             .map(|inner| PyInstrumentId { inner })
             .map_err(create_already_registered_error)
     }
@@ -459,7 +481,7 @@ impl PyMarketDataService {
         ttl: &PyQuoteTtl,
     ) -> PyResult<PyInstrumentId> {
         let instrument = parse_instrument_input(instrument)?;
-        py.allow_threads(|| self.inner.register_with_ttl(instrument, ttl.inner))
+        py.detach(|| self.inner.register_with_ttl(instrument, ttl.inner))
             .map(|inner| PyInstrumentId { inner })
             .map_err(create_already_registered_error)
     }
@@ -471,7 +493,7 @@ impl PyMarketDataService {
         id: &PyInstrumentId,
     ) -> PyResult<PyInstrumentId> {
         let instrument = parse_instrument_input(instrument)?;
-        py.allow_threads(|| self.inner.register_with_id(instrument, id.inner))
+        py.detach(|| self.inner.register_with_id(instrument, id.inner))
             .map(|inner| PyInstrumentId { inner })
             .map_err(create_registration_error)
     }
@@ -484,7 +506,7 @@ impl PyMarketDataService {
         ttl: &PyQuoteTtl,
     ) -> PyResult<PyInstrumentId> {
         let instrument = parse_instrument_input(instrument)?;
-        py.allow_threads(|| {
+        py.detach(|| {
             self.inner
                 .register_with_id_and_ttl(instrument, id.inner, ttl.inner)
         })
@@ -501,13 +523,13 @@ impl PyMarketDataService {
         ttl: &PyQuoteTtl,
     ) -> PyResult<()> {
         let account_id = parse_account_id_input(account_id)?;
-        py.allow_threads(|| self.inner.set_account_ttl(account_id, ttl.inner));
+        py.detach(|| self.inner.set_account_ttl(account_id, ttl.inner));
         Ok(())
     }
 
     fn clear_account_ttl(&self, py: Python<'_>, account_id: &Bound<'_, PyAny>) -> PyResult<()> {
         let account_id = parse_account_id_input(account_id)?;
-        py.allow_threads(|| self.inner.clear_account_ttl(account_id));
+        py.detach(|| self.inner.clear_account_ttl(account_id));
         Ok(())
     }
 
@@ -523,7 +545,7 @@ impl PyMarketDataService {
         ttl: &PyQuoteTtl,
     ) -> PyResult<()> {
         let account_group_id = parse_account_group_id_input(account_group_id)?;
-        py.allow_threads(|| {
+        py.detach(|| {
             self.inner
                 .set_account_group_ttl(account_group_id, ttl.inner)
         });
@@ -541,7 +563,7 @@ impl PyMarketDataService {
         account_group_id: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
         let account_group_id = parse_account_group_id_input(account_group_id)?;
-        py.allow_threads(|| self.inner.clear_account_group_ttl(account_group_id));
+        py.detach(|| self.inner.clear_account_group_ttl(account_group_id));
         Ok(())
     }
 
@@ -551,7 +573,7 @@ impl PyMarketDataService {
         instrument_id: &PyInstrumentId,
         ttl: &PyQuoteTtl,
     ) -> PyResult<()> {
-        py.allow_threads(|| {
+        py.detach(|| {
             self.inner
                 .set_instrument_ttl(instrument_id.inner, ttl.inner)
         })
@@ -559,7 +581,7 @@ impl PyMarketDataService {
     }
 
     fn clear_instrument_ttl(&self, py: Python<'_>, instrument_id: &PyInstrumentId) -> PyResult<()> {
-        py.allow_threads(|| self.inner.clear_instrument_ttl(instrument_id.inner))
+        py.detach(|| self.inner.clear_instrument_ttl(instrument_id.inner))
             .map_err(create_unknown_instrument_id_error)
     }
 
@@ -571,7 +593,7 @@ impl PyMarketDataService {
         ttl: &PyQuoteTtl,
     ) -> PyResult<()> {
         let account_id = parse_account_id_input(account_id)?;
-        py.allow_threads(|| {
+        py.detach(|| {
             self.inner
                 .set_instrument_account_ttl(instrument_id.inner, account_id, ttl.inner)
         })
@@ -585,7 +607,7 @@ impl PyMarketDataService {
         account_id: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
         let account_id = parse_account_id_input(account_id)?;
-        py.allow_threads(|| {
+        py.detach(|| {
             self.inner
                 .clear_instrument_account_ttl(instrument_id.inner, account_id)
         })
@@ -604,7 +626,7 @@ impl PyMarketDataService {
         ttl: &PyQuoteTtl,
     ) -> PyResult<()> {
         let account_group_id = parse_account_group_id_input(account_group_id)?;
-        py.allow_threads(|| {
+        py.detach(|| {
             self.inner.set_instrument_account_group_ttl(
                 instrument_id.inner,
                 account_group_id,
@@ -625,7 +647,7 @@ impl PyMarketDataService {
         account_group_id: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
         let account_group_id = parse_account_group_id_input(account_group_id)?;
-        py.allow_threads(|| {
+        py.detach(|| {
             self.inner
                 .clear_instrument_account_group_ttl(instrument_id.inner, account_group_id)
         })
@@ -635,7 +657,7 @@ impl PyMarketDataService {
     // ── Clear ─────────────────────────────────────────────────────────────────
 
     fn clear(&self, py: Python<'_>, instrument_id: &PyInstrumentId) {
-        py.allow_threads(|| self.inner.clear(instrument_id.inner));
+        py.detach(|| self.inner.clear(instrument_id.inner));
     }
 
     // ── Push (default bucket) ─────────────────────────────────────────────────
@@ -646,7 +668,7 @@ impl PyMarketDataService {
         instrument_id: &PyInstrumentId,
         quote: &PyQuote,
     ) -> PyResult<()> {
-        py.allow_threads(|| self.inner.push(instrument_id.inner, quote.inner))
+        py.detach(|| self.inner.push(instrument_id.inner, quote.inner))
             .map_err(create_unknown_instrument_id_error)
     }
 
@@ -656,7 +678,7 @@ impl PyMarketDataService {
         instrument_id: &PyInstrumentId,
         quote: &PyQuote,
     ) -> PyResult<()> {
-        py.allow_threads(|| self.inner.push_patch(instrument_id.inner, quote.inner))
+        py.detach(|| self.inner.push_patch(instrument_id.inner, quote.inner))
             .map_err(create_unknown_instrument_id_error)
     }
 
@@ -667,7 +689,7 @@ impl PyMarketDataService {
         quote: &PyQuote,
     ) -> PyResult<PyInstrumentId> {
         let instrument = parse_instrument_input(instrument)?;
-        let inner = py.allow_threads(|| self.inner.push_by_instrument(&instrument, quote.inner));
+        let inner = py.detach(|| self.inner.push_by_instrument(&instrument, quote.inner));
         Ok(PyInstrumentId { inner })
     }
 
@@ -678,7 +700,7 @@ impl PyMarketDataService {
         quote: &PyQuote,
     ) -> PyResult<PyInstrumentId> {
         let instrument = parse_instrument_input(instrument)?;
-        let inner = py.allow_threads(|| {
+        let inner = py.detach(|| {
             self.inner
                 .push_by_instrument_patch(&instrument, quote.inner)
         });
@@ -707,7 +729,7 @@ impl PyMarketDataService {
             .try_iter()?
             .map(|item| parse_account_group_id_input(&item?))
             .collect::<PyResult<Vec<_>>>()?;
-        py.allow_threads(|| {
+        py.detach(|| {
             self.inner
                 .push_for(instrument_id.inner, quote.inner, &account_ids, &group_ids)
         })
@@ -734,7 +756,7 @@ impl PyMarketDataService {
             .try_iter()?
             .map(|item| parse_account_group_id_input(&item?))
             .collect::<PyResult<Vec<_>>>()?;
-        py.allow_threads(|| {
+        py.detach(|| {
             self.inner
                 .push_for_patch(instrument_id.inner, quote.inner, &account_ids, &group_ids)
         })
@@ -798,12 +820,16 @@ impl PyMarketDataService {
     ) -> PyResult<Option<PyInstrumentId>> {
         let instrument = parse_instrument_input(instrument)?;
         Ok(py
-            .allow_threads(|| self.inner.resolve(&instrument))
+            .detach(|| self.inner.resolve(&instrument))
             .map(|inner| PyInstrumentId { inner }))
     }
 }
 
-#[pyclass(name = "MarketDataBuilder", module = "openpit.marketdata")]
+#[pyclass(
+    name = "MarketDataBuilder",
+    module = "openpit.marketdata",
+    from_py_object
+)]
 #[derive(Clone, Copy)]
 struct PyMarketDataBuilder {
     default_ttl: QuoteTtl,
@@ -936,7 +962,7 @@ impl PyEngine {
         clear_python_callback_error();
         let report = extract_python_execution_report(report)?;
         let result = PyPostTradeResult {
-            inner: py.allow_threads(|| self.inner.apply_execution_report(&report)),
+            inner: py.detach(|| self.inner.apply_execution_report(&report)),
         };
         if let Some(error) = take_python_callback_error() {
             return Err(error);
@@ -959,7 +985,7 @@ impl PyEngine {
             .map(|item| extract_python_account_adjustment(&item?))
             .collect::<PyResult<Vec<_>>>()?;
 
-        match py.allow_threads(|| self.inner.apply_account_adjustment(account_id, &batch)) {
+        match py.detach(|| self.inner.apply_account_adjustment(account_id, &batch)) {
             Ok(result) => {
                 if let Some(error) = take_python_callback_error() {
                     return Err(error);
@@ -1062,7 +1088,7 @@ impl PyConfigurator {
             })
             .transpose()?;
 
-        py.allow_threads(|| {
+        py.detach(|| {
             self.inner.rate_limit(name, |s| {
                 if let Some(b) = &broker_barrier {
                     s.set_broker(Some(b.clone()))?;
@@ -1114,7 +1140,7 @@ impl PyConfigurator {
                     .collect::<PyResult<_>>()
             })
             .transpose()?;
-        py.allow_threads(|| {
+        py.detach(|| {
             self.inner.pnl_bounds_killswitch(name, |s| {
                 if let Some(b) = &brokers {
                     s.set_broker_barriers(b.iter().cloned())?;
@@ -1150,7 +1176,7 @@ impl PyConfigurator {
         let account = parse_account_id_input(account)?;
         let settlement_asset = parse_asset_input(settlement_asset)?;
         let pnl = parse_pnl_input(pnl)?;
-        py.allow_threads(|| {
+        py.detach(|| {
             self.inner
                 .set_account_pnl(name, account, settlement_asset, pnl)
         })
@@ -1194,7 +1220,7 @@ impl PyConfigurator {
             })
             .transpose()?;
 
-        py.allow_threads(|| {
+        py.detach(|| {
             self.inner.order_size_limit(name, |s| {
                 if let Some(b) = &broker_barrier {
                     s.set_broker(Some(b.clone()))?;
@@ -1235,7 +1261,7 @@ impl PyConfigurator {
             .map(parse_spot_funds_override_entity)
             .collect::<PyResult<_>>()?;
 
-        py.allow_threads(|| {
+        py.detach(|| {
             self.inner.spot_funds(name, |s| {
                 if let Some(bps) = global_slippage_bps {
                     s.set_global_slippage_bps(bps)?;
@@ -1278,7 +1304,7 @@ impl PyAccounts {
             .try_iter()?
             .map(|item| parse_account_id_input(&item?))
             .collect::<PyResult<Vec<_>>>()?;
-        py.allow_threads(|| self.inner.register_group(&account_ids, group))
+        py.detach(|| self.inner.register_group(&account_ids, group))
             .map_err(convert_account_group_error)
     }
 
@@ -1294,7 +1320,7 @@ impl PyAccounts {
             .try_iter()?
             .map(|item| parse_account_id_input(&item?))
             .collect::<PyResult<Vec<_>>>()?;
-        py.allow_threads(|| self.inner.unregister_group(&account_ids, group))
+        py.detach(|| self.inner.unregister_group(&account_ids, group))
             .map_err(convert_account_group_error)
     }
 
@@ -1305,7 +1331,7 @@ impl PyAccounts {
         account: &Bound<'_, PyAny>,
     ) -> PyResult<Option<Py<PyAccountGroupId>>> {
         let account_id = parse_account_id_input(account)?;
-        let group = py.allow_threads(|| self.inner.group_of(account_id));
+        let group = py.detach(|| self.inner.group_of(account_id));
         match group {
             Some(g) => Py::new(py, PyAccountGroupId { inner: g }).map(Some),
             None => Ok(None),
@@ -1315,14 +1341,14 @@ impl PyAccounts {
     #[pyo3(signature = (account, reason))]
     fn block(&self, py: Python<'_>, account: &Bound<'_, PyAny>, reason: String) -> PyResult<()> {
         let account_id = parse_account_id_input(account)?;
-        py.allow_threads(|| self.inner.block(account_id, reason));
+        py.detach(|| self.inner.block(account_id, reason));
         Ok(())
     }
 
     #[pyo3(signature = (account))]
     fn unblock(&self, py: Python<'_>, account: &Bound<'_, PyAny>) -> PyResult<()> {
         let account_id = parse_account_id_input(account)?;
-        py.allow_threads(|| self.inner.unblock(account_id));
+        py.detach(|| self.inner.unblock(account_id));
         Ok(())
     }
 
@@ -1334,7 +1360,7 @@ impl PyAccounts {
         reason: String,
     ) -> PyResult<()> {
         let account_id = parse_account_id_input(account)?;
-        py.allow_threads(|| self.inner.replace_block_reason(account_id, reason))
+        py.detach(|| self.inner.replace_block_reason(account_id, reason))
             .map_err(convert_account_block_error)
     }
 
@@ -1346,14 +1372,14 @@ impl PyAccounts {
         reason: String,
     ) -> PyResult<()> {
         let group_id = parse_account_group_id_input(group)?;
-        py.allow_threads(|| self.inner.block_group(group_id, reason))
+        py.detach(|| self.inner.block_group(group_id, reason))
             .map_err(convert_account_block_error)
     }
 
     #[pyo3(signature = (group))]
     fn unblock_group(&self, py: Python<'_>, group: &Bound<'_, PyAny>) -> PyResult<()> {
         let group_id = parse_account_group_id_input(group)?;
-        py.allow_threads(|| self.inner.unblock_group(group_id))
+        py.detach(|| self.inner.unblock_group(group_id))
             .map_err(convert_account_block_error)
     }
 
@@ -1365,12 +1391,12 @@ impl PyAccounts {
         reason: String,
     ) -> PyResult<()> {
         let group_id = parse_account_group_id_input(group)?;
-        py.allow_threads(|| self.inner.replace_group_block_reason(group_id, reason))
+        py.detach(|| self.inner.replace_group_block_reason(group_id, reason))
             .map_err(convert_account_block_error)
     }
 }
 
-#[pyclass(name = "Reject", module = "openpit.pretrade")]
+#[pyclass(name = "Reject", module = "openpit.pretrade", from_py_object)]
 #[derive(Clone, Debug)]
 struct PyReject {
     code: String,
@@ -1539,7 +1565,7 @@ impl PyAccountAdjustmentBatchResult {
     }
 }
 
-#[pyclass(name = "OutcomeAmount", module = "openpit.pretrade")]
+#[pyclass(name = "OutcomeAmount", module = "openpit.pretrade", from_py_object)]
 #[derive(Clone)]
 struct PyOutcomeAmount {
     delta: PositionSize,
@@ -1577,7 +1603,11 @@ impl PyOutcomeAmount {
     }
 }
 
-#[pyclass(name = "AccountOutcomeEntry", module = "openpit.pretrade")]
+#[pyclass(
+    name = "AccountOutcomeEntry",
+    module = "openpit.pretrade",
+    from_py_object
+)]
 #[derive(Clone)]
 struct PyAccountOutcomeEntry {
     asset: Asset,
@@ -1635,7 +1665,11 @@ impl PyAccountOutcomeEntry {
     }
 }
 
-#[pyclass(name = "AccountAdjustmentOutcome", module = "openpit.pretrade")]
+#[pyclass(
+    name = "AccountAdjustmentOutcome",
+    module = "openpit.pretrade",
+    from_py_object
+)]
 #[derive(Clone)]
 struct PyAccountAdjustmentOutcome {
     policy_group_id: PolicyGroupId,
@@ -1882,7 +1916,7 @@ impl PreTradePolicy<Order, ExecutionReport, AccountAdjustment, PyEngineSync>
         ctx: &PreTradeContext<PyStorageFactory>,
         order: &Order,
     ) -> Result<(), Rejects> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let policy_ctx = Py::new(py, PyPreTradeContext::from(ctx)).map_err(|error| {
                 set_python_callback_error(error);
                 python_callback_rejects(&self.name)
@@ -1917,7 +1951,7 @@ impl PreTradePolicy<Order, ExecutionReport, AccountAdjustment, PyEngineSync>
         order: &Order,
         mutations: &mut Mutations,
     ) -> Result<Option<PolicyPreTradeResult>, Rejects> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let policy_ctx = Py::new(py, PyPreTradeContext::from(ctx)).map_err(|error| {
                 set_python_callback_error(error);
                 python_callback_rejects(&self.name)
@@ -1961,7 +1995,7 @@ impl PreTradePolicy<Order, ExecutionReport, AccountAdjustment, PyEngineSync>
         ctx: &PostTradeContext<PyStorageFactory>,
         report: &ExecutionReport,
     ) -> Option<PostTradeResult> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let post_trade_ctx = match Py::new(py, PyPostTradeContext::from(ctx)) {
                 Ok(v) => v,
                 Err(error) => {
@@ -2028,7 +2062,7 @@ impl PreTradePolicy<Order, ExecutionReport, AccountAdjustment, PyEngineSync>
         adjustment: &AccountAdjustment,
         mutations: &mut Mutations,
     ) -> Result<Vec<AccountOutcomeEntry>, Rejects> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let adjustment_ctx =
                 Py::new(py, PyAccountAdjustmentContext::from(ctx)).map_err(|error| {
                     set_python_callback_error(error);
@@ -2506,14 +2540,14 @@ fn parse_policy_mutation(value: &Bound<'_, PyAny>) -> PyResult<Mutation> {
 
     Ok(Mutation::new(
         move || {
-            Python::with_gil(|py| {
+            Python::attach(|py| {
                 if let Err(error) = commit_callable.bind(py).call0() {
                     set_python_callback_error(error);
                 }
             });
         },
         move || {
-            Python::with_gil(|py| {
+            Python::attach(|py| {
                 if let Err(error) = rollback_callable.bind(py).call0() {
                     set_python_callback_error(error);
                 }
@@ -3181,7 +3215,11 @@ impl PyReadyEngineBuilder {
     }
 }
 
-#[pyclass(name = "OrderSizeLimit", module = "openpit.pretrade.policies")]
+#[pyclass(
+    name = "OrderSizeLimit",
+    module = "openpit.pretrade.policies",
+    from_py_object
+)]
 #[derive(Clone)]
 struct PyOrderSizeLimit {
     max_quantity: String,
@@ -3691,7 +3729,12 @@ fn make_spot_funds_policy(
     .with_policy_group_id(policy_group_id))
 }
 
-#[pyclass(name = "OrderOperation", module = "openpit.core", subclass)]
+#[pyclass(
+    name = "OrderOperation",
+    module = "openpit.core",
+    subclass,
+    from_py_object
+)]
 #[derive(Clone)]
 struct PyOrderOperation {
     underlying_asset: Option<Asset>,
@@ -3758,7 +3801,7 @@ impl PyOrderOperation {
     }
 
     #[getter]
-    fn side(&self, py: Python<'_>) -> PyResult<Option<PyObject>> {
+    fn side(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
         self.side
             .map(|side| {
                 PyModule::import(py, "openpit.param")?
@@ -3810,7 +3853,12 @@ impl PyOrderOperation {
     }
 }
 
-#[pyclass(name = "OrderPosition", module = "openpit.core", subclass)]
+#[pyclass(
+    name = "OrderPosition",
+    module = "openpit.core",
+    subclass,
+    from_py_object
+)]
 #[derive(Clone)]
 struct PyOrderPosition {
     position_side: Option<PositionSide>,
@@ -3835,7 +3883,7 @@ impl PyOrderPosition {
     }
 
     #[getter]
-    fn position_side(&self, py: Python<'_>) -> PyResult<Option<PyObject>> {
+    fn position_side(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
         self.position_side
             .map(|side| {
                 PyModule::import(py, "openpit.param")?
@@ -3882,7 +3930,12 @@ impl PyOrderPosition {
     }
 }
 
-#[pyclass(name = "OrderMargin", module = "openpit.core", subclass)]
+#[pyclass(
+    name = "OrderMargin",
+    module = "openpit.core",
+    subclass,
+    from_py_object
+)]
 #[derive(Clone)]
 struct PyOrderMargin {
     leverage: Option<Leverage>,
@@ -3955,91 +4008,106 @@ struct PyOrder {
     margin: Option<Py<PyOrderMargin>>,
 }
 
-#[pyclass(name = "Instrument", module = "openpit.core")]
+#[pyclass(name = "Instrument", module = "openpit.core", from_py_object)]
 #[derive(Clone)]
 struct PyInstrument {
     inner: Instrument,
 }
 
-#[pyclass(name = "Leverage", module = "openpit.param")]
+#[pyclass(name = "Leverage", module = "openpit.param", from_py_object)]
 #[derive(Clone, Copy)]
 struct PyLeverage {
     inner: Leverage,
 }
 
-#[pyclass(name = "AccountId", module = "openpit.param")]
+#[pyclass(name = "AccountId", module = "openpit.param", from_py_object)]
 #[derive(Clone, Copy)]
 struct PyAccountId {
     inner: AccountId,
 }
 
-#[pyclass(name = "Quantity", module = "openpit.param")]
+#[pyclass(name = "Quantity", module = "openpit.param", from_py_object)]
 #[derive(Clone)]
 struct PyQuantity {
     inner: Quantity,
 }
 
-#[pyclass(name = "Price", module = "openpit.param")]
+#[pyclass(name = "Price", module = "openpit.param", from_py_object)]
 #[derive(Clone)]
 struct PyPrice {
     inner: Price,
 }
 
-#[pyclass(name = "Trade", module = "openpit.param", subclass)]
+#[pyclass(name = "Trade", module = "openpit.param", subclass, from_py_object)]
 #[derive(Clone)]
 struct PyTrade {
     inner: Trade,
 }
 
-#[pyclass(name = "Pnl", module = "openpit.param")]
+#[pyclass(name = "Pnl", module = "openpit.param", from_py_object)]
 #[derive(Clone)]
 struct PyPnl {
     inner: Pnl,
 }
 
-#[pyclass(name = "Fee", module = "openpit.param")]
+#[pyclass(name = "Fee", module = "openpit.param", from_py_object)]
 #[derive(Clone)]
 struct PyFee {
     inner: Fee,
 }
 
-#[pyclass(name = "Volume", module = "openpit.param")]
+#[pyclass(name = "Volume", module = "openpit.param", from_py_object)]
 #[derive(Clone)]
 struct PyVolume {
     inner: Volume,
 }
 
-#[pyclass(name = "Notional", module = "openpit.param")]
+#[pyclass(name = "Notional", module = "openpit.param", from_py_object)]
 #[derive(Clone)]
 struct PyNotional {
     inner: Notional,
 }
 
-#[pyclass(name = "CashFlow", module = "openpit.param")]
+#[pyclass(name = "CashFlow", module = "openpit.param", from_py_object)]
 #[derive(Clone)]
 struct PyCashFlow {
     inner: CashFlow,
 }
 
-#[pyclass(name = "PositionSize", module = "openpit.param")]
+#[pyclass(name = "PositionSize", module = "openpit.param", from_py_object)]
 #[derive(Clone)]
 struct PyPositionSize {
     inner: PositionSize,
 }
 
-#[pyclass(name = "AdjustmentAmount", module = "openpit.param", subclass)]
+#[pyclass(
+    name = "AdjustmentAmount",
+    module = "openpit.param",
+    subclass,
+    from_py_object
+)]
 #[derive(Clone, Copy)]
 struct PyAdjustmentAmount {
     inner: AdjustmentAmount,
 }
 
-#[pyclass(name = "TradeAmount", module = "openpit.param", subclass)]
+#[pyclass(
+    name = "TradeAmount",
+    module = "openpit.param",
+    subclass,
+    from_py_object
+)]
 #[derive(Clone, Copy)]
 struct PyTradeAmount {
     inner: TradeAmount,
 }
 
-#[pyclass(name = "AccountAdjustmentAmount", module = "openpit.core", subclass)]
+#[pyclass(
+    name = "AccountAdjustmentAmount",
+    module = "openpit.core",
+    subclass,
+    from_py_object
+)]
 #[derive(Clone)]
 struct PyAccountAdjustmentAmount {
     balance: Option<AdjustmentAmount>,
@@ -4050,7 +4118,8 @@ struct PyAccountAdjustmentAmount {
 #[pyclass(
     name = "AccountAdjustmentBalanceOperation",
     module = "openpit.core",
-    subclass
+    subclass,
+    from_py_object
 )]
 #[derive(Clone)]
 struct PyAccountAdjustmentBalanceOperation {
@@ -4061,7 +4130,8 @@ struct PyAccountAdjustmentBalanceOperation {
 #[pyclass(
     name = "AccountAdjustmentPositionOperation",
     module = "openpit.core",
-    subclass
+    subclass,
+    from_py_object
 )]
 #[derive(Clone)]
 struct PyAccountAdjustmentPositionOperation {
@@ -4073,7 +4143,12 @@ struct PyAccountAdjustmentPositionOperation {
     leverage: Option<Leverage>,
 }
 
-#[pyclass(name = "AccountAdjustmentBounds", module = "openpit.core", subclass)]
+#[pyclass(
+    name = "AccountAdjustmentBounds",
+    module = "openpit.core",
+    subclass,
+    from_py_object
+)]
 #[derive(Clone)]
 struct PyAccountAdjustmentBounds {
     balance_upper: Option<PositionSize>,
@@ -4345,7 +4420,7 @@ impl PyAccountId {
         format!("AccountId(value={:?})", self.value())
     }
 
-    fn __richcmp__(&self, other: &Bound<'_, PyAny>, op: CompareOp) -> PyResult<PyObject> {
+    fn __richcmp__(&self, other: &Bound<'_, PyAny>, op: CompareOp) -> PyResult<Py<PyAny>> {
         let py = other.py();
         if let Ok(other) = other.extract::<PyRef<'_, Self>>() {
             let result = match op {
@@ -4368,7 +4443,7 @@ impl PyAccountId {
     }
 }
 
-#[pyclass(name = "AccountGroupId", module = "openpit.param")]
+#[pyclass(name = "AccountGroupId", module = "openpit.param", from_py_object)]
 #[derive(Clone, Copy)]
 struct PyAccountGroupId {
     inner: AccountGroupId,
@@ -4432,7 +4507,7 @@ impl PyAccountGroupId {
         format!("AccountGroupId(value={:?})", self.value())
     }
 
-    fn __richcmp__(&self, other: &Bound<'_, PyAny>, op: CompareOp) -> PyResult<PyObject> {
+    fn __richcmp__(&self, other: &Bound<'_, PyAny>, op: CompareOp) -> PyResult<Py<PyAny>> {
         let py = other.py();
         if let Ok(other) = other.extract::<PyRef<'_, Self>>() {
             let result = match op {
@@ -4559,7 +4634,7 @@ macro_rules! impl_decimal_pymethods {
             }
 
             #[getter]
-            fn decimal(&self, py: Python<'_>) -> PyResult<PyObject> {
+            fn decimal(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
                 rust_decimal_to_python_decimal(py, self.inner.to_decimal())
             }
 
@@ -4575,7 +4650,7 @@ macro_rules! impl_decimal_pymethods {
                 self.inner.to_string()
             }
 
-            fn __richcmp__(&self, other: &Bound<'_, PyAny>, op: CompareOp) -> PyResult<PyObject> {
+            fn __richcmp__(&self, other: &Bound<'_, PyAny>, op: CompareOp) -> PyResult<Py<PyAny>> {
                 let py = other.py();
                 if let Ok(other) = other.extract::<PyRef<'_, $py_type>>() {
                     let result = match op {
@@ -4610,7 +4685,7 @@ macro_rules! impl_decimal_pymethods {
                 })
             }
 
-            fn __add__(&self, other: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+            fn __add__(&self, other: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
                 let py = other.py();
                 if let Ok(other) = other.extract::<PyRef<'_, $py_type>>() {
                     let result = self
@@ -4622,11 +4697,11 @@ macro_rules! impl_decimal_pymethods {
                 Ok(py.NotImplemented().into())
             }
 
-            fn __radd__(&self, other: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+            fn __radd__(&self, other: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
                 self.__add__(other)
             }
 
-            fn __sub__(&self, other: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+            fn __sub__(&self, other: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
                 let py = other.py();
                 if let Ok(other) = other.extract::<PyRef<'_, $py_type>>() {
                     let result = self
@@ -4638,7 +4713,7 @@ macro_rules! impl_decimal_pymethods {
                 Ok(py.NotImplemented().into())
             }
 
-            fn __rsub__(&self, other: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+            fn __rsub__(&self, other: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
                 let py = other.py();
                 if let Ok(other) = other.extract::<PyRef<'_, $py_type>>() {
                     let result = other
@@ -4650,7 +4725,7 @@ macro_rules! impl_decimal_pymethods {
                 Ok(py.NotImplemented().into())
             }
 
-            fn __mul__(&self, other: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+            fn __mul__(&self, other: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
                 let py = other.py();
                 if let Some(scalar) = extract_scalar_operand(other)? {
                     let result = match scalar {
@@ -4672,11 +4747,11 @@ macro_rules! impl_decimal_pymethods {
                 Ok(py.NotImplemented().into())
             }
 
-            fn __rmul__(&self, other: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+            fn __rmul__(&self, other: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
                 self.__mul__(other)
             }
 
-            fn __truediv__(&self, other: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+            fn __truediv__(&self, other: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
                 let py = other.py();
                 if let Some(divisor) = extract_scalar_operand(other)? {
                     let result = match divisor {
@@ -4698,7 +4773,7 @@ macro_rules! impl_decimal_pymethods {
                 Ok(py.NotImplemented().into())
             }
 
-            fn __mod__(&self, other: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+            fn __mod__(&self, other: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
                 let py = other.py();
                 if let Some(divisor) = extract_scalar_operand(other)? {
                     let result = match divisor {
@@ -4825,7 +4900,7 @@ macro_rules! impl_decimal_pymethods {
             }
 
             #[getter]
-            fn decimal(&self, py: Python<'_>) -> PyResult<PyObject> {
+            fn decimal(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
                 rust_decimal_to_python_decimal(py, self.inner.to_decimal())
             }
 
@@ -4841,7 +4916,7 @@ macro_rules! impl_decimal_pymethods {
                 self.inner.to_string()
             }
 
-            fn __richcmp__(&self, other: &Bound<'_, PyAny>, op: CompareOp) -> PyResult<PyObject> {
+            fn __richcmp__(&self, other: &Bound<'_, PyAny>, op: CompareOp) -> PyResult<Py<PyAny>> {
                 let py = other.py();
                 if let Ok(other) = other.extract::<PyRef<'_, $py_type>>() {
                     let result = match op {
@@ -4876,7 +4951,7 @@ macro_rules! impl_decimal_pymethods {
                 })
             }
 
-            fn __add__(&self, other: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+            fn __add__(&self, other: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
                 let py = other.py();
                 if let Ok(other) = other.extract::<PyRef<'_, $py_type>>() {
                     let result = self
@@ -4888,11 +4963,11 @@ macro_rules! impl_decimal_pymethods {
                 Ok(py.NotImplemented().into())
             }
 
-            fn __radd__(&self, other: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+            fn __radd__(&self, other: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
                 self.__add__(other)
             }
 
-            fn __sub__(&self, other: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+            fn __sub__(&self, other: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
                 let py = other.py();
                 if let Ok(other) = other.extract::<PyRef<'_, $py_type>>() {
                     let result = self
@@ -4904,7 +4979,7 @@ macro_rules! impl_decimal_pymethods {
                 Ok(py.NotImplemented().into())
             }
 
-            fn __rsub__(&self, other: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+            fn __rsub__(&self, other: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
                 let py = other.py();
                 if let Ok(other) = other.extract::<PyRef<'_, $py_type>>() {
                     let result = other
@@ -4916,7 +4991,7 @@ macro_rules! impl_decimal_pymethods {
                 Ok(py.NotImplemented().into())
             }
 
-            fn __mul__(&self, other: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+            fn __mul__(&self, other: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
                 let py = other.py();
                 if let Some(scalar) = extract_scalar_operand(other)? {
                     let result = match scalar {
@@ -4938,11 +5013,11 @@ macro_rules! impl_decimal_pymethods {
                 Ok(py.NotImplemented().into())
             }
 
-            fn __rmul__(&self, other: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+            fn __rmul__(&self, other: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
                 self.__mul__(other)
             }
 
-            fn __truediv__(&self, other: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+            fn __truediv__(&self, other: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
                 let py = other.py();
                 if let Some(divisor) = extract_scalar_operand(other)? {
                     let result = match divisor {
@@ -4964,7 +5039,7 @@ macro_rules! impl_decimal_pymethods {
                 Ok(py.NotImplemented().into())
             }
 
-            fn __mod__(&self, other: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+            fn __mod__(&self, other: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
                 let py = other.py();
                 if let Some(divisor) = extract_scalar_operand(other)? {
                     let result = match divisor {
@@ -5554,7 +5629,7 @@ impl PyAccountAdjustmentPositionOperation {
     }
 
     #[getter]
-    fn mode(&self, py: Python<'_>) -> PyResult<Option<PyObject>> {
+    fn mode(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
         self.mode
             .map(|mode| {
                 PyModule::import(py, "openpit.param")?
@@ -5850,7 +5925,7 @@ struct PyReservation {
     inner: RefCell<Option<PreTradeReservation>>,
 }
 
-#[pyclass(name = "Lock", module = "openpit.pretrade", subclass)]
+#[pyclass(name = "Lock", module = "openpit.pretrade", subclass, from_py_object)]
 #[derive(Clone, Default)]
 struct PyPreTradeLock {
     inner: PreTradeLock,
@@ -6068,7 +6143,12 @@ impl PyReservation {
     }
 }
 
-#[pyclass(name = "ExecutionReportOperation", module = "openpit.core", subclass)]
+#[pyclass(
+    name = "ExecutionReportOperation",
+    module = "openpit.core",
+    subclass,
+    from_py_object
+)]
 #[derive(Clone)]
 struct PyExecutionReportOperation {
     underlying_asset: Option<Asset>,
@@ -6129,7 +6209,7 @@ impl PyExecutionReportOperation {
     }
 
     #[getter]
-    fn side(&self, py: Python<'_>) -> PyResult<Option<PyObject>> {
+    fn side(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
         self.side
             .map(|side| {
                 PyModule::import(py, "openpit.param")?
@@ -6157,7 +6237,12 @@ impl PyExecutionReportOperation {
     }
 }
 
-#[pyclass(name = "FinancialImpact", module = "openpit.core", subclass)]
+#[pyclass(
+    name = "FinancialImpact",
+    module = "openpit.core",
+    subclass,
+    from_py_object
+)]
 #[derive(Clone)]
 struct PyFinancialImpact {
     pnl: Pnl,
@@ -6206,7 +6291,12 @@ impl PyFinancialImpact {
     }
 }
 
-#[pyclass(name = "ExecutionReportFillDetails", module = "openpit.core", subclass)]
+#[pyclass(
+    name = "ExecutionReportFillDetails",
+    module = "openpit.core",
+    subclass,
+    from_py_object
+)]
 #[derive(Clone)]
 struct PyExecutionReportFillDetails {
     last_trade: Option<Trade>,
@@ -6306,7 +6396,8 @@ impl PyExecutionReportFillDetails {
 #[pyclass(
     name = "ExecutionReportPositionImpact",
     module = "openpit.core",
-    subclass
+    subclass,
+    from_py_object
 )]
 #[derive(Clone)]
 struct PyExecutionReportPositionImpact {
@@ -6331,7 +6422,7 @@ impl PyExecutionReportPositionImpact {
     }
 
     #[getter]
-    fn position_effect(&self, py: Python<'_>) -> PyResult<Option<PyObject>> {
+    fn position_effect(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
         self.position_effect
             .map(|effect| {
                 PyModule::import(py, "openpit.param")?
@@ -6349,7 +6440,7 @@ impl PyExecutionReportPositionImpact {
     }
 
     #[getter]
-    fn position_side(&self, py: Python<'_>) -> PyResult<Option<PyObject>> {
+    fn position_side(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
         self.position_side
             .map(|side| {
                 PyModule::import(py, "openpit.param")?
@@ -6563,7 +6654,7 @@ impl PyExecutionReport {
     }
 }
 
-#[pyclass(name = "AccountBlock", module = "openpit.pretrade")]
+#[pyclass(name = "AccountBlock", module = "openpit.pretrade", from_py_object)]
 #[derive(Clone)]
 struct PyAccountBlock {
     code: String,
@@ -6637,7 +6728,7 @@ fn convert_account_block(block: &openpit::pretrade::AccountBlock) -> PyAccountBl
     }
 }
 
-#[pyclass(name = "PostTradeResult", module = "openpit.pretrade")]
+#[pyclass(name = "PostTradeResult", module = "openpit.pretrade", from_py_object)]
 #[derive(Clone)]
 struct PyPostTradeResult {
     inner: PostTradeResult,
@@ -6919,7 +7010,7 @@ fn parse_position_size(value: &str) -> PyResult<PositionSize> {
 fn rust_decimal_to_python_decimal(
     py: Python<'_>,
     value: rust_decimal::Decimal,
-) -> PyResult<PyObject> {
+) -> PyResult<Py<PyAny>> {
     let decimal_mod = PyModule::import(py, "decimal")?;
     let decimal_cls = decimal_mod.getattr("Decimal")?;
     let text = value.to_string();
@@ -7293,7 +7384,7 @@ mod field_access_tests {
     fn ensure_python_initialized() {
         static INIT: Once = Once::new();
         INIT.call_once(|| {
-            pyo3::prepare_freethreaded_python();
+            Python::initialize();
             // PyO3 embeds the interpreter against the base CPython install,
             // not the virtualenv `PYO3_PYTHON` points at, and the embedded
             // binary has no `pyvenv.cfg`, so `site` never resolves the venv
@@ -7303,7 +7394,7 @@ mod field_access_tests {
             // Query the venv interpreter for its effective `sys.path` and
             // prepend the missing entries so `import openpit` resolves
             // regardless of how `cargo test` was invoked.
-            if let Err(error) = Python::with_gil(prepend_venv_sys_path) {
+            if let Err(error) = Python::attach(prepend_venv_sys_path) {
                 panic!("failed to configure venv sys.path for embedded python: {error}");
             }
         });
@@ -7329,7 +7420,7 @@ mod field_access_tests {
         let venv_path = String::from_utf8_lossy(&output.stdout);
 
         let sys = py.import("sys")?;
-        let path = sys.getattr("path")?.downcast_into::<PyList>()?;
+        let path = sys.getattr("path")?.cast_into::<PyList>()?;
         let existing: Vec<String> = path.extract()?;
         // Preserve the venv ordering while prepending only entries that are
         // not already present, so the editable package directory wins without
@@ -7346,7 +7437,7 @@ mod field_access_tests {
 
     fn order_without_operation() -> Order {
         ensure_python_initialized();
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             openpit_interop::RequestWithPayload::new(
                 openpit_interop::Order {
                     operation: OrderOperationAccess::Absent,
@@ -7360,7 +7451,7 @@ mod field_access_tests {
 
     fn report_without_groups() -> ExecutionReport {
         ensure_python_initialized();
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             openpit_interop::RequestWithPayload::new(
                 openpit_interop::ExecutionReport {
                     operation: ExecutionReportOperationAccess::Absent,
@@ -7439,7 +7530,7 @@ mod field_access_tests {
     #[test]
     fn python_engine_end_to_end_covers_python_adapter_paths() {
         ensure_python_initialized();
-        Python::with_gil(|py| -> PyResult<()> {
+        Python::attach(|py| -> PyResult<()> {
             let policy_module = PyModule::from_code(
                 py,
                 cr#"

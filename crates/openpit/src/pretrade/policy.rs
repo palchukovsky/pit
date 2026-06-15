@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// Please see https://github.com/openpitkit and the OWNERS file for details.
+// Please see https://openpit.dev and the OWNERS file for details.
 
 use crate::core::account_outcome::AccountOutcomeEntry;
 pub use crate::core::{PolicyGroupId, DEFAULT_POLICY_GROUP_ID};
@@ -131,6 +131,27 @@ where
         Ok(())
     }
 
+    /// Performs a non-mutating start-stage check for a pre-trade dry-run.
+    ///
+    /// A dry-run reports the verdict the order *would* receive without moving
+    /// any engine state. The engine invokes this hook instead of
+    /// [`Self::check_pre_trade_start`] on the dry-run path and never records the
+    /// account block a real start-stage reject would latch.
+    ///
+    /// The default implementation delegates to [`Self::check_pre_trade_start`],
+    /// which is correct for any policy whose start-stage hook produces no
+    /// immediate side effect. A policy whose [`Self::check_pre_trade_start`]
+    /// mutates immediately (for example, consuming a rate-limit budget) MUST
+    /// override this method with a read-only variant that returns the same
+    /// verdict without the mutation.
+    fn check_pre_trade_start_dry_run(
+        &self,
+        ctx: &PreTradeContext<<Sync as SyncMode>::StorageLockingPolicyFactory>,
+        order: &Order,
+    ) -> Result<(), Rejects> {
+        self.check_pre_trade_start(ctx, order)
+    }
+
     /// Performs main-stage checks and can emit mutations or rejects.
     ///
     /// Policies may inspect the order, append mutations to be committed or
@@ -149,6 +170,32 @@ where
         _mutations: &mut Mutations,
     ) -> Result<Option<PolicyPreTradeResult>, Rejects> {
         Ok(None)
+    }
+
+    /// Performs a non-mutating main-stage check for a pre-trade dry-run.
+    ///
+    /// A dry-run reports the verdict and the lock / account adjustments the
+    /// order *would* produce, without moving any engine state. The engine
+    /// invokes this hook instead of [`Self::perform_pre_trade_check`] on the
+    /// dry-run path and never commits the mutations collected there - they are
+    /// dropped, never committed and never rolled back.
+    ///
+    /// The default implementation delegates to
+    /// [`Self::perform_pre_trade_check`], which is correct for any policy whose
+    /// main-stage hook produces no immediate side effect (it only registers
+    /// commit/rollback mutations that stay inert until finalized). A policy
+    /// whose [`Self::perform_pre_trade_check`] mutates storage immediately (for
+    /// example, applying a hold before registering its delta rollback) MUST
+    /// override this method with a read-only emulation that reports the same
+    /// verdict, lock prices, and outcome entries while pushing nothing to
+    /// `mutations` and touching no storage.
+    fn perform_pre_trade_check_dry_run(
+        &self,
+        ctx: &PreTradeContext<<Sync as SyncMode>::StorageLockingPolicyFactory>,
+        order: &Order,
+        mutations: &mut Mutations,
+    ) -> Result<Option<PolicyPreTradeResult>, Rejects> {
+        self.perform_pre_trade_check(ctx, order, mutations)
     }
 
     /// Applies post-trade updates from execution reports.

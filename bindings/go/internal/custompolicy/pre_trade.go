@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// Please see https://github.com/openpitkit and the OWNERS file for details.
+// Please see https://openpit.dev and the OWNERS file for details.
 
 package custompolicy
 
@@ -38,23 +38,53 @@ import (
 
 type PreTrade struct {
 	impl   pretrade.Policy
+	dryRun pretrade.DryRunPolicy
 	handle cgo.Handle
 }
 
+// StartPreTrade registers impl as a native custom pre-trade policy.
+//
+// When impl also satisfies pretrade.DryRunPolicy, the engine is given
+// explicit dry-run hooks; otherwise the normal hooks delegate for dry-runs.
 func StartPreTrade(impl pretrade.Policy) (native.PretradePreTradePolicy, error) {
 	implHandle := &PreTrade{impl: impl}
+	if dryRun, ok := impl.(pretrade.DryRunPolicy); ok {
+		implHandle.dryRun = dryRun
+	}
 	implHandle.handle = cgo.NewHandle(implHandle)
 
-	policyHandle, err := native.CreatePretradeCustomPreTradePolicy(
-		impl.Name(),
-		native.PolicyGroupID(impl.PolicyGroupID()),
-		PreTradePolicyCheckPreTradeStartFnAddr(),
-		PreTradePolicyPerformPreTradeCheckFnAddr(),
-		PreTradePolicyApplyReportFnAddr(),
-		PreTradePolicyApplyAccountAdjustmentFnAddr(),
-		PreTradePolicyFreeUserDataFnAddr(),
-		callback.NewUserDataFromHandle(implHandle.handle),
-	)
+	userData := callback.NewUserDataFromHandle(implHandle.handle)
+	name := impl.Name()
+	groupID := native.PolicyGroupID(impl.PolicyGroupID())
+
+	var policyHandle native.PretradePreTradePolicy
+	var err error
+
+	if implHandle.dryRun != nil {
+		policyHandle, err = native.CreatePretradeCustomPreTradePolicyWithDryRun(
+			name,
+			groupID,
+			PreTradePolicyCheckPreTradeStartFnAddr(),
+			PreTradePolicyCheckPreTradeStartDryRunFnAddr(),
+			PreTradePolicyPerformPreTradeCheckFnAddr(),
+			PreTradePolicyPerformPreTradeCheckDryRunFnAddr(),
+			PreTradePolicyApplyReportFnAddr(),
+			PreTradePolicyApplyAccountAdjustmentFnAddr(),
+			PreTradePolicyFreeUserDataFnAddr(),
+			userData,
+		)
+	} else {
+		policyHandle, err = native.CreatePretradeCustomPreTradePolicy(
+			name,
+			groupID,
+			PreTradePolicyCheckPreTradeStartFnAddr(),
+			PreTradePolicyPerformPreTradeCheckFnAddr(),
+			PreTradePolicyApplyReportFnAddr(),
+			PreTradePolicyApplyAccountAdjustmentFnAddr(),
+			PreTradePolicyFreeUserDataFnAddr(),
+			userData,
+		)
+	}
 	if err != nil {
 		implHandle.handle.Delete()
 		return nil, err
@@ -183,6 +213,56 @@ func pitPretradePreTradePolicyApplyAccountAdjustment(
 //export pitPretradePreTradePolicyClose
 func pitPretradePreTradePolicyClose(userData unsafe.Pointer) {
 	getPreTrade(userData).Close()
+}
+
+//export pitPretradePreTradePolicyCheckPreTradeStartDryRun
+func pitPretradePreTradePolicyCheckPreTradeStartDryRun(
+	ctx *C.OpenPitPretradeContext,
+	order *C.OpenPitOrder,
+	userData unsafe.Pointer,
+) *C.OpenPitPretradeRejectList {
+	// Panics from the user implementation are deliberately allowed to propagate.
+	// A panic unwinding across the FFI boundary may terminate the process;
+	// containing it is the implementer's responsibility, as stated on the Policy
+	// interface.
+
+	return newNativeRejectListOrNil(
+		getPreTrade(userData).dryRun.CheckPreTradeStartDryRun(
+			pretrade.NewContextFromHandle(
+				native.PretradeContext(ctx),
+			),
+			model.NewOrderFromHandle(*(*native.Order)(unsafe.Pointer(order))),
+		),
+	)
+}
+
+//export pitPretradePreTradePolicyPerformPreTradeCheckDryRun
+func pitPretradePreTradePolicyPerformPreTradeCheckDryRun(
+	ctx *C.OpenPitPretradeContext,
+	order *C.OpenPitOrder,
+	mutations *C.OpenPitMutations,
+	outResult *C.OpenPitPretradePreTradeResult,
+	userData unsafe.Pointer,
+) *C.OpenPitPretradeRejectList {
+	// Panics from the user implementation are deliberately allowed to propagate.
+	// A panic unwinding across the FFI boundary may terminate the process;
+	// containing it is the implementer's responsibility, as stated on the Policy
+	// interface.
+
+	return newNativeRejectListOrNil(
+		getPreTrade(userData).dryRun.PerformPreTradeCheckDryRun(
+			pretrade.NewContextFromHandle(
+				native.PretradeContext(ctx),
+			),
+			model.NewOrderFromHandle(*(*native.Order)(unsafe.Pointer(order))),
+			tx.NewMutationsFromHandle(
+				native.Mutations(mutations),
+			),
+			pretrade.NewPreTradeResultFromHandle(
+				native.PretradePreTradeResult(outResult),
+			),
+		),
+	)
 }
 
 func getPreTrade(userData unsafe.Pointer) *PreTrade {

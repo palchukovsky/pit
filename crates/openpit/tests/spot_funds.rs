@@ -13,13 +13,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// Please see https://github.com/openpitkit and the OWNERS file for details.
+// Please see https://openpit.dev and the OWNERS file for details.
 
 use openpit::param::{
     AccountId, AdjustmentAmount, Asset, PositionSize, Price, Quantity, Side, Trade, TradeAmount,
 };
-use openpit::pretrade::policies::{SpotFundsPolicy, SpotFundsPricingSource, SpotFundsSettings};
-use openpit::pretrade::{PreTradeLock, RejectCode, DEFAULT_POLICY_GROUP_ID};
+use openpit::pretrade::policies::{
+    RateLimit, RateLimitBrokerBarrier, RateLimitPolicy, RateLimitSettings, SpotFundsPolicy,
+    SpotFundsPricingSource, SpotFundsSettings,
+};
+use openpit::pretrade::{PreTradeDryRunReport, PreTradeLock, RejectCode, DEFAULT_POLICY_GROUP_ID};
 use openpit::{
     Engine, FullSync, FullSyncEngine, HasAccountAdjustmentBalance,
     HasAccountAdjustmentBalanceLowerBound, HasAccountAdjustmentBalanceUpperBound,
@@ -602,4 +605,126 @@ fn negative_held_blocks_buy_despite_positive_available() {
         panic!("buy must be rejected when held=-2000 cancels out available=2000")
     };
     assert_eq!(rejects[0].code, RejectCode::InsufficientFunds);
+}
+
+// ── pre-trade dry-run idempotency (rate-limit + spot-funds) ────────────────────
+
+// Engine wiring both an immediate-side-effect start-stage policy (rate limit,
+// broker max 1) and an immediate-side-effect main-stage policy (spot funds).
+fn build_rate_limited_engine() -> TestEngine {
+    let builder = Engine::builder::<TestOrder, TestReport, TestAdjustment>().full_sync();
+    let rate_limit = RateLimitPolicy::new(
+        RateLimitSettings::new(
+            Some(RateLimitBrokerBarrier {
+                limit: RateLimit {
+                    max_orders: 1,
+                    window: std::time::Duration::from_secs(60),
+                },
+            }),
+            [],
+            [],
+            [],
+        )
+        .expect("rate-limit settings must build"),
+        builder.storage_builder(),
+    );
+    let spot_funds = SpotFundsPolicy::<FullSync, FullSync>::new(
+        SpotFundsSettings::new(0, SpotFundsPricingSource::Mark, std::iter::empty())
+            .expect("spot-funds settings must build"),
+        None::<SpotFundsMarketData<FullSync>>,
+        builder.storage_builder(),
+    );
+    builder
+        .pre_trade(rate_limit)
+        .pre_trade(spot_funds)
+        .build()
+        .expect("engine must build")
+}
+
+fn seed_rate_limited(engine: &TestEngine, asset_code: &str, amount: &str) {
+    let adj = balance_adjustment(asset_code, AdjustmentAmount::Absolute(ps(amount)));
+    engine
+        .apply_account_adjustment(account(), &[adj])
+        .expect("seed must succeed");
+}
+
+#[test]
+fn dry_run_does_not_spend_rate_limit_budget_or_reserve_spot_funds() {
+    let engine = build_rate_limited_engine();
+    seed_rate_limited(&engine, "USD", "10000");
+    let aapl_usd = instr("AAPL", "USD");
+
+    // Many dry-runs of a valid order: every one passes (rate-limit dry-run never
+    // rejects) and none moves engine state.
+    for _ in 0..5 {
+        let report: PreTradeDryRunReport = engine.execute_pre_trade_dry_run(make_order(
+            Side::Buy,
+            aapl_usd.clone(),
+            TradeAmount::Quantity(qty("10")),
+            Some(px("200")),
+        ));
+        assert!(report.is_pass(), "dry-run of a valid order must pass");
+        assert!(report.account_block().is_none());
+        // The would-be settlement hold is reported without being applied.
+        assert_eq!(report.account_adjustments().len(), 1);
+    }
+
+    // The broker limit is 1, so if the five dry-runs had each consumed a slot,
+    // this first real order would be the sixth and would be rejected. It must
+    // succeed, proving the dry-runs spent no rate-limit budget. It reserving the
+    // full 10000 notional also proves no spot-funds hold leaked from the
+    // dry-runs (available is still the seeded 10000).
+    let mut reservation = engine
+        .execute_pre_trade(make_order(
+            Side::Buy,
+            aapl_usd.clone(),
+            TradeAmount::Quantity(qty("50")),
+            Some(px("200")),
+        ))
+        .expect("first real order must pass: dry-runs consumed no budget or funds");
+    reservation.commit();
+
+    // The broker counter now holds exactly one real order; the next real order
+    // is rejected on the rate limit, confirming the budget reflects only real
+    // calls.
+    let Err(rejects) = engine.execute_pre_trade(make_order(
+        Side::Buy,
+        aapl_usd,
+        TradeAmount::Quantity(qty("1")),
+        Some(px("200")),
+    )) else {
+        panic!("second real order must breach the broker limit of 1");
+    };
+    assert_eq!(rejects[0].code, RejectCode::RateLimitExceeded);
+}
+
+#[test]
+fn dry_run_insufficient_funds_reports_reject_and_leaves_state_for_real_call() {
+    let engine = build_rate_limited_engine();
+    seed_rate_limited(&engine, "USD", "1000");
+    let aapl_usd = instr("AAPL", "USD");
+
+    // Buy 10 @ 200 = 2000 notional > 1000 available: the dry-run rejects with
+    // InsufficientFunds and records nothing.
+    let report = engine.execute_pre_trade_dry_run(make_order(
+        Side::Buy,
+        aapl_usd.clone(),
+        TradeAmount::Quantity(qty("10")),
+        Some(px("200")),
+    ));
+    assert!(!report.is_pass());
+    let rejects = report.rejects().expect("dry-run must report rejects");
+    assert_eq!(rejects[0].code, RejectCode::InsufficientFunds);
+
+    // A real order that fits the untouched 1000 available still succeeds, and is
+    // the first to consume the broker slot.
+    let mut reservation = engine
+        .execute_pre_trade(make_order(
+            Side::Buy,
+            aapl_usd,
+            TradeAmount::Quantity(qty("5")),
+            Some(px("200")),
+        ))
+        .expect("real order within available must pass after a rejecting dry-run");
+    reservation.commit();
 }

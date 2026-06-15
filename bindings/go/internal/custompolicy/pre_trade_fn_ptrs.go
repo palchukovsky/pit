@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// Please see https://github.com/openpitkit and the OWNERS file for details.
+// Please see https://openpit.dev and the OWNERS file for details.
 
 package custompolicy
 
@@ -49,6 +49,18 @@ extern OpenPitPretradeRejectList* pitPretradePreTradePolicyApplyAccountAdjustmen
 
 extern void pitPretradePreTradePolicyClose(void* user_data);
 
+extern OpenPitPretradeRejectList* pitPretradePreTradePolicyCheckPreTradeStartDryRun(
+    const OpenPitPretradeContext* ctx,
+    const OpenPitOrder* order,
+    void* user_data);
+
+extern OpenPitPretradeRejectList* pitPretradePreTradePolicyPerformPreTradeCheckDryRun(
+    const OpenPitPretradeContext* ctx,
+    const OpenPitOrder* order,
+    OpenPitMutations* mutations,
+    OpenPitPretradePreTradeResult* out_result,
+    void* user_data);
+
 static OpenPitPretradePreTradePolicyCheckPreTradeStartFn
     openpit_pretrade_pre_trade_policy_check_pre_trade_start_fn = pitPretradePreTradePolicyCheckPreTradeStart;
 
@@ -63,6 +75,14 @@ static OpenPitPretradePreTradePolicyApplyAccountAdjustmentFn
 
 static OpenPitPretradePreTradePolicyFreeUserDataFn
     openpit_pretrade_pre_trade_policy_free_user_data_fn = pitPretradePreTradePolicyClose;
+
+static OpenPitPretradePreTradePolicyCheckPreTradeStartFn
+    openpit_pretrade_pre_trade_policy_check_pre_trade_start_dry_run_fn =
+        pitPretradePreTradePolicyCheckPreTradeStartDryRun;
+
+static OpenPitPretradePreTradePolicyPerformPreTradeCheckFn
+    openpit_pretrade_pre_trade_policy_perform_pre_trade_check_dry_run_fn =
+        pitPretradePreTradePolicyPerformPreTradeCheckDryRun;
 
 static void* pitPretradePreTradePolicyCheckPreTradeStartFnAddr(void) {
     return &openpit_pretrade_pre_trade_policy_check_pre_trade_start_fn;
@@ -82,6 +102,14 @@ static void* pitPretradePreTradePolicyApplyAccountAdjustmentFnAddr(void) {
 
 static void* pitPretradePreTradePolicyFreeUserDataFnAddr(void) {
     return &openpit_pretrade_pre_trade_policy_free_user_data_fn;
+}
+
+static void* pitPretradePreTradePolicyCheckPreTradeStartDryRunFnAddr(void) {
+    return &openpit_pretrade_pre_trade_policy_check_pre_trade_start_dry_run_fn;
+}
+
+static void* pitPretradePreTradePolicyPerformPreTradeCheckDryRunFnAddr(void) {
+    return &openpit_pretrade_pre_trade_policy_perform_pre_trade_check_dry_run_fn;
 }
 */
 import "C"
@@ -125,4 +153,20 @@ func PreTradePolicyApplyAccountAdjustmentFnAddr() unsafe.Pointer {
 // Pass the result to native.CreatePretradeCustomPreTradePolicy.
 func PreTradePolicyFreeUserDataFnAddr() unsafe.Pointer {
 	return C.pitPretradePreTradePolicyFreeUserDataFnAddr()
+}
+
+// PreTradePolicyCheckPreTradeStartDryRunFnAddr returns the address of a
+// OpenPitPretradePreTradePolicyCheckPreTradeStartFn variable holding the
+// dry-run check-pre-trade-start callback.
+// Pass the result to native.CreatePretradeCustomPreTradePolicyWithDryRun.
+func PreTradePolicyCheckPreTradeStartDryRunFnAddr() unsafe.Pointer {
+	return C.pitPretradePreTradePolicyCheckPreTradeStartDryRunFnAddr()
+}
+
+// PreTradePolicyPerformPreTradeCheckDryRunFnAddr returns the address of a
+// OpenPitPretradePreTradePolicyPerformPreTradeCheckFn variable holding the
+// dry-run perform-pre-trade-check callback.
+// Pass the result to native.CreatePretradeCustomPreTradePolicyWithDryRun.
+func PreTradePolicyPerformPreTradeCheckDryRunFnAddr() unsafe.Pointer {
+	return C.pitPretradePreTradePolicyPerformPreTradeCheckDryRunFnAddr()
 }

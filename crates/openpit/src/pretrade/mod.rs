@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// Please see https://github.com/openpitkit and the OWNERS file for details.
+// Please see https://openpit.dev and the OWNERS file for details.
 
 //! Pre-trade pipeline types and extension points.
 //!
@@ -24,11 +24,13 @@
 //!   account-adjustment policy hooks;
 //! - [`PreTradeRequest`] is the single-use handle returned after start-stage success;
 //! - [`PreTradeReservation`] is the finalizable handle for reserved state;
+//! - [`PreTradeDryRunReport`] is the inert verdict of a non-mutating dry-run.
 //!
 //! Custom controls typically start from the policy traits plus [`PreTradeContext`].
 
 mod configurable;
 mod context;
+mod dry_run_report;
 pub(crate) mod handle;
 pub mod holdings;
 mod lock;
@@ -44,6 +46,7 @@ pub(crate) mod start_pre_trade_time;
 
 pub(crate) use configurable::ConfigurablePolicy;
 pub use context::PreTradeContext;
+pub use dry_run_report::PreTradeDryRunReport;
 pub use lock::PreTradeLock;
 pub use policies::{
     SpotFundsConfigError, SpotFundsMarketData, SpotFundsOverride, SpotFundsOverrideTarget,

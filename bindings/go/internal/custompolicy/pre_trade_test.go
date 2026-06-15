@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// Please see https://github.com/openpitkit and the OWNERS file for details.
+// Please see https://openpit.dev and the OWNERS file for details.
 
 package custompolicy
 
@@ -94,5 +94,68 @@ func TestStartPreTradeErrorOnInvalidName(t *testing.T) {
 	}
 	if err == nil {
 		t.Fatal("StartPreTrade() error = nil, want non-nil for invalid name")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// DryRunPolicy optional interface detection
+
+type fakeDryRunPreTradePolicy struct {
+	fakePreTradePolicy
+	checkDryRunCalled   bool
+	performDryRunCalled bool
+}
+
+var _ pretrade.DryRunPolicy = (*fakeDryRunPreTradePolicy)(nil)
+
+func (p *fakeDryRunPreTradePolicy) CheckPreTradeStartDryRun(
+	_ pretrade.Context,
+	_ model.Order,
+) []reject.Reject {
+	p.checkDryRunCalled = true
+	return nil
+}
+
+func (p *fakeDryRunPreTradePolicy) PerformPreTradeCheckDryRun(
+	_ pretrade.Context,
+	_ model.Order,
+	_ tx.Mutations,
+	_ pretrade.Result,
+) []reject.Reject {
+	p.performDryRunCalled = true
+	return nil
+}
+
+func TestStartPreTradeWithDryRunSucceeds(t *testing.T) {
+	policy := &fakeDryRunPreTradePolicy{fakePreTradePolicy: fakePreTradePolicy{name: "dry-run-policy"}}
+	handle, err := StartPreTrade(policy)
+	if err != nil {
+		t.Fatalf("StartPreTrade() error = %v, want nil for policy with DryRunPolicy", err)
+	}
+	if handle == nil {
+		t.Fatal("StartPreTrade() = nil, want non-nil")
+	}
+	t.Cleanup(func() { native.DestroyPretradePreTradePolicy(handle) })
+}
+
+func TestStartPreTradeWithDryRunSetsField(t *testing.T) {
+	policy := &fakeDryRunPreTradePolicy{fakePreTradePolicy: fakePreTradePolicy{name: "dry-run-field-policy"}}
+	impl := &PreTrade{impl: policy}
+	if dryRun, ok := pretrade.Policy(policy).(pretrade.DryRunPolicy); ok {
+		impl.dryRun = dryRun
+	}
+	if impl.dryRun == nil {
+		t.Fatal("dryRun field = nil, want non-nil when policy implements DryRunPolicy")
+	}
+}
+
+func TestStartPreTradeWithoutDryRunLeavesFieldNil(t *testing.T) {
+	policy := &fakePreTradePolicy{name: "non-dry-run-policy"}
+	impl := &PreTrade{impl: policy}
+	if _, ok := pretrade.Policy(policy).(pretrade.DryRunPolicy); ok {
+		t.Fatal("fakePreTradePolicy unexpectedly satisfies DryRunPolicy")
+	}
+	if impl.dryRun != nil {
+		t.Fatal("dryRun field != nil, want nil when policy does not implement DryRunPolicy")
 	}
 }

@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Please see https://github.com/openpitkit and the OWNERS file for details.
+# Please see https://openpit.dev and the OWNERS file for details.
 
 
 import openpit
@@ -27,6 +27,7 @@ import pytest
 # - ../pit.wiki/Domain-Types.md
 # - ../pit.wiki/Dynamic-Policy-Reconfiguration.md
 # - ../pit.wiki/Getting-Started.md
+# - ../pit.wiki/Non-Mutating-Dry-Run.md
 # - ../pit.wiki/Policies.md
 # - ../pit.wiki/Policy-API.md
 # - ../pit.wiki/Pre-trade-Pipeline.md
@@ -1182,3 +1183,110 @@ def test_example_wiki_dynamic_policy_reconfiguration_set_account_pnl() -> None:
     assert (
         execute_result.rejects[0].reason == "pnl kill switch triggered: broker barrier"
     )
+
+
+@pytest.mark.integration
+def test_example_wiki_dry_run_verdict() -> None:
+    # Used in: pit.wiki/Non-Mutating-Dry-Run.md - Read the Dry-Run Verdict
+    # This mirror is intentionally wider than the wiki snippet: it adds the test
+    # harness (`order` built via `_aapl_usd_order` and the engine setup) so the
+    # example runs. Keep the shared user-code flow in sync with the wiki.
+    import openpit
+    import openpit.pretrade.policies
+
+    order = _aapl_usd_order("100", "185")
+    engine = (
+        openpit.Engine.builder()
+        .no_sync()
+        .builtin(openpit.pretrade.policies.build_order_validation())
+        .build()
+    )
+
+    report = engine.execute_pre_trade_dry_run(order=order)
+    if report.is_pass:
+        print("order would be admitted")
+    else:
+        for reject in report.rejects:
+            print(
+                f"would reject by {reject.policy} "
+                f"[{reject.code}]: {reject.reason}: {reject.details}"
+            )
+    assert report.is_pass
+
+
+@pytest.mark.integration
+def test_example_wiki_dry_run_before_real_call() -> None:
+    # Used in: pit.wiki/Non-Mutating-Dry-Run.md - Use the Dry-Run Before a Real Call
+    # This mirror is intentionally wider than the wiki snippet: it adds the test
+    # harness (`order` built via `_aapl_usd_order` and the engine setup) so the
+    # example runs. Keep the shared user-code flow in sync with the wiki.
+    import openpit
+    import openpit.pretrade.policies
+
+    order = _aapl_usd_order("100", "185")
+    engine = (
+        openpit.Engine.builder()
+        .no_sync()
+        .builtin(openpit.pretrade.policies.build_order_validation())
+        .build()
+    )
+
+    # Probe without spending any budget or creating any reservation.
+    probe = engine.execute_pre_trade_dry_run(order=order)
+    if not probe.is_pass:
+        pass  # would have been rejected - skip the real call
+    else:
+        # The real call now runs with fresh state; the probe had no effect.
+        result = engine.execute_pre_trade(order=order)
+        if result:
+            result.reservation.commit()
+    assert probe.is_pass
+
+
+@pytest.mark.integration
+def test_example_wiki_dry_run_custom_policy_hook() -> None:
+    # Used in: pit.wiki/Non-Mutating-Dry-Run.md - Read-Only Custom Start-Stage Hook
+    # This mirror is intentionally wider than the wiki snippet: it defines the
+    # full MyCountingPolicy class (the snippet shows only the dry-run hooks) and
+    # adds assertions proving the dry-run does not increment the counter.
+    # Keep the shared user-code flow in sync with the wiki.
+    import openpit
+    import openpit.pretrade
+
+    class MyCountingPolicy(openpit.pretrade.Policy):
+        def __init__(self) -> None:
+            self._count = 0
+
+        @property
+        def name(self) -> str:
+            return "MyCountingPolicy"
+
+        def check_pre_trade_start(
+            self,
+            ctx: openpit.pretrade.Context,
+            order: openpit.Order,
+        ) -> openpit.pretrade.Rejects:
+            self._count += 1  # side effect: spends the real counter budget
+            return ()  # pass
+
+        def check_pre_trade_start_dry_run(
+            self,
+            ctx: openpit.pretrade.Context,
+            order: openpit.Order,
+        ) -> openpit.pretrade.Rejects:
+            return ()  # read-only: no increment
+
+    order = _aapl_usd_order("10", "100")
+    policy = MyCountingPolicy()
+    engine = openpit.Engine.builder().no_sync().pre_trade(policy=policy).build()
+
+    # Dry-run must not increment the counter.
+    probe = engine.execute_pre_trade_dry_run(order=order)
+    assert probe.is_pass
+    assert policy._count == 0  # noqa: SLF001 - intentional harness access
+
+    # Real call increments.
+    result = engine.execute_pre_trade(order=order)
+    assert result.ok
+    result.reservation.commit()
+    assert policy._count == 1  # noqa: SLF001

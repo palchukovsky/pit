@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// Please see https://github.com/openpitkit and the OWNERS file for details.
+// Please see https://openpit.dev and the OWNERS file for details.
 
 // Package pit exposes the Go binding for the OpenPit engine.
 //
@@ -134,6 +134,40 @@ func (e *Engine) ExecutePreTrade(
 		return nil, rejectResult, nil
 	}
 	return pretrade.NewReservationFromHandle(reservation), nil, nil
+}
+
+// StartPreTradeDryRun runs the start stage as a non-mutating dry-run.
+//
+// Return contract:
+//   - on valid input, always returns a non-nil *pretrade.DryRunReport; the
+//     caller takes ownership and must release it with DryRunReport.Close;
+//   - the verdict (pass or reject) is encoded inside the report;
+//   - on transport error, returns a Go error.
+func (e *Engine) StartPreTradeDryRun(order model.Order) (*pretrade.DryRunReport, error) {
+	report, err := native.EngineStartPreTradeDryRun(e.handle, order.Handle())
+	runtime.KeepAlive(order)
+	if err != nil {
+		return nil, err
+	}
+	return pretrade.NewDryRunReportFromHandle(report), nil
+}
+
+// ExecutePreTradeDryRun runs the full pre-trade pipeline as a non-mutating
+// dry-run.
+//
+// Return contract:
+//   - on valid input, always returns a non-nil *pretrade.DryRunReport; the
+//     caller takes ownership and must release it with DryRunReport.Close;
+//   - the verdict (pass or reject), lock, and account adjustments are all
+//     encoded inside the report;
+//   - on transport error, returns a Go error.
+func (e *Engine) ExecutePreTradeDryRun(order model.Order) (*pretrade.DryRunReport, error) {
+	report, err := native.EngineExecutePreTradeDryRun(e.handle, order.Handle())
+	runtime.KeepAlive(order)
+	if err != nil {
+		return nil, err
+	}
+	return pretrade.NewDryRunReportFromHandle(report), nil
 }
 
 // PostTradeResult holds the outcome of a post-trade operation. The canonical

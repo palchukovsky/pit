@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Please see https://github.com/openpitkit and the OWNERS file for details.
+# Please see https://openpit.dev and the OWNERS file for details.
 
 """Pre-trade pipeline components: policies, rejects, requests, and reservations."""
 
@@ -29,6 +29,7 @@ from .._openpit import (
     AccountBlock,
     AccountControl,
     AccountOutcomeEntry,
+    DryRunReport,
     ExecuteResult,
     OutcomeAmount,
     PostTradeContext,
@@ -152,6 +153,31 @@ Attributes:
     rejects: Reject list returned for the failed adjustment.
 """
 
+DryRunReport.__doc__ = """
+Inert verdict of a non-mutating pre-trade dry-run.
+
+Describes what ``Engine.execute_pre_trade`` or ``Engine.start_pre_trade``
+would have produced for the same order and engine state, without moving any
+engine state: no rate-limit budget is spent, no reservation or hold is
+applied, and no account is blocked.
+
+Attributes:
+    is_pass: ``True`` when the order would have been admitted by all stages.
+        Equivalent to ``bool(report)``.
+    rejects: List of ``Reject`` objects when ``is_pass`` is ``False``,
+        otherwise ``None``.
+    account_block: ``AccountBlock`` that a real call would have recorded in
+        the engine's blocked-accounts registry, or ``None`` when the order
+        would have passed or produced a non-account reject.
+
+Methods:
+    lock(): ``Lock`` the main stage would have produced. Empty when the start
+        stage would have rejected or no policy locks a price.
+    account_adjustments(): List of ``AccountAdjustmentOutcome`` objects the
+        main stage would have produced. Empty when the start stage would have
+        rejected or no policy reports an adjustment.
+"""
+
 Rejects = list[Reject]
 
 
@@ -178,6 +204,7 @@ __all__ = [
     "AccountControl",
     "AccountOutcomeEntry",
     "DEFAULT_POLICY_GROUP_ID",
+    "DryRunReport",
     "ExecuteResult",
     "PolicyGroupId",
     "OutcomeAmount",

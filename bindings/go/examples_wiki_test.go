@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// Please see https://github.com/openpitkit and the OWNERS file for details.
+// Please see https://openpit.dev and the OWNERS file for details.
 
 package openpit
 
@@ -47,6 +47,7 @@ import (
 // - ../pit.wiki/Domain-Types.md
 // - ../pit.wiki/Dynamic-Policy-Reconfiguration.md
 // - ../pit.wiki/Getting-Started.md
+// - ../pit.wiki/Non-Mutating-Dry-Run.md
 // - ../pit.wiki/Policies.md
 // - ../pit.wiki/Policy-API.md
 // - ../pit.wiki/Pre-trade-Pipeline.md
@@ -1994,6 +1995,198 @@ func TestExampleWikiDynamicPolicyReconfigurationRateLimit(t *testing.T) {
 	if rejects[0].Reason != "rate limit exceeded: broker barrier" {
 		t.Fatalf("reject reason = %q, want %q",
 			rejects[0].Reason, "rate limit exceeded: broker barrier")
+	}
+}
+
+// --- Non-Mutating-Dry-Run: Custom Policy with Dry-Run Hooks ---
+
+// MyCountingPolicy is a start-stage policy that counts real calls but
+// provides a read-only dry-run variant that does not increment the counter.
+type MyCountingPolicy struct {
+	count int
+}
+
+func (*MyCountingPolicy) Close()                             {}
+func (*MyCountingPolicy) Name() string                       { return "MyCountingPolicy" }
+func (*MyCountingPolicy) PolicyGroupID() model.PolicyGroupID { return model.DefaultPolicyGroupID }
+
+func (p *MyCountingPolicy) CheckPreTradeStart(
+	_ pretrade.Context,
+	_ model.Order,
+) []reject.Reject {
+	p.count++ // side effect: spends the real counter budget
+	return nil
+}
+
+func (*MyCountingPolicy) PerformPreTradeCheck(
+	_ pretrade.Context,
+	_ model.Order,
+	_ tx.Mutations,
+	_ pretrade.Result,
+) []reject.Reject {
+	return nil
+}
+
+func (*MyCountingPolicy) ApplyExecutionReport(
+	_ pretrade.PostTradeContext,
+	_ model.ExecutionReport,
+	_ pretrade.PostTradeAdjustments,
+) []reject.AccountBlock {
+	return nil
+}
+
+func (*MyCountingPolicy) ApplyAccountAdjustment(
+	_ accountadjustment.Context,
+	_ param.AccountID,
+	_ model.AccountAdjustment,
+	_ tx.Mutations,
+	_ pretrade.AccountOutcomes,
+) []reject.Reject {
+	return nil
+}
+
+// CheckPreTradeStartDryRun is the read-only variant: no counter increment.
+func (*MyCountingPolicy) CheckPreTradeStartDryRun(
+	_ pretrade.Context,
+	_ model.Order,
+) []reject.Reject {
+	return nil // read current state without spending the budget
+}
+
+// PerformPreTradeCheckDryRun is the read-only variant.
+func (*MyCountingPolicy) PerformPreTradeCheckDryRun(
+	_ pretrade.Context,
+	_ model.Order,
+	_ tx.Mutations,
+	_ pretrade.Result,
+) []reject.Reject {
+	return nil
+}
+
+// Used in: pit.wiki/Non-Mutating-Dry-Run.md - Read the Dry-Run Verdict
+// This mirror is intentionally wider than the wiki snippet: it adds the test
+// harness (t.Fatalf assertions, wikiExampleOrder) so the example runs. The
+// snippet shows idiomatic return-error style; the mirror uses t.Fatalf for the
+// same error paths. Keep the shared user-code flow in sync with the wiki.
+func TestExampleWikiDryRunVerdict(t *testing.T) {
+	order := wikiExampleOrder(t, "100", "185")
+
+	engine, err := NewEngineBuilder().
+		NoSync().
+		Builtin(policies.BuildOrderValidation()).
+		Build()
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	defer engine.Stop()
+
+	report, err := engine.ExecutePreTradeDryRun(order)
+	if err != nil {
+		t.Fatalf("ExecutePreTradeDryRun() error = %v", err)
+	}
+	defer report.Close()
+
+	if report.IsPass() {
+		fmt.Println("order would be admitted")
+	} else {
+		for _, r := range report.Rejects() {
+			t.Logf(
+				"would reject by %s [%d]: %s (%s)",
+				r.Policy,
+				r.Code,
+				r.Reason,
+				r.Details,
+			)
+		}
+	}
+	if !report.IsPass() {
+		t.Fatalf("expected dry-run to pass, got rejects: %v", report.Rejects())
+	}
+}
+
+// Used in: pit.wiki/Non-Mutating-Dry-Run.md - Use the Dry-Run Before a Real Call
+// This mirror is intentionally wider than the wiki snippet: it adds the test
+// harness (t.Fatalf assertions, wikiExampleOrder) so the example runs. The
+// snippet shows idiomatic return-error style; the mirror uses t.Fatalf for the
+// same error paths. Keep the shared user-code flow in sync with the wiki.
+func TestExampleWikiDryRunBeforeRealCall(t *testing.T) {
+	order := wikiExampleOrder(t, "100", "185")
+
+	engine, err := NewEngineBuilder().
+		NoSync().
+		Builtin(policies.BuildOrderValidation()).
+		Build()
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	defer engine.Stop()
+
+	// Probe without spending any budget or creating any reservation.
+	probe, err := engine.ExecutePreTradeDryRun(order)
+	if err != nil {
+		t.Fatalf("ExecutePreTradeDryRun() error = %v", err)
+	}
+	defer probe.Close()
+
+	if !probe.IsPass() {
+		return // would have been rejected - skip the real call
+	}
+
+	// The real call now runs with fresh state; the probe had no effect.
+	reservation, rejects, err := engine.ExecutePreTrade(order)
+	if err != nil {
+		t.Fatalf("ExecutePreTrade() error = %v", err)
+	}
+	if rejects != nil {
+		t.Fatalf("ExecutePreTrade() unexpected rejects: %v", rejects)
+	}
+	defer reservation.Close()
+	reservation.Commit()
+}
+
+// Used in: pit.wiki/Non-Mutating-Dry-Run.md - Read-Only Custom Start-Stage Hook
+// This mirror is intentionally wider than the wiki snippet: it defines the
+// full MyCountingPolicy type above (the snippet shows only the hook methods)
+// and adds assertions proving the dry-run does not increment the counter.
+// Keep the shared user-code flow in sync with the wiki.
+func TestExampleWikiDryRunCustomPolicyHook(t *testing.T) {
+	order := wikiExampleOrder(t, "10", "100")
+
+	policy := &MyCountingPolicy{}
+	engine, err := NewEngineBuilder().
+		NoSync().
+		PreTrade(policy).
+		Build()
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	defer engine.Stop()
+
+	// Dry-run must not increment the counter.
+	probe, err := engine.ExecutePreTradeDryRun(order)
+	if err != nil {
+		t.Fatalf("ExecutePreTradeDryRun() error = %v", err)
+	}
+	defer probe.Close()
+
+	if !probe.IsPass() {
+		t.Fatalf("dry-run unexpected reject")
+	}
+	if policy.count != 0 {
+		t.Fatalf("dry-run incremented counter: want 0, got %d", policy.count)
+	}
+
+	// Real call increments.
+	reservation, rejects, err := engine.ExecutePreTrade(order)
+	if err != nil {
+		t.Fatalf("ExecutePreTrade() error = %v", err)
+	}
+	if rejects != nil {
+		t.Fatalf("ExecutePreTrade() unexpected rejects: %v", rejects)
+	}
+	reservation.CommitAndClose()
+	if policy.count != 1 {
+		t.Fatalf("real call counter: want 1, got %d", policy.count)
 	}
 }
 

@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// Please see https://github.com/openpitkit and the OWNERS file for details.
+// Please see https://openpit.dev and the OWNERS file for details.
 
 //! Pre-trade reservation path for [`SpotFundsPolicy`].
 
@@ -330,6 +330,116 @@ where
         }
 
         Ok(Some(outcome))
+    }
+
+    /// Read-only twin of [`Self::perform_pre_trade_check_impl`] for dry-runs.
+    ///
+    /// Reuses [`Self::read_order_request`] and
+    /// [`Self::compute_reservation_legs`], then for each leg reads the current
+    /// holdings and computes the would-be hold through the pure
+    /// [`Holdings::try_hold`] - **without** writing it back. It pushes nothing to
+    /// storage and nothing to `mutations`, so a dry-run never moves engine
+    /// state. The reject and outcome it produces match the normal path byte for
+    /// byte for the same order and holdings, because both derive them from the
+    /// same `try_hold` result.
+    pub(super) fn perform_pre_trade_check_dry_run_impl<Order>(
+        &self,
+        account_info: &impl AccountInfo,
+        order: &Order,
+    ) -> Result<Option<PolicyPreTradeResult>, Rejects>
+    where
+        Order: HasInstrument + HasAccountId + HasSide + HasTradeAmount + HasOrderPrice,
+    {
+        let request = self.read_order_request(order)?;
+
+        let legs = self
+            .compute_reservation_legs(
+                request.side,
+                request.trade_amount,
+                request.price,
+                request.instrument,
+                request.account_id,
+                account_info,
+            )
+            .map_err(Rejects::from)?;
+
+        let underlying_asset = request.instrument.underlying_asset().clone();
+        let settlement_asset = request.instrument.settlement_asset().clone();
+
+        let mut outcome =
+            PolicyPreTradeResult::with_capacity(2, legs.lock_price.is_some() as usize);
+
+        self.reserve_leg_dry_run(
+            request.account_id,
+            &underlying_asset,
+            legs.underlying,
+            &mut outcome,
+        )?;
+        self.reserve_leg_dry_run(
+            request.account_id,
+            &settlement_asset,
+            legs.settlement,
+            &mut outcome,
+        )?;
+
+        if let Some(p) = legs.lock_price {
+            outcome.lock_prices.push(p);
+        }
+
+        Ok(Some(outcome))
+    }
+
+    /// Read-only twin of [`Self::reserve_leg`].
+    ///
+    /// Computes the would-be hold of `amount` for one asset leg through the pure
+    /// [`Holdings::try_hold`] on the current (or zero) holdings, emits the same
+    /// outcome entry and the same rejects as [`Self::reserve_leg`], and mutates
+    /// nothing. A zero `amount` is a clean no-op, identical to the normal path.
+    fn reserve_leg_dry_run(
+        &self,
+        account_id: AccountId,
+        asset: &Asset,
+        amount: PositionSize,
+        outcome: &mut PolicyPreTradeResult,
+    ) -> Result<(), Rejects> {
+        if amount.is_zero() {
+            return Ok(());
+        }
+
+        let current = self
+            .holdings
+            .get(&(account_id, asset.clone()))
+            .unwrap_or_else(Holdings::zero);
+        let new_holdings = current.try_hold(amount).map_err(|err| {
+            Rejects::from(match err {
+                HoldError::ArithmeticOverflow => arithmetic_overflow_reject(
+                    Self::NAME,
+                    RejectScope::Order,
+                    format!(
+                        "pre-trade hold overflow: account {account_id}, \
+                         asset {asset}, requested {amount}",
+                    ),
+                ),
+                HoldError::InsufficientAvailable {
+                    available,
+                    requested,
+                } => insufficient_funds_reject(Self::NAME, asset, account_id, available, requested),
+            })
+        })?;
+
+        outcome.account_adjustments.push(AccountOutcomeEntry {
+            asset: asset.clone(),
+            balance: Some(OutcomeAmount {
+                delta: neg(amount),
+                absolute: new_holdings.available(),
+            }),
+            held: Some(OutcomeAmount {
+                delta: amount,
+                absolute: new_holdings.held(),
+            }),
+            incoming: None,
+        });
+        Ok(())
     }
 
     /// Holds `amount` from `available` to `held` for one asset leg, pushes the

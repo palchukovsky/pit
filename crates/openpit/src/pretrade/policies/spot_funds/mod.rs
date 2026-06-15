@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// Please see https://github.com/openpitkit and the OWNERS file for details.
+// Please see https://openpit.dev and the OWNERS file for details.
 
 //! Pre-trade policy that gates spot orders on sufficient self-funds.
 
@@ -278,6 +278,23 @@ where
         mutations: &mut Mutations,
     ) -> Result<Option<PolicyPreTradeResult>, Rejects> {
         self.perform_pre_trade_check_impl(ctx.account_control.clone(), ctx, order, mutations)
+    }
+
+    /// Dry-run main-stage check.
+    ///
+    /// The normal [`perform_pre_trade_check`](Self::perform_pre_trade_check)
+    /// applies the hold to storage immediately before registering its
+    /// delta-based rollback, so it is an immediate-side-effect policy. This
+    /// override emulates the same verdict, lock prices, and outcome entries
+    /// read-only: it touches no storage and pushes nothing to `mutations`, so a
+    /// dry-run never moves engine state.
+    fn perform_pre_trade_check_dry_run(
+        &self,
+        ctx: &PreTradeContext<<Sync as SyncMode>::StorageLockingPolicyFactory>,
+        order: &Order,
+        _mutations: &mut Mutations,
+    ) -> Result<Option<PolicyPreTradeResult>, Rejects> {
+        self.perform_pre_trade_check_dry_run_impl(ctx, order)
     }
 }
 

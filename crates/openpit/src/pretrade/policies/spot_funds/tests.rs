@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// Please see https://github.com/openpitkit and the OWNERS file for details.
+// Please see https://openpit.dev and the OWNERS file for details.
 
 //! Unit tests for [`SpotFundsPolicy`].
 
@@ -420,6 +420,24 @@ fn pre_trade_check(
     .map(|_| ())
 }
 
+fn dry_run_check(
+    policy: &TestPolicy,
+    order: &TestOrder,
+) -> Result<Option<crate::pretrade::PolicyPreTradeResult>, crate::pretrade::Rejects> {
+    let mut mutations = Mutations::new();
+    let result = <TestPolicy as PreTradePolicy<
+        TestOrder,
+        TestReport,
+        TestAdjustment,
+        crate::core::FullSync,
+    >>::perform_pre_trade_check_dry_run(
+        policy, &PreTradeContext::new(None), order, &mut mutations
+    );
+    // A dry-run must never register a mutation.
+    assert!(mutations.is_empty(), "dry-run must push no mutations");
+    result
+}
+
 fn apply_adj(
     policy: &TestPolicy,
     account_id: AccountId,
@@ -701,6 +719,128 @@ fn buy_qty_limit_insufficient_rejects_insufficient_funds() {
     assert!(mutations.is_empty());
     let h = holdings_of(&policy, acc, &asset("USD")).expect("must exist");
     assert_eq!(h.available(), ps("1000"));
+    assert_eq!(h.held(), ps("0"));
+}
+
+// ── Buy dry-run ─────────────────────────────────────────────────────────────
+
+#[test]
+fn dry_run_buy_reports_outcome_and_leaves_holdings_untouched() {
+    let acc = account(99224416);
+    let policy = build_policy(None, None);
+    seed(&policy, acc, asset("USD"), "10000");
+
+    let order = make_order(
+        acc,
+        instr("AAPL", "USD"),
+        Side::Buy,
+        TradeAmount::Quantity(qty("10")),
+        Some(px("200")),
+    );
+
+    let outcome = dry_run_check(&policy, &order)
+        .expect("dry-run must pass")
+        .expect("dry-run must report an outcome");
+
+    // The would-be settlement leg matches a real reservation: held +2000 to
+    // absolute 2000, balance -2000 to absolute 8000, lock price 200.
+    assert_eq!(outcome.account_adjustments.len(), 1);
+    let entry = &outcome.account_adjustments[0];
+    assert_eq!(entry.asset, asset("USD"));
+    let held = entry.held.expect("held outcome present");
+    assert_eq!(held.delta, ps("2000"));
+    assert_eq!(held.absolute, ps("2000"));
+    let balance = entry.balance.expect("balance outcome present");
+    assert_eq!(balance.delta, ps("-2000"));
+    assert_eq!(balance.absolute, ps("8000"));
+    assert_eq!(outcome.lock_prices.to_vec(), vec![px("200")]);
+
+    // Holdings are untouched by the dry-run.
+    let h = holdings_of(&policy, acc, &asset("USD")).expect("must exist");
+    assert_eq!(h.available(), ps("10000"));
+    assert_eq!(h.held(), ps("0"));
+}
+
+#[test]
+fn dry_run_buy_matches_real_reservation_holdings_then_leaves_them_for_the_real_call() {
+    let acc = account(99224416);
+    let policy = build_policy(None, None);
+    seed(&policy, acc, asset("USD"), "10000");
+
+    let order = make_order(
+        acc,
+        instr("AAPL", "USD"),
+        Side::Buy,
+        TradeAmount::Quantity(qty("10")),
+        Some(px("200")),
+    );
+
+    // Two dry-runs in a row must not move state.
+    dry_run_check(&policy, &order).expect("first dry-run must pass");
+    dry_run_check(&policy, &order).expect("second dry-run must pass");
+    let h = holdings_of(&policy, acc, &asset("USD")).expect("must exist");
+    assert_eq!(h.available(), ps("10000"));
+    assert_eq!(h.held(), ps("0"));
+
+    // A real reservation afterwards still reserves the full amount: the
+    // dry-runs consumed nothing.
+    let mut mutations = Mutations::with_capacity(1);
+    assert!(pre_trade_check(&policy, &order, &mut mutations).is_ok());
+    let h = holdings_of(&policy, acc, &asset("USD")).expect("must exist");
+    assert_eq!(h.held(), ps("2000"));
+    assert_eq!(h.available(), ps("8000"));
+}
+
+#[test]
+fn dry_run_buy_insufficient_reports_same_reject_and_leaves_holdings_untouched() {
+    let acc = account(99224416);
+    let policy = build_policy(None, None);
+    seed(&policy, acc, asset("USD"), "1000");
+
+    let order = make_order(
+        acc,
+        instr("AAPL", "USD"),
+        Side::Buy,
+        TradeAmount::Quantity(qty("10")),
+        Some(px("200")),
+    );
+
+    let rejects = dry_run_check(&policy, &order).expect_err("dry-run must reject");
+    assert_eq!(rejects[0].code, RejectCode::InsufficientFunds);
+
+    // Repeated rejecting dry-runs must not create or mutate holdings.
+    dry_run_check(&policy, &order).expect_err("dry-run must reject again");
+    let h = holdings_of(&policy, acc, &asset("USD")).expect("must exist");
+    assert_eq!(h.available(), ps("1000"));
+    assert_eq!(h.held(), ps("0"));
+}
+
+#[test]
+fn dry_run_sell_reports_underlying_hold_and_leaves_holdings_untouched() {
+    let acc = account(99224416);
+    let policy = build_policy(None, None);
+    seed(&policy, acc, asset("AAPL"), "10");
+
+    let order = make_order(
+        acc,
+        instr("AAPL", "USD"),
+        Side::Sell,
+        TradeAmount::Quantity(qty("4")),
+        Some(px("200")),
+    );
+
+    let outcome = dry_run_check(&policy, &order)
+        .expect("dry-run must pass")
+        .expect("dry-run must report an outcome");
+    assert_eq!(outcome.account_adjustments.len(), 1);
+    let entry = &outcome.account_adjustments[0];
+    assert_eq!(entry.asset, asset("AAPL"));
+    let held = entry.held.expect("held outcome present");
+    assert_eq!(held.delta, ps("4"));
+    assert_eq!(held.absolute, ps("4"));
+
+    let h = holdings_of(&policy, acc, &asset("AAPL")).expect("must exist");
+    assert_eq!(h.available(), ps("10"));
     assert_eq!(h.held(), ps("0"));
 }
 

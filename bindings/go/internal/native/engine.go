@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// Please see https://github.com/openpitkit and the OWNERS file for details.
+// Please see https://openpit.dev and the OWNERS file for details.
 
 package native
 
@@ -503,6 +503,96 @@ func PretradePreTradeRequestExecute(
 
 func DestroyPretradePreTradeRequest(request PretradePreTradeRequest) {
 	C.openpit_destroy_pretrade_pre_trade_request(request)
+}
+
+//------------------------------------------------------------------------------
+// PretradePreTradeDryRunReport
+
+// EngineStartPreTradeDryRun runs the start stage as a non-mutating dry-run.
+//
+// On valid input always returns a non-nil report handle (the verdict is
+// encoded inside); on invalid input returns an error.
+func EngineStartPreTradeDryRun(
+	engine Engine,
+	order Order,
+) (PretradePreTradeDryRunReport, error) {
+	var report PretradePreTradeDryRunReport
+	var outError SharedString
+	if !C.openpit_engine_start_pre_trade_dry_run(
+		engine,
+		&order,
+		&report,
+		C.OpenPitOutError(&outError), //nolint:gocritic // CGo out-parameter requires address-of operator
+	) {
+		return nil,
+			consumeSharedStringAsError(outError, "openpit_engine_start_pre_trade_dry_run failed")
+	}
+	return report, nil
+}
+
+// EngineExecutePreTradeDryRun runs the full pre-trade pipeline as a
+// non-mutating dry-run.
+//
+// On valid input always returns a non-nil report handle (the verdict is
+// encoded inside); on invalid input returns an error.
+func EngineExecutePreTradeDryRun(
+	engine Engine,
+	order Order,
+) (PretradePreTradeDryRunReport, error) {
+	var report PretradePreTradeDryRunReport
+	var outError SharedString
+	if !C.openpit_engine_execute_pre_trade_dry_run(
+		engine,
+		&order,
+		&report,
+		C.OpenPitOutError(&outError), //nolint:gocritic // CGo out-parameter requires address-of operator
+	) {
+		return nil,
+			consumeSharedStringAsError(outError, "openpit_engine_execute_pre_trade_dry_run failed")
+	}
+	return report, nil
+}
+
+func PretradePreTradeDryRunReportIsPass(report PretradePreTradeDryRunReport) bool {
+	return bool(C.openpit_pretrade_pre_trade_dry_run_report_is_pass(report))
+}
+
+// PretradePreTradeDryRunReportGetRejects returns a caller-owned reject list.
+// Release it with DestroyPretradeRejectList.
+func PretradePreTradeDryRunReportGetRejects(
+	report PretradePreTradeDryRunReport,
+) PretradeRejectList {
+	return C.openpit_pretrade_pre_trade_dry_run_report_get_rejects(report)
+}
+
+// PretradePreTradeDryRunReportGetLock returns a caller-owned lock handle.
+// Release it with DestroyPretradePreTradeLock.
+func PretradePreTradeDryRunReportGetLock(
+	report PretradePreTradeDryRunReport,
+) PretradePreTradeLock {
+	return C.openpit_pretrade_pre_trade_dry_run_report_get_lock(report)
+}
+
+// PretradePreTradeDryRunReportGetAccountAdjustments returns a caller-owned
+// account-adjustment outcome list handle. Release it with
+// DestroyAccountAdjustmentOutcomeList.
+func PretradePreTradeDryRunReportGetAccountAdjustments(
+	report PretradePreTradeDryRunReport,
+) AccountAdjustmentOutcomeList {
+	return C.openpit_pretrade_pre_trade_dry_run_report_get_account_adjustments(report)
+}
+
+// PretradePreTradeDryRunReportGetAccountBlock returns a caller-owned
+// account-block list handle (0-or-1 element). Release it with
+// DestroyPretradeAccountBlockList.
+func PretradePreTradeDryRunReportGetAccountBlock(
+	report PretradePreTradeDryRunReport,
+) PretradeAccountBlockList {
+	return C.openpit_pretrade_pre_trade_dry_run_report_get_account_block(report)
+}
+
+func DestroyPretradePreTradeDryRunReport(report PretradePreTradeDryRunReport) {
+	C.openpit_destroy_pretrade_pre_trade_dry_run_report(report)
 }
 
 //------------------------------------------------------------------------------

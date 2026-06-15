@@ -290,6 +290,90 @@ OpenPitPretradePreTradePolicy * openpit_create_pretrade_custom_pre_trade_policy(
 );
 ```
 
+## `openpit_create_pretrade_custom_pre_trade_policy_with_dry_run`
+
+Creates a custom pre-trade policy with explicit dry-run hooks.
+
+This is an additive companion to
+`openpit_create_pretrade_custom_pre_trade_policy`: it takes the same callbacks
+plus a dry-run variant for each pre-trade stage, placed right after its normal
+counterpart. The dry-run callbacks reuse the SAME function-pointer types as
+their normal counterparts - `check_pre_trade_start_dry_run_fn` has the same
+shape as `check_pre_trade_start_fn`, and `perform_pre_trade_check_dry_run_fn`
+the same shape as `perform_pre_trade_check_fn`.
+
+Contract:
+
+- `name` must point to a valid, null-terminated string for the duration of the
+  call.
+- `policy_group_id` is the policy-group tag the engine embeds in every account
+  adjustment outcome this policy produces. Use `0` for the default group.
+- Every callback except `free_user_data_fn` may be null; the null behavior of
+  the normal callbacks matches
+  `openpit_create_pretrade_custom_pre_trade_policy`.
+- A null `check_pre_trade_start_dry_run_fn` or
+  `perform_pre_trade_check_dry_run_fn` leaves that dry-run hook delegating to
+  its normal counterpart (`check_pre_trade_start_fn` /
+  `perform_pre_trade_check_fn` respectively), exactly matching the Rust trait
+  default; pass non-null to install an explicit read-only dry-run variant.
+- Non-null callbacks and `free_user_data_fn` must remain callable for as long
+  as the policy may still be used by either the caller pointer or the engine.
+- Custom main-stage and account-adjustment callbacks can register
+  commit/rollback mutations through their `mutations` pointer.
+- `free_user_data_fn` will be called exactly once, when the last reference to
+  the policy is released.
+- `user_data` is opaque to the SDK: the engine never inspects, dereferences,
+  or frees it; it is forwarded verbatim to the registered callbacks. Lifetime,
+  thread-safety, and meaning of the pointed-at state are entirely the caller's
+  responsibility. Under `OpenPitSyncPolicy_None` or
+  `OpenPitSyncPolicy_Account`, the caller serialises per-handle invocation per
+  the SDK threading contract; under `OpenPitSyncPolicy_Full`, the caller is
+  responsible for making any state reachable through `user_data` safe under
+  concurrent invocation.
+
+A dry-run reports the verdict, lock, and account adjustments the order *would*
+produce without moving engine state. A policy whose normal hooks mutate
+immediately (for example, a rate limiter that spends budget) MUST install
+read-only dry-run hooks here so a dry-run leaves engine state untouched.
+
+Success:
+
+- returns a new caller-owned policy object.
+
+Error:
+
+- returns null when `name` is invalid;
+- if `out_error` is not null, writes a caller-owned `OpenPitSharedString`
+  error handle that MUST be released with `openpit_destroy_shared_string`.
+
+Lifetime contract:
+
+- The policy stores its own copy of `name`; the caller may release the input
+  string after this function returns.
+- The returned pointer is owned by the caller and must be released with
+  `openpit_destroy_pretrade_pre_trade_policy` when no longer needed.
+- If the policy is added to the engine builder, the engine keeps its own
+  reference, but the caller must still release the caller-owned pointer.
+- `free_user_data_fn` runs once the last reference to the policy is released;
+  when the engine is the final holder, it runs as part of engine destruction.
+
+```c
+OpenPitPretradePreTradePolicy *
+openpit_create_pretrade_custom_pre_trade_policy_with_dry_run(
+    OpenPitStringView name,
+    uint16_t policy_group_id,
+    OpenPitPretradePreTradePolicyCheckPreTradeStartFn check_pre_trade_start_fn,
+    OpenPitPretradePreTradePolicyCheckPreTradeStartFn check_pre_trade_start_dry_run_fn,
+    OpenPitPretradePreTradePolicyPerformPreTradeCheckFn perform_pre_trade_check_fn,
+    OpenPitPretradePreTradePolicyPerformPreTradeCheckFn perform_pre_trade_check_dry_run_fn,
+    OpenPitPretradePreTradePolicyApplyExecutionReportFn apply_execution_report_fn,
+    OpenPitPretradePreTradePolicyApplyAccountAdjustmentFn apply_account_adjustment_fn,
+    OpenPitPretradePreTradePolicyFreeUserDataFn free_user_data_fn,
+    void * user_data,
+    OpenPitOutError out_error
+);
+```
+
 ## `OpenPitPretradeContext`
 
 Opaque context passed to main-stage C policy callbacks.

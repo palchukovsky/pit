@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// Please see https://github.com/openpitkit and the OWNERS file for details.
+// Please see https://openpit.dev and the OWNERS file for details.
 
 use std::fmt::{Display, Formatter};
 use std::time::Instant;
@@ -31,8 +31,8 @@ use crate::pretrade::start_pre_trade_time::with_start_pre_trade_now;
 use crate::pretrade::PostTradeContext;
 use crate::pretrade::PreTradePolicy;
 use crate::pretrade::{
-    AccountBlock, PolicyPreTradeResult, PostTradeResult, PreTradeContext, PreTradeLock,
-    PreTradeRequest, PreTradeReservation, Reject, RejectCode, RejectScope, Rejects,
+    AccountBlock, PolicyPreTradeResult, PostTradeResult, PreTradeContext, PreTradeDryRunReport,
+    PreTradeLock, PreTradeRequest, PreTradeReservation, Reject, RejectCode, RejectScope, Rejects,
 };
 use crate::{AccountAdjustmentContext, Mutations};
 
@@ -260,29 +260,11 @@ impl<Trait: EngineTrait> Engine<Trait> {
         let account_groups = AccountGroupsHandle::from_inner(self.inner.account_groups.clone());
         let ctx = PreTradeContext::with_groups(account_control, account_groups, account);
         let (start_rejects, account_block) = with_start_pre_trade_now(now, || {
-            let mut rejects_collection = Vec::new();
-            let mut total_rejects_len = 0;
-            let mut account_block: Option<AccountBlock> = None;
-            for policy in &self.inner.pre_trade_policies {
-                if let Err(rejects) = policy.check_pre_trade_start(&ctx, &order) {
-                    debug_assert!(
-                        !rejects.is_empty(),
-                        "policy returned Err with empty Rejects"
-                    );
-                    total_rejects_len += rejects.len();
-                    if account_block.is_none() {
-                        account_block = rejects
-                            .iter()
-                            .find(|r| r.scope == RejectScope::Account)
-                            .map(|r| r.account_block_with_code(RejectCode::AccountBlocked));
-                    }
-                    rejects_collection.push(rejects);
-                }
-            }
-            debug_assert!(account_block.is_none() || total_rejects_len > 0);
-            (
-                merge_reject_lists(rejects_collection, total_rejects_len),
-                account_block,
+            run_pre_trade_start_stage::<Trait, _>(
+                &self.inner,
+                &ctx,
+                &order,
+                |policy, ctx, order| policy.check_pre_trade_start(ctx, order),
             )
         });
 
@@ -316,6 +298,123 @@ impl<Trait: EngineTrait> Engine<Trait> {
     {
         self.start_pre_trade(order)
             .and_then(PreTradeRequest::execute)
+    }
+
+    /// Runs start-stage checks as a non-mutating dry-run.
+    ///
+    /// Returns a [`PreTradeDryRunReport`] describing the verdict the start stage
+    /// *would* return for `order`, with zero effect on engine state: no policy
+    /// side effect is applied (a rate-limit budget is not spent) and no account
+    /// block is recorded, even when an account-scope reject *would* latch one.
+    /// A repeated dry-run never moves engine state.
+    ///
+    /// The reported lock and account adjustments are always empty: those are
+    /// produced by the main stage, which this method does not run. See
+    /// [`Self::execute_pre_trade_dry_run`] for a full-pipeline dry-run.
+    ///
+    /// The initial blocked-account read still applies, so an already-blocked
+    /// account is reported as rejected.
+    pub fn start_pre_trade_dry_run(&self, order: Trait::Order) -> PreTradeDryRunReport
+    where
+        Trait::Order: HasAccountId,
+    {
+        if let Some(rejects) = self.inner.blocked_accounts.check(
+            &self.inner.account_groups,
+            &order,
+            RejectScope::Order,
+        ) {
+            return PreTradeDryRunReport::new(Some(rejects), PreTradeLock::new(), Vec::new(), None);
+        }
+
+        let now: Instant = Instant::now();
+        let account = order.account_id().ok();
+        let account_control = account.map(|id| {
+            let handle = AccountBlockHandle::from_inner(self.inner.blocked_accounts.clone());
+            AccountControl::new(handle, id)
+        });
+        let account_groups = AccountGroupsHandle::from_inner(self.inner.account_groups.clone());
+        let ctx = PreTradeContext::with_groups(account_control, account_groups, account);
+        let (rejects, account_block) = with_start_pre_trade_now(now, || {
+            run_pre_trade_start_stage::<Trait, _>(
+                &self.inner,
+                &ctx,
+                &order,
+                |policy, ctx, order| policy.check_pre_trade_start_dry_run(ctx, order),
+            )
+        });
+
+        PreTradeDryRunReport::new(rejects, PreTradeLock::new(), Vec::new(), account_block)
+    }
+
+    /// Runs the full pre-trade pipeline as a non-mutating dry-run.
+    ///
+    /// Returns a [`PreTradeDryRunReport`] describing the verdict, the lock, and
+    /// the account adjustments both stages *would* produce for `order`, with
+    /// zero effect on engine state: no rate-limit budget is spent, no
+    /// reservation or hold is applied, and no account block is recorded. Any
+    /// mutations a main-stage policy registers on the dry-run path are dropped -
+    /// neither committed nor rolled back - so a repeated dry-run never moves
+    /// engine state.
+    ///
+    /// The start stage runs first; if it would reject, the report carries those
+    /// rejects (and the would-be account block) and the main stage is skipped,
+    /// exactly as the real pipeline short-circuits. Otherwise the main stage
+    /// runs and the report carries its pass/reject verdict together with the
+    /// would-be lock and account adjustments, whose numbers match what a real
+    /// reservation reports for the same order and engine state.
+    pub fn execute_pre_trade_dry_run(&self, order: Trait::Order) -> PreTradeDryRunReport
+    where
+        Trait::Order: HasAccountId,
+    {
+        if let Some(rejects) = self.inner.blocked_accounts.check(
+            &self.inner.account_groups,
+            &order,
+            RejectScope::Order,
+        ) {
+            return PreTradeDryRunReport::new(Some(rejects), PreTradeLock::new(), Vec::new(), None);
+        }
+
+        let now: Instant = Instant::now();
+        let account = order.account_id().ok();
+        let account_control = account.map(|id| {
+            let handle = AccountBlockHandle::from_inner(self.inner.blocked_accounts.clone());
+            AccountControl::new(handle, id)
+        });
+        let account_groups = AccountGroupsHandle::from_inner(self.inner.account_groups.clone());
+        let ctx = PreTradeContext::with_groups(account_control, account_groups, account);
+
+        let (start_rejects, start_account_block) = with_start_pre_trade_now(now, || {
+            run_pre_trade_start_stage::<Trait, _>(
+                &self.inner,
+                &ctx,
+                &order,
+                |policy, ctx, order| policy.check_pre_trade_start_dry_run(ctx, order),
+            )
+        });
+        if let Some(rejects) = start_rejects {
+            return PreTradeDryRunReport::new(
+                Some(rejects),
+                PreTradeLock::new(),
+                Vec::new(),
+                start_account_block,
+            );
+        }
+
+        // The collected mutations are intentionally discarded: a dry-run never
+        // commits or rolls back. The throwaway `Mutations` only satisfies the
+        // hook signature for any read-only policy that still appends inert
+        // commit/rollback pairs through the default delegation.
+        let (rejects, account_block, _mutations, lock, outcomes) =
+            run_pre_trade_main_stage::<Trait, _>(
+                &self.inner,
+                &ctx,
+                &order,
+                |policy, ctx, order, mutations| {
+                    policy.perform_pre_trade_check_dry_run(ctx, order, mutations)
+                },
+            );
+
+        PreTradeDryRunReport::new(rejects, lock, outcomes, account_block)
     }
 
     /// Applies post-trade updates across all policies and returns aggregated result.
@@ -437,33 +536,97 @@ impl<Trait: EngineTrait> Engine<Trait> {
     }
 }
 
-fn execute_pre_trade_request<Trait: EngineTrait>(
-    engine: <Trait::Sync as SyncMode>::Weak<EngineInner<Trait>>,
-    ctx: PreTradeContext<<Trait::Sync as SyncMode>::StorageLockingPolicyFactory>,
-    order: Trait::Order,
-) -> Result<PreTradeReservation, Rejects>
+/// Concrete pre-trade policy-object shape registered in an engine of `Trait`.
+type PreTradePolicyObjectOf<Trait> =
+    <<Trait as EngineTrait>::Sync as SyncMode>::PreTradePolicyObject<
+        <Trait as EngineTrait>::Order,
+        <Trait as EngineTrait>::ExecutionReport,
+        <Trait as EngineTrait>::AccountAdjustment,
+    >;
+
+/// Pre-trade context type for an engine of `Trait`.
+type PreTradeContextOf<Trait> =
+    PreTradeContext<<<Trait as EngineTrait>::Sync as SyncMode>::StorageLockingPolicyFactory>;
+
+/// Runs the start stage over every policy and reports the merged verdict
+/// **without** applying any side effect.
+///
+/// `hook` selects the per-policy entry point (the normal
+/// [`check_pre_trade_start`](PreTradePolicy::check_pre_trade_start) or its
+/// dry-run variant); the loop, reject merge, and first-account-block selection
+/// are identical for both. The caller decides whether to record the returned
+/// [`AccountBlock`] - this function never touches the blocked-accounts registry.
+fn run_pre_trade_start_stage<Trait, Hook>(
+    inner: &EngineInner<Trait>,
+    ctx: &PreTradeContextOf<Trait>,
+    order: &Trait::Order,
+    hook: Hook,
+) -> (Option<Rejects>, Option<AccountBlock>)
 where
-    Trait::Order: HasAccountId,
+    Trait: EngineTrait,
+    Hook: Fn(
+        &PreTradePolicyObjectOf<Trait>,
+        &PreTradeContextOf<Trait>,
+        &Trait::Order,
+    ) -> Result<(), Rejects>,
 {
-    let Some(engine_ref) = <Trait::Sync as SyncMode>::upgrade(&engine) else {
-        return Err(Rejects::new(vec![Reject::new(
-            "Engine",
-            RejectScope::Order,
-            RejectCode::SystemUnavailable,
-            "engine is no longer available",
-            "request handle outlived engine instance".to_owned(),
-        )]));
-    };
-    let inner: &EngineInner<Trait> = &engine_ref;
-
-    if let Some(rejects) =
-        inner
-            .blocked_accounts
-            .check(&inner.account_groups, &order, RejectScope::Order)
-    {
-        return Err(rejects);
+    let mut rejects_collection = Vec::new();
+    let mut total_rejects_len = 0;
+    let mut account_block: Option<AccountBlock> = None;
+    for policy in &inner.pre_trade_policies {
+        if let Err(rejects) = hook(&**policy, ctx, order) {
+            debug_assert!(
+                !rejects.is_empty(),
+                "policy returned Err with empty Rejects"
+            );
+            total_rejects_len += rejects.len();
+            if account_block.is_none() {
+                account_block = rejects
+                    .iter()
+                    .find(|r| r.scope == RejectScope::Account)
+                    .map(|r| r.account_block_with_code(RejectCode::AccountBlocked));
+            }
+            rejects_collection.push(rejects);
+        }
     }
+    debug_assert!(account_block.is_none() || total_rejects_len > 0);
+    (
+        merge_reject_lists(rejects_collection, total_rejects_len),
+        account_block,
+    )
+}
 
+/// Runs the main stage over every policy and reports the merged verdict, the
+/// collected mutations, the assembled lock, and the account outcomes
+/// **without** committing, rolling back, or recording anything.
+///
+/// `hook` selects the per-policy entry point (the normal
+/// [`perform_pre_trade_check`](PreTradePolicy::perform_pre_trade_check) or its
+/// dry-run variant); the loop, reject merge, first-account-block selection, lock
+/// assembly, and outcome tagging are identical for both. The caller decides what
+/// to do with the returned [`Mutations`] (commit, roll back, or drop) and
+/// whether to record the returned [`AccountBlock`].
+fn run_pre_trade_main_stage<Trait, Hook>(
+    inner: &EngineInner<Trait>,
+    ctx: &PreTradeContextOf<Trait>,
+    order: &Trait::Order,
+    hook: Hook,
+) -> (
+    Option<Rejects>,
+    Option<AccountBlock>,
+    Mutations,
+    PreTradeLock,
+    Vec<AccountAdjustmentOutcome>,
+)
+where
+    Trait: EngineTrait,
+    Hook: Fn(
+        &PreTradePolicyObjectOf<Trait>,
+        &PreTradeContextOf<Trait>,
+        &Trait::Order,
+        &mut Mutations,
+    ) -> Result<Option<PolicyPreTradeResult>, Rejects>,
+{
     let policy_count = inner.pre_trade_policies.len();
     let mut mutations = Mutations::with_capacity(policy_count);
     let mut rejects_collection = Vec::new();
@@ -472,7 +635,7 @@ where
     let mut lock = PreTradeLock::new();
     let mut first_account_block: Option<AccountBlock> = None;
     for policy in &inner.pre_trade_policies {
-        match policy.perform_pre_trade_check(&ctx, &order, &mut mutations) {
+        match hook(&**policy, ctx, order, &mut mutations) {
             Ok(None) => {}
             Ok(Some(outcome)) => {
                 let PolicyPreTradeResult {
@@ -506,7 +669,51 @@ where
     }
 
     debug_assert!(first_account_block.is_none() || total_rejects_len > 0);
-    if let Some(rejects) = merge_reject_lists(rejects_collection, total_rejects_len) {
+    (
+        merge_reject_lists(rejects_collection, total_rejects_len),
+        first_account_block,
+        mutations,
+        lock,
+        outcomes,
+    )
+}
+
+fn execute_pre_trade_request<Trait: EngineTrait>(
+    engine: <Trait::Sync as SyncMode>::Weak<EngineInner<Trait>>,
+    ctx: PreTradeContext<<Trait::Sync as SyncMode>::StorageLockingPolicyFactory>,
+    order: Trait::Order,
+) -> Result<PreTradeReservation, Rejects>
+where
+    Trait::Order: HasAccountId,
+{
+    let Some(engine_ref) = <Trait::Sync as SyncMode>::upgrade(&engine) else {
+        return Err(Rejects::new(vec![Reject::new(
+            "Engine",
+            RejectScope::Order,
+            RejectCode::SystemUnavailable,
+            "engine is no longer available",
+            "request handle outlived engine instance".to_owned(),
+        )]));
+    };
+    let inner: &EngineInner<Trait> = &engine_ref;
+
+    if let Some(rejects) =
+        inner
+            .blocked_accounts
+            .check(&inner.account_groups, &order, RejectScope::Order)
+    {
+        return Err(rejects);
+    }
+
+    let (rejects, first_account_block, mutations, lock, outcomes) =
+        run_pre_trade_main_stage::<Trait, _>(
+            inner,
+            &ctx,
+            &order,
+            |policy, ctx, order, mutations| policy.perform_pre_trade_check(ctx, order, mutations),
+        );
+
+    if let Some(rejects) = rejects {
         if let Some(block) = first_account_block {
             inner.blocked_accounts.record(&order, block);
         }
@@ -542,15 +749,17 @@ mod tests {
         ExecutionReportOperation, FinancialImpact, Instrument, OrderOperation,
         WithExecutionReportOperation, WithFinancialImpact, WithOrderOperation,
     };
-    use crate::param::{AccountId, Asset, Fee, Pnl, Price, Quantity, Side, TradeAmount, Volume};
+    use crate::param::{
+        AccountId, Asset, Fee, Pnl, PositionSize, Price, Quantity, Side, TradeAmount, Volume,
+    };
     use crate::pretrade::{
-        PolicyPreTradeResult, PostTradeResult, PreTradeContext, PreTradePolicy, Reject, RejectCode,
-        RejectScope, Rejects,
+        PolicyPreTradeResult, PostTradeResult, PreTradeContext, PreTradeDryRunReport,
+        PreTradePolicy, Reject, RejectCode, RejectScope, Rejects, DEFAULT_POLICY_GROUP_ID,
     };
     use crate::storage::NoLocking;
     use crate::{
         AccountAdjustmentContext, AccountOutcomeEntry, HasAccountId, Mutation, Mutations,
-        RequestFieldAccessError,
+        OutcomeAmount, RequestFieldAccessError,
     };
 
     use super::{AccountAdjustmentBatchError, Engine, FullSyncEngine, LocalEngine};
@@ -1150,7 +1359,9 @@ mod tests {
         let order = NoAccountOrder;
 
         let result = engine.start_pre_trade(order);
-        let rejects = result.expect_err("start stage must reject");
+        let Err(rejects) = result else {
+            panic!("start stage must reject");
+        };
         assert_eq!(rejects.len(), 1);
         assert_eq!(rejects[0].policy, "core_start_reject");
         assert_eq!(rejects[0].code, RejectCode::Other);
@@ -1718,7 +1929,9 @@ mod tests {
         blocked.set(false);
 
         let second = engine.start_pre_trade(order_with_settlement("USD"));
-        let rejects = second.expect_err("account must stay blocked");
+        let Err(rejects) = second else {
+            panic!("account must stay blocked");
+        };
         assert_eq!(rejects[0].code, RejectCode::AccountBlocked);
         assert_eq!(rejects[0].policy, "toggle");
     }
@@ -1785,7 +1998,9 @@ mod tests {
             .expect("engine must build");
 
         let result = engine.start_pre_trade(tagged_order("ord-reject", "AAPL", "1", "10"));
-        let rejects = result.expect_err("start stage must reject");
+        let Err(rejects) = result else {
+            panic!("start stage must reject");
+        };
         assert_eq!(rejects.len(), 1);
         assert_eq!(rejects[0].policy, "tagged_start_reject");
         assert_eq!(rejects[0].code, RejectCode::Other);
@@ -3219,5 +3434,210 @@ mod tests {
     fn account_sync_engine_is_send() {
         fn assert_send<T: Send>() {}
         assert_send::<super::AccountSyncEngine<OrderOperation>>();
+    }
+
+    // ── pre-trade dry-run ──────────────────────────────────────────────────────
+
+    fn ps(value: &str) -> PositionSize {
+        PositionSize::from_str(value).expect("position size must be valid")
+    }
+
+    /// Main-stage mock whose normal hook mutates immediately (bumping a shared
+    /// counter and registering a commit/rollback pair), while its dry-run hook is
+    /// read-only. Both hooks report the identical lock price and outcome entry, so
+    /// a dry-run report can be compared field-for-field against a real
+    /// reservation.
+    struct ImmediateSideEffectMainPolicy {
+        name: &'static str,
+        immediate_calls: Rc<Cell<usize>>,
+        committed: Rc<Cell<bool>>,
+    }
+
+    impl ImmediateSideEffectMainPolicy {
+        fn result() -> PolicyPreTradeResult {
+            let mut result = PolicyPreTradeResult::with_capacity(1, 1);
+            result.account_adjustments.push(AccountOutcomeEntry {
+                asset: Asset::new("USD").expect("asset must be valid"),
+                balance: Some(OutcomeAmount {
+                    delta: ps("-5"),
+                    absolute: ps("95"),
+                }),
+                held: Some(OutcomeAmount {
+                    delta: ps("5"),
+                    absolute: ps("5"),
+                }),
+                incoming: None,
+            });
+            result
+                .lock_prices
+                .push(Price::from_str("100").expect("price must be valid"));
+            result
+        }
+    }
+
+    impl<Sync: crate::core::SyncMode> PreTradePolicy<TestOrder, TestReport, TestAdjustment, Sync>
+        for ImmediateSideEffectMainPolicy
+    {
+        fn name(&self) -> &str {
+            self.name
+        }
+
+        fn perform_pre_trade_check(
+            &self,
+            _ctx: &PreTradeContext<<Sync as crate::core::SyncMode>::StorageLockingPolicyFactory>,
+            _order: &TestOrder,
+            mutations: &mut Mutations,
+        ) -> Result<Option<PolicyPreTradeResult>, Rejects> {
+            self.immediate_calls.set(self.immediate_calls.get() + 1);
+            let committed = Rc::clone(&self.committed);
+            mutations.push(Mutation::new(move || committed.set(true), || {}));
+            Ok(Some(Self::result()))
+        }
+
+        fn perform_pre_trade_check_dry_run(
+            &self,
+            _ctx: &PreTradeContext<<Sync as crate::core::SyncMode>::StorageLockingPolicyFactory>,
+            _order: &TestOrder,
+            _mutations: &mut Mutations,
+        ) -> Result<Option<PolicyPreTradeResult>, Rejects> {
+            Ok(Some(Self::result()))
+        }
+    }
+
+    #[test]
+    fn execute_dry_run_does_not_trigger_immediate_side_effects_or_commit() {
+        let immediate_calls = Rc::new(Cell::new(0));
+        let committed = Rc::new(Cell::new(false));
+        let engine = Engine::builder()
+            .no_sync()
+            .pre_trade(StartPolicyMock::pass("start"))
+            .pre_trade(ImmediateSideEffectMainPolicy {
+                name: "immediate_main",
+                immediate_calls: Rc::clone(&immediate_calls),
+                committed: Rc::clone(&committed),
+            })
+            .build()
+            .expect("engine must build");
+
+        let report = engine.execute_pre_trade_dry_run(order_with_settlement("USD"));
+        engine.execute_pre_trade_dry_run(order_with_settlement("USD"));
+
+        assert!(report.is_pass());
+        // The dry-run hook is read-only: the immediate side effect never fired
+        // and no commit ran.
+        assert_eq!(immediate_calls.get(), 0);
+        assert!(!committed.get());
+    }
+
+    #[test]
+    fn execute_dry_run_report_matches_real_reservation_lock_and_adjustments() {
+        let build_engine = || {
+            Engine::builder()
+                .no_sync()
+                .pre_trade(StartPolicyMock::pass("start"))
+                .pre_trade(ImmediateSideEffectMainPolicy {
+                    name: "immediate_main",
+                    immediate_calls: Rc::new(Cell::new(0)),
+                    committed: Rc::new(Cell::new(false)),
+                })
+                .build()
+                .expect("engine must build")
+        };
+
+        let dry_run_engine = build_engine();
+        let report = dry_run_engine.execute_pre_trade_dry_run(order_with_settlement("USD"));
+
+        let real_engine = build_engine();
+        let reservation = real_engine
+            .execute_pre_trade(order_with_settlement("USD"))
+            .expect("real execute must pass");
+
+        assert!(report.is_pass());
+        assert_eq!(report.rejects(), None);
+        assert_eq!(report.account_block(), None);
+        assert_eq!(report.lock(), reservation.lock());
+        assert_eq!(
+            report.account_adjustments(),
+            reservation.account_adjustments()
+        );
+
+        let prices: Vec<_> = report.lock().prices_of(DEFAULT_POLICY_GROUP_ID).collect();
+        assert_eq!(prices, vec![Price::from_str("100").expect("price valid")]);
+        assert_eq!(report.account_adjustments().len(), 1);
+        drop(reservation);
+    }
+
+    #[test]
+    fn start_dry_run_reports_account_block_without_recording_it() {
+        let blocked = Rc::new(Cell::new(true));
+        let engine = Engine::builder()
+            .no_sync()
+            .pre_trade(StartPolicyMock::with_block_flag(
+                "toggle",
+                Rc::clone(&blocked),
+            ))
+            .build()
+            .expect("engine must build");
+
+        let report = engine.start_pre_trade_dry_run(order_with_settlement("USD"));
+        assert!(!report.is_pass());
+        let rejects = report.rejects().expect("dry-run must report rejects");
+        assert_eq!(rejects[0].scope, RejectScope::Account);
+        assert_eq!(rejects[0].policy, "toggle");
+        let block = report
+            .account_block()
+            .expect("account-scope reject must surface a would-be block");
+        assert_eq!(block.code, RejectCode::AccountBlocked);
+        assert_eq!(block.policy, "toggle");
+
+        // The dry-run must NOT have latched the block: with the flag cleared a
+        // real start now passes, unlike the permanent-block normal path.
+        blocked.set(false);
+        assert!(engine.start_pre_trade(order_with_settlement("USD")).is_ok());
+    }
+
+    #[test]
+    fn execute_dry_run_reports_main_stage_reject_without_recording_block() {
+        let engine = Engine::builder()
+            .no_sync()
+            .pre_trade(StartPolicyMock::pass("start"))
+            .pre_trade(MainPolicyMock::with_mutation_and_optional_reject(
+                "rejecting_main",
+                "m1",
+                true,
+                RejectScope::Account,
+            ))
+            .build()
+            .expect("engine must build");
+
+        let report = engine.execute_pre_trade_dry_run(order_with_settlement("USD"));
+        assert!(!report.is_pass());
+        let rejects = report.rejects().expect("must report rejects");
+        assert_eq!(rejects[0].policy, "rejecting_main");
+        assert_eq!(rejects[0].scope, RejectScope::Account);
+        assert!(report.account_block().is_some());
+
+        // No block was recorded: the start stage (which only consults the
+        // blocked-accounts set before any main-stage policy runs) still admits
+        // the same account. A real account-scope main-stage reject would have
+        // latched a block that fails this check.
+        assert!(engine.start_pre_trade(order_with_settlement("USD")).is_ok());
+    }
+
+    #[test]
+    fn start_dry_run_on_blocked_account_reports_rejects() {
+        let engine = Engine::builder()
+            .no_sync()
+            .pre_trade(StartPolicyMock::pass("start"))
+            .build()
+            .expect("engine must build");
+
+        engine
+            .accounts()
+            .block(AccountId::from_u64(99224416), "blocked".to_string());
+
+        let report: PreTradeDryRunReport =
+            engine.start_pre_trade_dry_run(order_with_settlement("USD"));
+        assert!(!report.is_pass());
     }
 }

@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// Please see https://github.com/openpitkit and the OWNERS file for details.
+// Please see https://openpit.dev and the OWNERS file for details.
 
 #![allow(
     clippy::arc_with_non_send_sync,
@@ -234,6 +234,12 @@ pub(super) struct CustomPreTradePolicy {
     pub(super) check_pre_trade_start_fn: Option<OpenPitPretradePreTradePolicyCheckPreTradeStartFn>,
     pub(super) perform_pre_trade_check_fn:
         Option<OpenPitPretradePreTradePolicyPerformPreTradeCheckFn>,
+    // Dry-run hooks are set at construction. `None` means "delegate to the
+    // matching normal hook", matching the Rust trait default.
+    pub(super) check_pre_trade_start_dry_run_fn:
+        Option<OpenPitPretradePreTradePolicyCheckPreTradeStartFn>,
+    pub(super) perform_pre_trade_check_dry_run_fn:
+        Option<OpenPitPretradePreTradePolicyPerformPreTradeCheckFn>,
     pub(super) apply_execution_report_fn:
         Option<OpenPitPretradePreTradePolicyApplyExecutionReportFn>,
     pub(super) apply_account_adjustment_fn:
@@ -298,6 +304,64 @@ impl PreTradePolicy<Order, ExecutionReport, AccountAdjustment, openpit_interop::
     ) -> Result<Option<PolicyPreTradeResult>, Rejects> {
         let Some(check_fn) = self.perform_pre_trade_check_fn else {
             return Ok(None);
+        };
+        let mut mutations_handle = OpenPitMutations {
+            mutations: mutations as *mut Mutations,
+        };
+        let mut out_result = OpenPitPretradePreTradeResult {
+            lock_prices: Vec::new(),
+            account_adjustments: Vec::new(),
+        };
+        let input = export_order(order);
+        let c_ctx =
+            (ctx as *const PreTradeContext<StorageFactory>).cast::<OpenPitPretradeContext>();
+        let rejects = unsafe {
+            check_fn(
+                c_ctx,
+                &input,
+                &mut mutations_handle,
+                &mut out_result,
+                self.user_data,
+            )
+        };
+        import_reject_list_result(rejects)?;
+        if out_result.lock_prices.is_empty() && out_result.account_adjustments.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(PolicyPreTradeResult {
+                account_adjustments: out_result.account_adjustments.into(),
+                lock_prices: out_result.lock_prices.into(),
+            }))
+        }
+    }
+
+    fn check_pre_trade_start_dry_run(
+        &self,
+        ctx: &PreTradeContext<StorageFactory>,
+        order: &Order,
+    ) -> Result<(), Rejects> {
+        // A null dry-run hook delegates to the normal start-stage hook, matching
+        // the Rust trait default exactly.
+        let Some(check_fn) = self.check_pre_trade_start_dry_run_fn else {
+            return self.check_pre_trade_start(ctx, order);
+        };
+        let input = export_order(order);
+        let c_ctx =
+            (ctx as *const PreTradeContext<StorageFactory>).cast::<OpenPitPretradeContext>();
+        let rejects = unsafe { check_fn(c_ctx, &input, self.user_data) };
+        import_reject_list_result(rejects)
+    }
+
+    fn perform_pre_trade_check_dry_run(
+        &self,
+        ctx: &PreTradeContext<StorageFactory>,
+        order: &Order,
+        mutations: &mut Mutations,
+    ) -> Result<Option<PolicyPreTradeResult>, Rejects> {
+        // A null dry-run hook delegates to the normal main-stage hook, matching
+        // the Rust trait default exactly.
+        let Some(check_fn) = self.perform_pre_trade_check_dry_run_fn else {
+            return self.perform_pre_trade_check(ctx, order, mutations);
         };
         let mut mutations_handle = OpenPitMutations {
             mutations: mutations as *mut Mutations,
@@ -490,6 +554,57 @@ pub unsafe extern "C" fn openpit_create_pretrade_custom_pre_trade_policy(
     user_data: *mut c_void,
     out_error: OpenPitOutError,
 ) -> *mut OpenPitPretradePreTradePolicy {
+    // Both dry-run hooks are left delegating to their normal counterparts; use
+    // `openpit_create_pretrade_custom_pre_trade_policy_with_dry_run` to install
+    // explicit read-only dry-run variants.
+    unsafe {
+        build_custom_pre_trade_policy(
+            name,
+            policy_group_id,
+            CustomPreTradeCallbacks {
+                check_pre_trade_start_fn,
+                perform_pre_trade_check_fn,
+                check_pre_trade_start_dry_run_fn: None,
+                perform_pre_trade_check_dry_run_fn: None,
+                apply_execution_report_fn,
+                apply_account_adjustment_fn,
+            },
+            free_user_data_fn,
+            user_data,
+            out_error,
+        )
+    }
+}
+
+/// Builds a `CustomPreTradePolicy` from caller-provided callbacks and wraps it in
+/// a caller-owned, type-erased policy handle.
+///
+/// Shared body of `openpit_create_pretrade_custom_pre_trade_policy` and
+/// `openpit_create_pretrade_custom_pre_trade_policy_with_dry_run`: the former
+/// passes `None` for both dry-run hooks, the latter forwards the caller's hooks.
+/// The dry-run hooks are baked in before type erasure, so the resulting handle is
+/// immutable.
+/// Callback set shared by the two custom pre-trade policy constructors.
+///
+/// Groups the per-stage hooks so the shared builder keeps a small argument list;
+/// the public `extern "C"` constructors pack their flat parameters into this.
+struct CustomPreTradeCallbacks {
+    check_pre_trade_start_fn: Option<OpenPitPretradePreTradePolicyCheckPreTradeStartFn>,
+    perform_pre_trade_check_fn: Option<OpenPitPretradePreTradePolicyPerformPreTradeCheckFn>,
+    check_pre_trade_start_dry_run_fn: Option<OpenPitPretradePreTradePolicyCheckPreTradeStartFn>,
+    perform_pre_trade_check_dry_run_fn: Option<OpenPitPretradePreTradePolicyPerformPreTradeCheckFn>,
+    apply_execution_report_fn: Option<OpenPitPretradePreTradePolicyApplyExecutionReportFn>,
+    apply_account_adjustment_fn: Option<OpenPitPretradePreTradePolicyApplyAccountAdjustmentFn>,
+}
+
+unsafe fn build_custom_pre_trade_policy(
+    name: OpenPitStringView,
+    policy_group_id: u16,
+    callbacks: CustomPreTradeCallbacks,
+    free_user_data_fn: OpenPitPretradePreTradePolicyFreeUserDataFn,
+    user_data: *mut c_void,
+    out_error: OpenPitOutError,
+) -> *mut OpenPitPretradePreTradePolicy {
     let name = match unsafe { parse_policy_name(name, out_error) } {
         Some(v) => v,
         None => return std::ptr::null_mut(),
@@ -498,15 +613,111 @@ pub unsafe extern "C" fn openpit_create_pretrade_custom_pre_trade_policy(
     let policy = CustomPreTradePolicy {
         name,
         policy_group_id: PolicyGroupId::new(policy_group_id),
-        check_pre_trade_start_fn,
-        perform_pre_trade_check_fn,
-        apply_execution_report_fn,
-        apply_account_adjustment_fn,
+        check_pre_trade_start_fn: callbacks.check_pre_trade_start_fn,
+        perform_pre_trade_check_fn: callbacks.perform_pre_trade_check_fn,
+        check_pre_trade_start_dry_run_fn: callbacks.check_pre_trade_start_dry_run_fn,
+        perform_pre_trade_check_dry_run_fn: callbacks.perform_pre_trade_check_dry_run_fn,
+        apply_execution_report_fn: callbacks.apply_execution_report_fn,
+        apply_account_adjustment_fn: callbacks.apply_account_adjustment_fn,
         free_user_data_fn,
         user_data,
     };
 
     OpenPitPretradePreTradePolicy::new(Arc::new(policy))
+}
+
+#[no_mangle]
+/// Creates a custom pre-trade policy with explicit dry-run hooks.
+///
+/// This is an additive companion to
+/// `openpit_create_pretrade_custom_pre_trade_policy`: it takes the same callbacks
+/// plus a dry-run variant for each pre-trade stage, placed right after its normal
+/// counterpart. The dry-run callbacks reuse the SAME function-pointer types as
+/// their normal counterparts - `check_pre_trade_start_dry_run_fn` has the same
+/// shape as `check_pre_trade_start_fn`, and `perform_pre_trade_check_dry_run_fn`
+/// the same shape as `perform_pre_trade_check_fn`.
+///
+/// Contract:
+/// - `name` must point to a valid, null-terminated string for the duration of
+///   the call.
+/// - `policy_group_id` is the policy-group tag the engine embeds in every
+///   account adjustment outcome this policy produces. Use `0` for the default
+///   group.
+/// - Every callback except `free_user_data_fn` may be null; the null behavior of
+///   the normal callbacks matches `openpit_create_pretrade_custom_pre_trade_policy`.
+/// - A null `check_pre_trade_start_dry_run_fn` or
+///   `perform_pre_trade_check_dry_run_fn` leaves that dry-run hook delegating to
+///   its normal counterpart (`check_pre_trade_start_fn` /
+///   `perform_pre_trade_check_fn` respectively), exactly matching the Rust trait
+///   default; pass non-null to install an explicit read-only dry-run variant.
+/// - Non-null callbacks and `free_user_data_fn` must remain callable for as long
+///   as the policy may still be used by either the caller pointer or the engine.
+/// - Custom main-stage and account-adjustment callbacks can register
+///   commit/rollback mutations through their `mutations` pointer.
+/// - `free_user_data_fn` will be called exactly once, when the last reference
+///   to the policy is released.
+/// - `user_data` is opaque to the SDK: the engine never inspects, dereferences,
+///   or frees it; it is forwarded verbatim to the registered callbacks.
+///   Lifetime, thread-safety, and meaning of the pointed-at state are entirely
+///   the caller's responsibility. Under `OpenPitSyncPolicy_None` or
+///   `OpenPitSyncPolicy_Account`, the caller serialises per-handle invocation per
+///   the SDK threading contract; under `OpenPitSyncPolicy_Full`, the caller is
+///   responsible for making any state reachable through `user_data` safe under
+///   concurrent invocation.
+///
+/// A dry-run reports the verdict, lock, and account adjustments the order *would*
+/// produce without moving engine state. A policy whose normal hooks mutate
+/// immediately (for example, a rate limiter that spends budget) MUST install
+/// read-only dry-run hooks here so a dry-run leaves engine state untouched.
+///
+/// Success:
+/// - returns a new caller-owned policy object.
+///
+/// Error:
+/// - returns null when `name` is invalid;
+/// - if `out_error` is not null, writes a caller-owned `OpenPitSharedString`
+///   error handle that MUST be released with `openpit_destroy_shared_string`.
+///
+/// Lifetime contract:
+/// - The policy stores its own copy of `name`; the caller may release the input
+///   string after this function returns.
+/// - The returned pointer is owned by the caller and must be released with
+///   `openpit_destroy_pretrade_pre_trade_policy` when no longer needed.
+/// - If the policy is added to the engine builder, the engine keeps its own
+///   reference, but the caller must still release the caller-owned pointer.
+/// - `free_user_data_fn` runs once the last reference to the policy is
+///   released; when the engine is the final holder, it runs as part of engine
+///   destruction.
+pub unsafe extern "C" fn openpit_create_pretrade_custom_pre_trade_policy_with_dry_run(
+    name: OpenPitStringView,
+    policy_group_id: u16,
+    check_pre_trade_start_fn: Option<OpenPitPretradePreTradePolicyCheckPreTradeStartFn>,
+    check_pre_trade_start_dry_run_fn: Option<OpenPitPretradePreTradePolicyCheckPreTradeStartFn>,
+    perform_pre_trade_check_fn: Option<OpenPitPretradePreTradePolicyPerformPreTradeCheckFn>,
+    perform_pre_trade_check_dry_run_fn: Option<OpenPitPretradePreTradePolicyPerformPreTradeCheckFn>,
+    apply_execution_report_fn: Option<OpenPitPretradePreTradePolicyApplyExecutionReportFn>,
+    apply_account_adjustment_fn: Option<OpenPitPretradePreTradePolicyApplyAccountAdjustmentFn>,
+    free_user_data_fn: OpenPitPretradePreTradePolicyFreeUserDataFn,
+    user_data: *mut c_void,
+    out_error: OpenPitOutError,
+) -> *mut OpenPitPretradePreTradePolicy {
+    unsafe {
+        build_custom_pre_trade_policy(
+            name,
+            policy_group_id,
+            CustomPreTradeCallbacks {
+                check_pre_trade_start_fn,
+                perform_pre_trade_check_fn,
+                check_pre_trade_start_dry_run_fn,
+                perform_pre_trade_check_dry_run_fn,
+                apply_execution_report_fn,
+                apply_account_adjustment_fn,
+            },
+            free_user_data_fn,
+            user_data,
+            out_error,
+        )
+    }
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -684,6 +895,8 @@ mod tests {
                 policy_group_id: PolicyGroupId::new(0),
                 check_pre_trade_start_fn: None,
                 perform_pre_trade_check_fn: Some(check_fn),
+                check_pre_trade_start_dry_run_fn: None,
+                perform_pre_trade_check_dry_run_fn: None,
                 apply_execution_report_fn: Some(custom_apply_report_fn),
                 apply_account_adjustment_fn: None,
                 free_user_data_fn: custom_free_user_data_fn,
@@ -1207,5 +1420,167 @@ mod tests {
 
         crate::engine::openpit_destroy_engine(engine);
         crate::engine::openpit_destroy_engine_builder(builder);
+    }
+
+    unsafe extern "C" fn reject_main_stage_check_fn(
+        _ctx: *const OpenPitPretradeContext,
+        _order: *const OpenPitOrder,
+        _mutations: *mut OpenPitMutations,
+        _out_result: *mut OpenPitPretradePreTradeResult,
+        _user_data: *mut c_void,
+    ) -> *mut OpenPitPretradeRejectList {
+        let rejects = crate::reject::openpit_pretrade_create_reject_list(1);
+        crate::reject::openpit_pretrade_reject_list_push(
+            rejects,
+            crate::reject::OpenPitPretradeReject {
+                policy: OpenPitStringView::from_utf8("dry.run.custom"),
+                reason: OpenPitStringView::from_utf8("blocked"),
+                details: OpenPitStringView::from_utf8("by normal hook"),
+                user_data: std::ptr::null_mut(),
+                code: crate::reject::OpenPitPretradeRejectCode::RiskLimitExceeded,
+                scope: crate::reject::OpenPitPretradeRejectScope::Order,
+            },
+        );
+        rejects
+    }
+
+    unsafe extern "C" fn pass_main_stage_dry_run_check_fn(
+        _ctx: *const OpenPitPretradeContext,
+        _order: *const OpenPitOrder,
+        _mutations: *mut OpenPitMutations,
+        _out_result: *mut OpenPitPretradePreTradeResult,
+        _user_data: *mut c_void,
+    ) -> *mut OpenPitPretradeRejectList {
+        std::ptr::null_mut()
+    }
+
+    fn build_engine_with_custom_policy(
+        policy: *mut OpenPitPretradePreTradePolicy,
+    ) -> *mut crate::engine::OpenPitEngine {
+        let builder = crate::engine::openpit_create_engine_builder(
+            crate::engine::OpenPitSyncPolicy::Full as u8,
+            std::ptr::null_mut(),
+        );
+        assert!(openpit_engine_builder_add_pre_trade_policy(
+            builder,
+            policy,
+            std::ptr::null_mut()
+        ));
+        openpit_destroy_pretrade_pre_trade_policy(policy);
+        let engine = crate::engine::openpit_engine_builder_build(
+            builder,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        );
+        assert!(!engine.is_null());
+        crate::engine::openpit_destroy_engine_builder(builder);
+        engine
+    }
+
+    #[test]
+    fn dry_run_without_hook_delegates_to_normal_main_stage_hook() {
+        // No dry-run hook installed: the dry-run path must delegate to the normal
+        // main-stage hook, which rejects, so the report is a reject.
+        let name = OpenPitStringView::from_utf8("dry.run.delegate");
+        let policy = unsafe {
+            openpit_create_pretrade_custom_pre_trade_policy(
+                name,
+                0,
+                None,
+                Some(reject_main_stage_check_fn),
+                Some(custom_apply_report_fn),
+                None,
+                custom_free_user_data_fn,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+        assert!(!policy.is_null());
+        let engine = build_engine_with_custom_policy(policy);
+
+        let order = crate::order::OpenPitOrder::default();
+        let mut out_report = std::ptr::null_mut();
+        assert!(crate::engine::openpit_engine_execute_pre_trade_dry_run(
+            engine,
+            &order,
+            &mut out_report,
+            std::ptr::null_mut(),
+        ));
+        assert!(!out_report.is_null());
+        assert!(
+            !crate::engine::openpit_pretrade_pre_trade_dry_run_report_is_pass(out_report),
+            "delegating dry-run must reflect the rejecting normal hook"
+        );
+        let rejects =
+            crate::engine::openpit_pretrade_pre_trade_dry_run_report_get_rejects(out_report);
+        assert_eq!(crate::reject::openpit_pretrade_reject_list_len(rejects), 1);
+        crate::reject::openpit_pretrade_destroy_reject_list(rejects);
+
+        crate::engine::openpit_destroy_pretrade_pre_trade_dry_run_report(out_report);
+        crate::engine::openpit_destroy_engine(engine);
+    }
+
+    #[test]
+    fn explicit_dry_run_hook_overrides_normal_main_stage_hook() {
+        // The normal hook rejects, but an explicit passing dry-run hook is
+        // installed at construction via the `_with_dry_run` constructor: the
+        // dry-run path must use the dry-run hook and report a pass, proving the
+        // constructor wires the hook and that the dry-run path is distinct from
+        // the normal path.
+        let name = OpenPitStringView::from_utf8("dry.run.override");
+        let policy = unsafe {
+            openpit_create_pretrade_custom_pre_trade_policy_with_dry_run(
+                name,
+                0,
+                None,
+                None,
+                Some(reject_main_stage_check_fn),
+                Some(pass_main_stage_dry_run_check_fn),
+                Some(custom_apply_report_fn),
+                None,
+                custom_free_user_data_fn,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+        assert!(!policy.is_null());
+        let engine = build_engine_with_custom_policy(policy);
+
+        let order = crate::order::OpenPitOrder::default();
+        let mut out_report = std::ptr::null_mut();
+        assert!(crate::engine::openpit_engine_execute_pre_trade_dry_run(
+            engine,
+            &order,
+            &mut out_report,
+            std::ptr::null_mut(),
+        ));
+        assert!(!out_report.is_null());
+        assert!(
+            crate::engine::openpit_pretrade_pre_trade_dry_run_report_is_pass(out_report),
+            "explicit passing dry-run hook must override the rejecting normal hook"
+        );
+        let rejects =
+            crate::engine::openpit_pretrade_pre_trade_dry_run_report_get_rejects(out_report);
+        assert_eq!(crate::reject::openpit_pretrade_reject_list_len(rejects), 0);
+        crate::reject::openpit_pretrade_destroy_reject_list(rejects);
+
+        crate::engine::openpit_destroy_pretrade_pre_trade_dry_run_report(out_report);
+
+        // A real execute still rejects: the explicit dry-run hook only affects the
+        // dry-run path, leaving the normal pipeline unchanged.
+        let mut out_reservation = std::ptr::null_mut();
+        let mut out_rejects = std::ptr::null_mut();
+        let status = crate::engine::openpit_engine_execute_pre_trade(
+            engine,
+            &order,
+            &mut out_reservation,
+            &mut out_rejects,
+            std::ptr::null_mut(),
+        );
+        assert_eq!(status, crate::engine::OpenPitPretradeStatus::Rejected);
+        assert!(!out_rejects.is_null());
+        crate::reject::openpit_pretrade_destroy_reject_list(out_rejects);
+
+        crate::engine::openpit_destroy_engine(engine);
     }
 }

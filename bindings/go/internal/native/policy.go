@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// Please see https://github.com/openpitkit and the OWNERS file for details.
+// Please see https://openpit.dev and the OWNERS file for details.
 
 package native
 
@@ -282,6 +282,61 @@ func CreatePretradeCustomPreTradePolicy(
 	if p == nil {
 		return nil,
 			consumeSharedStringAsError(outError, "openpit_create_pretrade_custom_pre_trade_policy failed")
+	}
+	return p, nil
+}
+
+// CreatePretradeCustomPreTradePolicyWithDryRun creates a custom pre-trade
+// policy with explicit dry-run hooks.
+//
+// Pass nil unsafe.Pointer for checkPreTradeStartDryRunFnAddr or
+// performPreTradeCheckDryRunFnAddr to delegate each dry-run hook to the
+// corresponding normal hook (C null pointer).
+func CreatePretradeCustomPreTradePolicyWithDryRun(
+	name string,
+	groupID PolicyGroupID,
+	checkPreTradeStartFnAddr unsafe.Pointer,
+	checkPreTradeStartDryRunFnAddr unsafe.Pointer,
+	performPreTradeCheckFnAddr unsafe.Pointer,
+	performPreTradeCheckDryRunFnAddr unsafe.Pointer,
+	applyExecutionReportFnAddr unsafe.Pointer,
+	applyAccountAdjustmentFnAddr unsafe.Pointer,
+	freeUserDataFnAddr unsafe.Pointer,
+	userData unsafe.Pointer,
+) (PretradePreTradePolicy, error) {
+	var checkDryRun C.OpenPitPretradePreTradePolicyCheckPreTradeStartFn
+	if checkPreTradeStartDryRunFnAddr != nil {
+		checkDryRun = *(*C.OpenPitPretradePreTradePolicyCheckPreTradeStartFn)(
+			checkPreTradeStartDryRunFnAddr,
+		)
+	}
+	var performDryRun C.OpenPitPretradePreTradePolicyPerformPreTradeCheckFn
+	if performPreTradeCheckDryRunFnAddr != nil {
+		performDryRun = *(*C.OpenPitPretradePreTradePolicyPerformPreTradeCheckFn)(
+			performPreTradeCheckDryRunFnAddr,
+		)
+	}
+
+	var outError SharedString
+	p := C.openpit_create_pretrade_custom_pre_trade_policy_with_dry_run(
+		importString(name),
+		groupID,
+		*(*C.OpenPitPretradePreTradePolicyCheckPreTradeStartFn)(checkPreTradeStartFnAddr),
+		checkDryRun,
+		*(*C.OpenPitPretradePreTradePolicyPerformPreTradeCheckFn)(performPreTradeCheckFnAddr),
+		performDryRun,
+		*(*C.OpenPitPretradePreTradePolicyApplyExecutionReportFn)(applyExecutionReportFnAddr),
+		*(*C.OpenPitPretradePreTradePolicyApplyAccountAdjustmentFn)(applyAccountAdjustmentFnAddr),
+		*(*C.OpenPitPretradePreTradePolicyFreeUserDataFn)(freeUserDataFnAddr),
+		userData,
+		C.OpenPitOutError(&outError), //nolint:gocritic
+	)
+	if p == nil {
+		return nil,
+			consumeSharedStringAsError(
+				outError,
+				"openpit_create_pretrade_custom_pre_trade_policy_with_dry_run failed",
+			)
 	}
 	return p, nil
 }

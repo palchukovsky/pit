@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// Please see https://github.com/openpitkit and the OWNERS file for details.
+// Please see https://openpit.dev and the OWNERS file for details.
 
 use std::collections::{HashMap, VecDeque};
 use std::fmt::{Display, Formatter};
@@ -438,6 +438,19 @@ impl AtomicWindowCounter {
         }
         self.count.fetch_add(1, Ordering::AcqRel) + 1
     }
+
+    // Read-only counterpart of `push`: the count a `push` would return right
+    // now, without mutating the counter. Used by the dry-run check so it can
+    // report a would-be rate-limit breach without consuming budget. If the
+    // window has rolled over the next push would reset to 1; otherwise it would
+    // be the live count plus one.
+    fn peek(&self, now_nanos: u64, window_nanos: u64) -> u64 {
+        let win_start = self.window_start_nanos.load(Ordering::Relaxed);
+        if now_nanos.wrapping_sub(win_start) >= window_nanos {
+            return 1;
+        }
+        self.count.load(Ordering::Acquire) + 1
+    }
 }
 
 /// Tracks order rates across four independent axes in time windows.
@@ -726,6 +739,106 @@ where
             }
         })
     }
+
+    /// Dry-run start-stage check.
+    ///
+    /// Rate limiting is an immediate-side-effect policy: the normal
+    /// [`check_pre_trade_start`](Self::check_pre_trade_start) consumes a slot in
+    /// every applicable window counter, and rejected attempts are never rolled
+    /// back. A dry-run must not move that state, so this override consumes no
+    /// budget and pushes nothing into any counter. It still reports the verdict
+    /// a real call would produce: each axis is *peeked* read-only for the count
+    /// a push would yield, so an order that would breach an already-exhausted
+    /// window is rejected here too, with no side effect.
+    fn check_pre_trade_start_dry_run(
+        &self,
+        _ctx: &PreTradeContext<<Sync as crate::core::SyncMode>::StorageLockingPolicyFactory>,
+        order: &Order,
+    ) -> Result<(), Rejects> {
+        let now = start_pre_trade_now();
+        let now_nanos = now
+            .checked_duration_since(self.epoch)
+            .unwrap_or_default()
+            .as_nanos() as u64;
+
+        // Read-only mirror of `check_pre_trade_start`: same axes, same priority
+        // resolution, but every count is the would-be count from a peek rather
+        // than a mutating push, so no budget is consumed.
+        self.settings.with(|s| -> Result<(), Rejects> {
+            let needs_settlement = !s.asset_limits.is_empty() || !s.account_asset_limits.is_empty();
+            let needs_account = !s.account_limits.is_empty() || !s.account_asset_limits.is_empty();
+
+            let settlement_opt: Option<Asset> = if needs_settlement {
+                Some(
+                    order
+                        .instrument()
+                        .map_err(|e| {
+                            Rejects::from(missing_required_field_reject(self, "instrument", &e))
+                        })?
+                        .settlement_asset()
+                        .clone(),
+                )
+            } else {
+                None
+            };
+            let account_id_opt: Option<AccountId> = if needs_account {
+                Some(order.account_id().map_err(|e| {
+                    Rejects::from(missing_required_field_reject(self, "account ID", &e))
+                })?)
+            } else {
+                None
+            };
+
+            let broker = s.broker.as_ref().map(|slot| {
+                let count = slot.counter.peek(now_nanos, window_nanos(&slot.limit));
+                over_limit(count, &slot.limit, RejectScope::Order, "broker barrier")
+            });
+
+            let asset = settlement_opt.as_ref().and_then(|settlement| {
+                s.asset_limits.get(settlement).map(|slot| {
+                    let count = slot.counter.peek(now_nanos, window_nanos(&slot.limit));
+                    over_limit(count, &slot.limit, RejectScope::Order, "asset barrier")
+                })
+            });
+
+            let account = account_id_opt.and_then(|account_id| {
+                s.account_limits.get(&account_id).map(|limit| {
+                    let count = self
+                        .per_account_timestamps
+                        .with(&account_id, |entry| {
+                            would_be_window_count(entry, now, limit.window)
+                        })
+                        .unwrap_or(1);
+                    over_limit(count, limit, RejectScope::Account, "account barrier")
+                })
+            });
+
+            let account_asset = account_id_opt.and_then(|account_id| {
+                settlement_opt.as_ref().and_then(|settlement| {
+                    let key = (account_id, settlement.clone());
+                    s.account_asset_limits.get(&key).map(|limit| {
+                        let count = self
+                            .per_account_asset_timestamps
+                            .with(&key, |entry| {
+                                would_be_window_count(entry, now, limit.window)
+                            })
+                            .unwrap_or(1);
+                        over_limit(count, limit, RejectScope::Account, "account+asset barrier")
+                    })
+                })
+            });
+
+            match broker
+                .flatten()
+                .or_else(|| asset.flatten())
+                .or_else(|| account.flatten())
+                .or_else(|| account_asset.flatten())
+            {
+                Some(reject) => Err(reject),
+                None => Ok(()),
+            }
+        })
+    }
 }
 
 fn window_nanos(limit: &RateLimit) -> u64 {
@@ -785,6 +898,23 @@ fn advance_window(timestamps: &mut VecDeque<Instant>, now: Instant, window: Dura
             _ => break,
         }
     }
+}
+
+// Read-only would-be count for a sliding-window axis: how many entries are
+// still inside `window` as of `now`, plus one for the order being dry-run.
+// Mirrors `advance_window` + `push_back` + `len` without mutating storage, so a
+// dry-run can report a would-be breach without consuming budget.
+fn would_be_window_count(timestamps: &VecDeque<Instant>, now: Instant, window: Duration) -> u64 {
+    // An entry is expired exactly when `advance_window` would pop it: a
+    // measurable elapsed time that has reached the window. Anything else (still
+    // inside the window, or not in the past) is live.
+    let live = timestamps
+        .iter()
+        .filter(
+            |ts| !matches!(now.checked_duration_since(**ts), Some(elapsed) if elapsed >= window),
+        )
+        .count() as u64;
+    live + 1
 }
 
 #[cfg(test)]
@@ -1148,6 +1278,55 @@ mod tests {
     }
 
     #[test]
+    fn dry_run_consumes_no_broker_budget() {
+        // Broker max is 1. A flood of dry-runs while the window has budget must
+        // all pass and leave the counter untouched, so the subsequent real
+        // calls behave exactly as if no dry-run ever happened: the first passes
+        // (count 1), the second rejects (count 2 > 1).
+        let policy = broker_policy(1, Duration::from_secs(10));
+        let o = order(account(1));
+        let base = Instant::now();
+
+        for i in 0..50 {
+            assert!(
+                check_dry_run_at(&policy, &o, base + Duration::from_millis(i)).is_ok(),
+                "dry-run on a window with budget must pass"
+            );
+        }
+
+        assert!(check_at(&policy, &o, base + Duration::from_secs(1)).is_ok());
+        assert!(check_at(&policy, &o, base + Duration::from_secs(2)).is_err());
+    }
+
+    #[test]
+    fn dry_run_reports_would_be_breach_without_consuming_budget() {
+        // Broker max is 1. After a real order exhausts the window, a dry-run
+        // must report the would-be reject (read-only) yet still not consume
+        // budget: a real order in a fresh window then passes as if no dry-run
+        // ran.
+        let policy = broker_policy(1, Duration::from_secs(10));
+        let o = order(account(1));
+        let base = Instant::now();
+
+        // Real order consumes the only slot.
+        assert!(check_at(&policy, &o, base).is_ok());
+
+        // Budget is now exhausted; dry-run reports the breach a real call would
+        // hit, with no side effect.
+        let reject = check_dry_run_at(&policy, &o, base + Duration::from_secs(1))
+            .expect_err("dry-run must report a would-be rate-limit breach");
+        assert_eq!(reject[0].scope, RejectScope::Order);
+        assert_eq!(reject[0].code, RejectCode::RateLimitExceeded);
+        assert_eq!(reject[0].reason, "rate limit exceeded: broker barrier");
+
+        // Repeating the dry-run still reports the breach and consumes nothing.
+        assert!(check_dry_run_at(&policy, &o, base + Duration::from_secs(2)).is_err());
+
+        // A real order in a fresh window passes: the dry-runs spent no budget.
+        assert!(check_at(&policy, &o, base + Duration::from_secs(11)).is_ok());
+    }
+
+    #[test]
     fn broker_barrier_applies_to_all_accounts() {
         let policy = broker_policy(2, Duration::from_secs(10));
         let base = Instant::now();
@@ -1505,6 +1684,20 @@ mod tests {
     fn check_at(policy: &TestPolicy, order: &OrderOperation, now: Instant) -> Result<(), Rejects> {
         with_start_pre_trade_now(now, || {
             <TestPolicy as PreTradePolicy<OrderOperation, (), (), crate::core::LocalSync>>::check_pre_trade_start(
+                policy,
+                &PreTradeContext::<NoLocking>::new(None),
+                order,
+            )
+        })
+    }
+
+    fn check_dry_run_at(
+        policy: &TestPolicy,
+        order: &OrderOperation,
+        now: Instant,
+    ) -> Result<(), Rejects> {
+        with_start_pre_trade_now(now, || {
+            <TestPolicy as PreTradePolicy<OrderOperation, (), (), crate::core::LocalSync>>::check_pre_trade_start_dry_run(
                 policy,
                 &PreTradeContext::<NoLocking>::new(None),
                 order,

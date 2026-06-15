@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// Please see https://github.com/openpitkit and the OWNERS file for details.
+// Please see https://openpit.dev and the OWNERS file for details.
 
 #![allow(unexpected_cfgs)]
 #![allow(clippy::useless_conversion)]
@@ -49,8 +49,8 @@ use openpit::pretrade::policies::{
 };
 use openpit::pretrade::PostTradeContext;
 use openpit::pretrade::{
-    PolicyPreTradeResult, PreTradeContext, PreTradeLock, PreTradePolicy, PreTradeRequest,
-    PreTradeReservation, Reject, RejectCode, RejectScope, Rejects,
+    PolicyPreTradeResult, PreTradeContext, PreTradeDryRunReport, PreTradeLock, PreTradePolicy,
+    PreTradeRequest, PreTradeReservation, Reject, RejectCode, RejectScope, Rejects,
 };
 use openpit::storage::StorageBuilder;
 use openpit::AccountAdjustmentContext;
@@ -951,6 +951,36 @@ impl PyEngine {
                 })
             }
         }
+    }
+
+    #[pyo3(signature = (order))]
+    fn start_pre_trade_dry_run(
+        &self,
+        py: Python<'_>,
+        order: Bound<'_, PyAny>,
+    ) -> PyResult<PyPreTradeDryRunReport> {
+        clear_python_callback_error();
+        let order = extract_python_order(&order)?;
+        let report = allow_threads_detached(py, || self.inner.start_pre_trade_dry_run(order));
+        if let Some(error) = take_python_callback_error() {
+            return Err(error);
+        }
+        Ok(PyPreTradeDryRunReport { inner: report })
+    }
+
+    #[pyo3(signature = (order))]
+    fn execute_pre_trade_dry_run(
+        &self,
+        py: Python<'_>,
+        order: Bound<'_, PyAny>,
+    ) -> PyResult<PyPreTradeDryRunReport> {
+        clear_python_callback_error();
+        let order = extract_python_order(&order)?;
+        let report = allow_threads_detached(py, || self.inner.execute_pre_trade_dry_run(order));
+        if let Some(error) = take_python_callback_error() {
+            return Err(error);
+        }
+        Ok(PyPreTradeDryRunReport { inner: report })
     }
 
     #[pyo3(signature = (report))]
@@ -1874,6 +1904,24 @@ impl PreTradePolicy<Order, ExecutionReport, AccountAdjustment, PyEngineSync>
         self.inner.perform_pre_trade_check(ctx, order, mutations)
     }
 
+    fn check_pre_trade_start_dry_run(
+        &self,
+        ctx: &PreTradeContext<PyStorageFactory>,
+        order: &Order,
+    ) -> Result<(), Rejects> {
+        self.inner.check_pre_trade_start_dry_run(ctx, order)
+    }
+
+    fn perform_pre_trade_check_dry_run(
+        &self,
+        ctx: &PreTradeContext<PyStorageFactory>,
+        order: &Order,
+        mutations: &mut Mutations,
+    ) -> Result<Option<PolicyPreTradeResult>, Rejects> {
+        self.inner
+            .perform_pre_trade_check_dry_run(ctx, order, mutations)
+    }
+
     fn apply_execution_report(
         &self,
         ctx: &PostTradeContext<PyStorageFactory>,
@@ -1969,6 +2017,96 @@ impl PreTradePolicy<Order, ExecutionReport, AccountAdjustment, PyEngineSync>
                     python_callback_rejects(&self.name)
                 })?;
 
+            let mut rejects = Vec::new();
+            let result = match apply_policy_pre_trade_result(
+                &self.name,
+                decision,
+                mutations,
+                &mut rejects,
+            ) {
+                Ok(result) => result,
+                Err(error) => {
+                    set_python_callback_error(error);
+                    return Err(python_callback_rejects(&self.name));
+                }
+            };
+            if rejects.is_empty() {
+                Ok(result)
+            } else {
+                Err(Rejects::from(rejects))
+            }
+        })
+    }
+
+    fn check_pre_trade_start_dry_run(
+        &self,
+        ctx: &PreTradeContext<PyStorageFactory>,
+        order: &Order,
+    ) -> Result<(), Rejects> {
+        Python::attach(|py| {
+            // Optional: if the Python policy defines check_pre_trade_start_dry_run,
+            // call it; otherwise fall back to the normal start check, which matches
+            // the Rust trait default.
+            let policy_bound = self.policy.bind(py);
+            let has_dry_run = policy_bound
+                .hasattr("check_pre_trade_start_dry_run")
+                .unwrap_or(false);
+            let method = if has_dry_run {
+                "check_pre_trade_start_dry_run"
+            } else {
+                "check_pre_trade_start"
+            };
+            let policy_ctx = Py::new(py, PyPreTradeContext::from(ctx)).map_err(|error| {
+                set_python_callback_error(error);
+                python_callback_rejects(&self.name)
+            })?;
+            let result = policy_bound
+                .call_method1(method, (policy_ctx, order.payload.clone_ref(py)))
+                .map_err(|error| {
+                    set_python_callback_error(error);
+                    python_callback_rejects(&self.name)
+                })?;
+            let rejects = parse_policy_rejects(&result, &self.name).map_err(|error| {
+                set_python_callback_error(error);
+                python_callback_rejects(&self.name)
+            })?;
+            if rejects.is_empty() {
+                Ok(())
+            } else {
+                Err(Rejects::from(rejects))
+            }
+        })
+    }
+
+    fn perform_pre_trade_check_dry_run(
+        &self,
+        ctx: &PreTradeContext<PyStorageFactory>,
+        order: &Order,
+        mutations: &mut Mutations,
+    ) -> Result<Option<PolicyPreTradeResult>, Rejects> {
+        Python::attach(|py| {
+            // Optional: if the Python policy defines perform_pre_trade_check_dry_run,
+            // call it; otherwise fall back to the normal check, which matches
+            // the Rust trait default.
+            let policy_bound = self.policy.bind(py);
+            let has_dry_run = policy_bound
+                .hasattr("perform_pre_trade_check_dry_run")
+                .unwrap_or(false);
+            let method = if has_dry_run {
+                "perform_pre_trade_check_dry_run"
+            } else {
+                "perform_pre_trade_check"
+            };
+            let policy_ctx = Py::new(py, PyPreTradeContext::from(ctx)).map_err(|error| {
+                set_python_callback_error(error);
+                python_callback_rejects(&self.name)
+            })?;
+            let decision = policy_bound
+                .call_method1(method, (policy_ctx, order.payload.clone_ref(py)))
+                .map_err(|error| {
+                    set_python_callback_error(error);
+                    python_callback_rejects(&self.name)
+                })?;
             let mut rejects = Vec::new();
             let result = match apply_policy_pre_trade_result(
                 &self.name,
@@ -5968,6 +6106,77 @@ impl PyReservation {
     }
 }
 
+/// Inert verdict of a non-mutating pre-trade dry-run.
+///
+/// Describes what a real pre-trade call would have produced for the same order
+/// and engine state, with zero effect on that state: no rate-limit budget is
+/// spent, no reservation or hold is applied, and no account is blocked.
+///
+/// Use `is_pass` (or `bool(report)`) to test the verdict. Reuse `lock` and
+/// `account_adjustments` exactly as on `Reservation`, and `account_block` for
+/// an account-scope reject that a real call would have recorded.
+#[pyclass(name = "DryRunReport", module = "openpit.pretrade")]
+struct PyPreTradeDryRunReport {
+    inner: PreTradeDryRunReport,
+}
+
+#[pymethods]
+impl PyPreTradeDryRunReport {
+    /// Returns `True` when the order would have been admitted by all stages.
+    #[getter]
+    fn is_pass(&self) -> bool {
+        self.inner.is_pass()
+    }
+
+    /// Returns the rejects the order would have collected, or `None` when it
+    /// would have passed.
+    #[getter]
+    fn rejects(&self) -> Option<Vec<PyReject>> {
+        self.inner
+            .rejects()
+            .map(|rejects| rejects.iter().map(convert_reject).collect())
+    }
+
+    /// Returns the lock context the main stage would have produced.
+    fn lock(&self) -> PyPreTradeLock {
+        PyPreTradeLock {
+            inner: self.inner.lock().clone(),
+        }
+    }
+
+    /// Returns the account position modifications the main stage would have
+    /// produced.
+    fn account_adjustments(&self) -> Vec<PyAccountAdjustmentOutcome> {
+        self.inner
+            .account_adjustments()
+            .iter()
+            .map(convert_adjustment_outcome)
+            .collect()
+    }
+
+    /// Returns the account block an account-scope reject would have latched, or
+    /// `None` when the order would have passed or produced a non-account reject.
+    #[getter]
+    fn account_block(&self) -> Option<PyAccountBlock> {
+        self.inner.account_block().map(convert_account_block)
+    }
+
+    fn __bool__(&self) -> bool {
+        self.inner.is_pass()
+    }
+
+    fn __repr__(&self) -> String {
+        if self.inner.is_pass() {
+            "DryRunReport(pass)".to_owned()
+        } else {
+            format!(
+                "DryRunReport(reject, rejects={})",
+                self.inner.rejects().map_or(0, |r| r.len())
+            )
+        }
+    }
+}
+
 #[pymethods]
 impl PyPreTradeLock {
     #[new]
@@ -7351,6 +7560,7 @@ fn _openpit(py: Python<'_>, module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyOrder>()?;
     module.add_class::<PyRequest>()?;
     module.add_class::<PyReservation>()?;
+    module.add_class::<PyPreTradeDryRunReport>()?;
     module.add_class::<PyExecutionReportOperation>()?;
     module.add_class::<PyFinancialImpact>()?;
     module.add_class::<PyExecutionReportFillDetails>()?;

@@ -82,6 +82,20 @@ typedef struct OpenPitPretradePreTradeReservation
     OpenPitPretradePreTradeReservation;
 ```
 
+## `OpenPitPretradePreTradeDryRunReport`
+
+Opaque report pointer returned by a pre-trade dry-run.
+
+A dry-run reports the verdict the equivalent real call would produce with zero
+effect on engine state. Unlike `OpenPitPretradePreTradeReservation`, this report
+is inert: it carries no commit/rollback capability. The caller owns the pointer
+and MUST release it with `openpit_destroy_pretrade_pre_trade_dry_run_report`.
+
+```c
+typedef struct OpenPitPretradePreTradeDryRunReport
+    OpenPitPretradePreTradeDryRunReport;
+```
+
 ## `OpenPitPretradeStatus`
 
 Result status for pre-trade operations.
@@ -434,6 +448,114 @@ OpenPitPretradeStatus openpit_engine_execute_pre_trade(
 );
 ```
 
+## `openpit_engine_start_pre_trade_dry_run`
+
+Runs the start stage as a non-mutating pre-trade dry-run.
+
+A dry-run reports the verdict the start stage *would* return for `order` with
+zero effect on engine state: no policy side effect is applied and no account
+block is recorded, even when an account-scope reject *would* latch one. The
+reported lock and account adjustments are always empty, because they are
+produced by the main stage, which this call does not run; see
+`openpit_engine_execute_pre_trade_dry_run` for a full-pipeline dry-run.
+
+Success:
+
+- returns `true` on valid input and writes a non-null caller-owned report to
+  `out_report` if it is not null; the pass/reject verdict lives inside the
+  report (a dry-run never rejects the *call*).
+
+Error:
+
+- returns `false` when input pointers are invalid or the order payload cannot
+  be decoded;
+- on `false`, if `out_error` is not null, it is filled with a caller-owned
+  `OpenPitSharedString` that MUST be destroyed by the caller.
+
+Cleanup:
+
+- release a produced report with
+  `openpit_destroy_pretrade_pre_trade_dry_run_report`.
+
+Output ownership contract:
+
+- on success, a non-null report pointer is written to `out_report` if it is
+  not null;
+- the caller owns the report and MUST release it with the corresponding
+  destroy function;
+- no thread-local state is involved, and the returned pointer is safe to read
+  on any thread;
+- on `false`, `out_report` is left untouched.
+
+Order lifetime contract:
+
+- `order` is read as a borrowed view during this call only;
+- the operation does not retain any pointer into source memory after this
+  function returns.
+
+```c
+bool openpit_engine_start_pre_trade_dry_run(
+    OpenPitEngine * engine,
+    const OpenPitOrder * order,
+    OpenPitPretradePreTradeDryRunReport ** out_report,
+    OpenPitOutError out_error
+);
+```
+
+## `openpit_engine_execute_pre_trade_dry_run`
+
+Runs the full pre-trade pipeline as a non-mutating dry-run.
+
+A dry-run reports the verdict, the lock, and the account adjustments both stages
+*would* produce for `order` with zero effect on engine state: no rate-limit
+budget is spent, no reservation or hold is applied, and no account block is
+recorded. Any mutations a main-stage policy registers on the dry-run path are
+dropped - neither committed nor rolled back - so a repeated dry-run never moves
+engine state.
+
+Success:
+
+- returns `true` on valid input and writes a non-null caller-owned report to
+  `out_report` if it is not null; the pass/reject verdict lives inside the
+  report (a dry-run never rejects the *call*).
+
+Error:
+
+- returns `false` when input pointers are invalid or the order payload cannot
+  be decoded;
+- on `false`, if `out_error` is not null, it is filled with a caller-owned
+  `OpenPitSharedString` that MUST be destroyed by the caller.
+
+Cleanup:
+
+- release a produced report with
+  `openpit_destroy_pretrade_pre_trade_dry_run_report`.
+
+Output ownership contract:
+
+- on success, a non-null report pointer is written to `out_report` if it is
+  not null;
+- the caller owns the report and MUST release it with the corresponding
+  destroy function;
+- no thread-local state is involved, and the returned pointer is safe to read
+  on any thread;
+- on `false`, `out_report` is left untouched.
+
+Order lifetime contract:
+
+- `order` is read as a borrowed view during this call only;
+- the operation does not retain any pointer into source memory after this
+  function returns.
+
+```c
+bool openpit_engine_execute_pre_trade_dry_run(
+    OpenPitEngine * engine,
+    const OpenPitOrder * order,
+    OpenPitPretradePreTradeDryRunReport ** out_report,
+    OpenPitOutError out_error
+);
+```
+
 ## `openpit_pretrade_pre_trade_request_execute`
 
 Executes a deferred request returned by `openpit_engine_start_pre_trade`.
@@ -591,6 +713,139 @@ Contract:
 ```c
 void openpit_destroy_pretrade_pre_trade_reservation(
     OpenPitPretradePreTradeReservation * reservation
+);
+```
+
+## `openpit_pretrade_pre_trade_dry_run_report_is_pass`
+
+Returns whether the order would have passed every pre-trade stage.
+
+Contract:
+
+- `report` must be a valid non-null pointer;
+- violating the pointer contract aborts the call;
+- this function never fails;
+- equivalent to "the rejects list returned by
+  `openpit_pretrade_pre_trade_dry_run_report_get_rejects` is empty".
+
+```c
+bool openpit_pretrade_pre_trade_dry_run_report_is_pass(
+    const OpenPitPretradePreTradeDryRunReport * report
+);
+```
+
+## `openpit_pretrade_pre_trade_dry_run_report_get_rejects`
+
+Returns the rejects the order would have collected.
+
+Contract:
+
+- `report` must be a valid non-null pointer;
+- violating the pointer contract aborts the call;
+- this function never fails;
+- always returns a caller-owned `OpenPitPretradeRejectList` (empty when the
+  order would have passed); release it with
+  `openpit_pretrade_destroy_reject_list`.
+
+Lifetime contract:
+
+- the returned list is detached from the report state.
+
+```c
+OpenPitPretradeRejectList *
+openpit_pretrade_pre_trade_dry_run_report_get_rejects(
+    const OpenPitPretradePreTradeDryRunReport * report
+);
+```
+
+## `openpit_pretrade_pre_trade_dry_run_report_get_lock`
+
+Returns a snapshot of the lock the main stage would have produced.
+
+Contract:
+
+- `report` must be a valid non-null pointer;
+- violating the pointer contract aborts the call;
+- this function never fails;
+- the lock is empty when the start stage would have rejected (the main stage
+  never runs in that case) or when no policy locks a price; release the
+  returned handle with `openpit_destroy_pretrade_pre_trade_lock`.
+
+Lifetime contract:
+
+- the returned snapshot is detached from the report state.
+
+```c
+OpenPitPretradePreTradeLock *
+openpit_pretrade_pre_trade_dry_run_report_get_lock(
+    const OpenPitPretradePreTradeDryRunReport * report
+);
+```
+
+## `openpit_pretrade_pre_trade_dry_run_report_get_account_adjustments`
+
+Returns the account-adjustment outcomes the main stage would have produced.
+
+Contract:
+
+- `report` must be a valid non-null pointer;
+- violating the pointer contract aborts the call;
+- this function never fails;
+- always returns a caller-owned `OpenPitAccountAdjustmentOutcomeList`
+  (possibly empty); release it with
+  `openpit_destroy_account_adjustment_outcome_list`. The numbers match what a
+  real reservation reports for the same order and engine state.
+
+Lifetime contract:
+
+- the returned list is detached from the report state.
+
+```c
+OpenPitAccountAdjustmentOutcomeList *
+openpit_pretrade_pre_trade_dry_run_report_get_account_adjustments(
+    const OpenPitPretradePreTradeDryRunReport * report
+);
+```
+
+## `openpit_pretrade_pre_trade_dry_run_report_get_account_block`
+
+Returns the account block an account-scope reject would have latched.
+
+Contract:
+
+- `report` must be a valid non-null pointer;
+- violating the pointer contract aborts the call;
+- this function never fails;
+- always returns a caller-owned `OpenPitPretradeAccountBlockList` carrying the
+  single would-be block, or empty when no account-scope reject would have
+  latched one; release it with `openpit_pretrade_destroy_account_block_list`.
+  A real call records this block in the engine's blocked-accounts registry; a
+  dry-run reports it here without recording it.
+
+Lifetime contract:
+
+- the returned list is detached from the report state.
+
+```c
+OpenPitPretradeAccountBlockList *
+openpit_pretrade_pre_trade_dry_run_report_get_account_block(
+    const OpenPitPretradePreTradeDryRunReport * report
+);
+```
+
+## `openpit_destroy_pretrade_pre_trade_dry_run_report`
+
+Releases a dry-run report pointer owned by the caller.
+
+Contract:
+
+- passing null is allowed;
+- after this call the pointer is invalid;
+- this function always succeeds.
+
+```c
+void openpit_destroy_pretrade_pre_trade_dry_run_report(
+    OpenPitPretradePreTradeDryRunReport * report
 );
 ```
 

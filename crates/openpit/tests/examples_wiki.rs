@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// Please see https://github.com/openpitkit and the OWNERS file for details.
+// Please see https://openpit.dev and the OWNERS file for details.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -39,6 +39,7 @@ use openpit::{
 // - ../pit.wiki/Domain-Types.md
 // - ../pit.wiki/Dynamic-Policy-Reconfiguration.md
 // - ../pit.wiki/Getting-Started.md
+// - ../pit.wiki/Non-Mutating-Dry-Run.md
 // - ../pit.wiki/Policies.md
 // - ../pit.wiki/Policy-API.md
 // - ../pit.wiki/Pre-trade-Pipeline.md
@@ -1586,5 +1587,130 @@ fn example_wiki_dynamic_policy_reconfiguration_set_account_pnl(
         rejects[0].reason,
         "pnl kill switch triggered: broker barrier"
     );
+    Ok(())
+}
+
+#[test]
+fn example_wiki_dry_run_verdict() -> Result<(), Box<dyn std::error::Error>> {
+    // Wiki example: pit.wiki/Non-Mutating-Dry-Run.md - Read the Dry-Run Verdict
+    // This mirror is intentionally wider than the wiki snippet: it adds the test
+    // harness (the fn -> Result wrapper and assertions) so the example runs.
+    // Keep the shared user-code flow in sync with the wiki.
+    use openpit::pretrade::policies::OrderValidationPolicy;
+
+    let engine = Engine::builder::<OrderOperation, PitExecutionReport, ()>()
+        .no_sync()
+        .pre_trade(OrderValidationPolicy::new())
+        .build()?;
+    let order = aapl_usd_order("100", "185");
+
+    let report = engine.execute_pre_trade_dry_run(order);
+    if report.is_pass() {
+        println!("order would be admitted");
+    } else {
+        for reject in report.rejects().unwrap().iter() {
+            eprintln!(
+                "would reject by {} [{}]: {} ({})",
+                reject.policy, reject.code, reject.reason, reject.details
+            );
+        }
+    }
+    assert!(report.is_pass());
+    Ok(())
+}
+
+#[test]
+fn example_wiki_dry_run_before_real_call() -> Result<(), Box<dyn std::error::Error>> {
+    // Wiki example: pit.wiki/Non-Mutating-Dry-Run.md - Use the Dry-Run Before a Real Call
+    // This mirror is intentionally wider than the wiki snippet: it adds the test
+    // harness (the fn -> Result wrapper and assertions) so the example runs.
+    // Keep the shared user-code flow in sync with the wiki.
+    use openpit::pretrade::policies::OrderValidationPolicy;
+
+    let engine = Engine::builder::<OrderOperation, PitExecutionReport, ()>()
+        .no_sync()
+        .pre_trade(OrderValidationPolicy::new())
+        .build()?;
+    let order = aapl_usd_order("100", "185");
+
+    // Probe without spending any budget or creating any reservation.
+    let probe = engine.execute_pre_trade_dry_run(order.clone());
+    if probe.is_pass() {
+        // The real call now runs with fresh state; the probe had no effect.
+        engine.execute_pre_trade(order)?.commit();
+    }
+    Ok(())
+}
+
+// --- Non-Mutating-Dry-Run: Custom Policy with Dry-Run Hook ---
+
+struct MyCountingPolicy {
+    count: std::cell::Cell<u64>,
+}
+
+impl<O, R, A, Sync> PreTradePolicy<O, R, A, Sync> for MyCountingPolicy
+where
+    Sync: openpit::SyncMode,
+{
+    fn name(&self) -> &str {
+        "MyCountingPolicy"
+    }
+
+    fn check_pre_trade_start(
+        &self,
+        _ctx: &PreTradeContext<<Sync as openpit::SyncMode>::StorageLockingPolicyFactory>,
+        _order: &O,
+    ) -> Result<(), Rejects> {
+        self.count.set(self.count.get() + 1); // side effect
+        Ok(())
+    }
+
+    // Dry-run variant: read-only, no counter increment.
+    fn check_pre_trade_start_dry_run(
+        &self,
+        _ctx: &PreTradeContext<<Sync as openpit::SyncMode>::StorageLockingPolicyFactory>,
+        _order: &O,
+    ) -> Result<(), Rejects> {
+        Ok(()) // inspect state without spending budget
+    }
+
+    fn perform_pre_trade_check(
+        &self,
+        _ctx: &PreTradeContext<<Sync as openpit::SyncMode>::StorageLockingPolicyFactory>,
+        _order: &O,
+        _mutations: &mut Mutations,
+    ) -> Result<Option<PolicyPreTradeResult>, Rejects> {
+        Ok(None)
+    }
+
+    fn apply_execution_report(
+        &self,
+        _ctx: &PostTradeContext<<Sync as openpit::SyncMode>::StorageLockingPolicyFactory>,
+        _report: &R,
+    ) -> Option<openpit::PostTradeResult> {
+        None
+    }
+}
+
+#[test]
+fn example_wiki_dry_run_custom_policy_hook() -> Result<(), Box<dyn std::error::Error>> {
+    // Wiki example: pit.wiki/Non-Mutating-Dry-Run.md - Read-Only Custom Start-Stage Hook
+    // This mirror is intentionally wider than the wiki snippet: it defines the full
+    // MyCountingPolicy struct above (the snippet shows only the hook bodies) and
+    // exercises the dry-run and real-call paths to confirm compilation and correct
+    // routing. Keep the shared user-code flow in sync with the wiki.
+    let engine = Engine::builder::<OrderOperation, PitExecutionReport, ()>()
+        .no_sync()
+        .pre_trade(MyCountingPolicy {
+            count: std::cell::Cell::new(0),
+        })
+        .build()?;
+    let order = aapl_usd_order("10", "100");
+
+    // Dry-run path routes through check_pre_trade_start_dry_run.
+    let probe = engine.execute_pre_trade_dry_run(order.clone());
+    assert!(probe.is_pass());
+    // Real call path routes through check_pre_trade_start.
+    engine.execute_pre_trade(order)?.commit();
     Ok(())
 }

@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// Please see https://github.com/openpitkit and the OWNERS file for details.
+// Please see https://openpit.dev and the OWNERS file for details.
 
 #![allow(clippy::missing_safety_doc, clippy::not_unsafe_ptr_arg_deref)]
 
@@ -33,6 +33,7 @@ use crate::reject::{
 use crate::write_error_format;
 use crate::OpenPitStringView;
 use openpit::param::AccountId;
+use openpit::pretrade::Rejects;
 
 //--------------------------------------------------------------------------------------------------
 
@@ -123,6 +124,17 @@ pub struct OpenPitPretradePreTradeRequest {
 /// `openpit_pretrade_pre_trade_reservation_rollback`, or `openpit_destroy_pretrade_pre_trade_reservation`.
 pub struct OpenPitPretradePreTradeReservation {
     inner: openpit::pretrade::PreTradeReservation,
+}
+
+/// Opaque report pointer returned by a pre-trade dry-run.
+///
+/// A dry-run reports the verdict the equivalent real call would produce with
+/// zero effect on engine state. Unlike `OpenPitPretradePreTradeReservation`,
+/// this report is inert: it carries no commit/rollback capability. The caller
+/// owns the pointer and MUST release it with
+/// `openpit_destroy_pretrade_pre_trade_dry_run_report`.
+pub struct OpenPitPretradePreTradeDryRunReport {
+    inner: openpit::pretrade::PreTradeDryRunReport,
 }
 
 pub use crate::pre_trade_lock::OpenPitPretradePreTradeLock;
@@ -626,6 +638,150 @@ pub extern "C" fn openpit_engine_execute_pre_trade(
 }
 
 #[no_mangle]
+/// Runs the start stage as a non-mutating pre-trade dry-run.
+///
+/// A dry-run reports the verdict the start stage *would* return for `order` with
+/// zero effect on engine state: no policy side effect is applied and no account
+/// block is recorded, even when an account-scope reject *would* latch one. The
+/// reported lock and account adjustments are always empty, because they are
+/// produced by the main stage, which this call does not run; see
+/// `openpit_engine_execute_pre_trade_dry_run` for a full-pipeline dry-run.
+///
+/// Success:
+/// - returns `true` on valid input and writes a non-null caller-owned report to
+///   `out_report` if it is not null; the pass/reject verdict lives inside the
+///   report (a dry-run never rejects the *call*).
+///
+/// Error:
+/// - returns `false` when input pointers are invalid or the order payload cannot
+///   be decoded;
+/// - on `false`, if `out_error` is not null, it is filled with a caller-owned
+///   `OpenPitSharedString` that MUST be destroyed by the caller.
+///
+/// Cleanup:
+/// - release a produced report with
+///   `openpit_destroy_pretrade_pre_trade_dry_run_report`.
+///
+/// Output ownership contract:
+/// - on success, a non-null report pointer is written to `out_report` if it is
+///   not null;
+/// - the caller owns the report and MUST release it with the corresponding
+///   destroy function;
+/// - no thread-local state is involved, and the returned pointer is safe to read
+///   on any thread;
+/// - on `false`, `out_report` is left untouched.
+///
+/// Order lifetime contract:
+/// - `order` is read as a borrowed view during this call only;
+/// - the operation does not retain any pointer into source memory after this
+///   function returns.
+pub extern "C" fn openpit_engine_start_pre_trade_dry_run(
+    engine: *mut OpenPitEngine,
+    order: *const OpenPitOrder,
+    out_report: *mut *mut OpenPitPretradePreTradeDryRunReport,
+    out_error: OpenPitOutError,
+) -> bool {
+    if engine.is_null() {
+        write_error(out_error, "engine is null");
+        return false;
+    }
+    if order.is_null() {
+        write_error(out_error, "order is null");
+        return false;
+    }
+
+    let order = match import_order(unsafe { &*order }) {
+        Ok(v) => v,
+        Err(e) => {
+            write_error(out_error, &e);
+            return false;
+        }
+    };
+
+    let report = unsafe { &*engine }.inner.start_pre_trade_dry_run(order);
+    if !out_report.is_null() {
+        unsafe {
+            *out_report = Box::into_raw(Box::new(OpenPitPretradePreTradeDryRunReport {
+                inner: report,
+            }))
+        }
+    }
+    true
+}
+
+#[no_mangle]
+/// Runs the full pre-trade pipeline as a non-mutating dry-run.
+///
+/// A dry-run reports the verdict, the lock, and the account adjustments both
+/// stages *would* produce for `order` with zero effect on engine state: no
+/// rate-limit budget is spent, no reservation or hold is applied, and no account
+/// block is recorded. Any mutations a main-stage policy registers on the dry-run
+/// path are dropped - neither committed nor rolled back - so a repeated dry-run
+/// never moves engine state.
+///
+/// Success:
+/// - returns `true` on valid input and writes a non-null caller-owned report to
+///   `out_report` if it is not null; the pass/reject verdict lives inside the
+///   report (a dry-run never rejects the *call*).
+///
+/// Error:
+/// - returns `false` when input pointers are invalid or the order payload cannot
+///   be decoded;
+/// - on `false`, if `out_error` is not null, it is filled with a caller-owned
+///   `OpenPitSharedString` that MUST be destroyed by the caller.
+///
+/// Cleanup:
+/// - release a produced report with
+///   `openpit_destroy_pretrade_pre_trade_dry_run_report`.
+///
+/// Output ownership contract:
+/// - on success, a non-null report pointer is written to `out_report` if it is
+///   not null;
+/// - the caller owns the report and MUST release it with the corresponding
+///   destroy function;
+/// - no thread-local state is involved, and the returned pointer is safe to read
+///   on any thread;
+/// - on `false`, `out_report` is left untouched.
+///
+/// Order lifetime contract:
+/// - `order` is read as a borrowed view during this call only;
+/// - the operation does not retain any pointer into source memory after this
+///   function returns.
+pub extern "C" fn openpit_engine_execute_pre_trade_dry_run(
+    engine: *mut OpenPitEngine,
+    order: *const OpenPitOrder,
+    out_report: *mut *mut OpenPitPretradePreTradeDryRunReport,
+    out_error: OpenPitOutError,
+) -> bool {
+    if engine.is_null() {
+        write_error(out_error, "engine is null");
+        return false;
+    }
+    if order.is_null() {
+        write_error(out_error, "order is null");
+        return false;
+    }
+
+    let order = match import_order(unsafe { &*order }) {
+        Ok(v) => v,
+        Err(e) => {
+            write_error(out_error, &e);
+            return false;
+        }
+    };
+
+    let report = unsafe { &*engine }.inner.execute_pre_trade_dry_run(order);
+    if !out_report.is_null() {
+        unsafe {
+            *out_report = Box::into_raw(Box::new(OpenPitPretradePreTradeDryRunReport {
+                inner: report,
+            }))
+        }
+    }
+    true
+}
+
+#[no_mangle]
 /// Executes a deferred request returned by `openpit_engine_start_pre_trade`.
 ///
 /// Success:
@@ -809,6 +965,131 @@ pub extern "C" fn openpit_destroy_pretrade_pre_trade_reservation(
         return;
     }
     unsafe { drop(Box::from_raw(reservation)) };
+}
+
+#[no_mangle]
+/// Returns whether the order would have passed every pre-trade stage.
+///
+/// Contract:
+/// - `report` must be a valid non-null pointer;
+/// - violating the pointer contract aborts the call;
+/// - this function never fails;
+/// - equivalent to "the rejects list returned by
+///   `openpit_pretrade_pre_trade_dry_run_report_get_rejects` is empty".
+pub extern "C" fn openpit_pretrade_pre_trade_dry_run_report_is_pass(
+    report: *const OpenPitPretradePreTradeDryRunReport,
+) -> bool {
+    assert!(!report.is_null(), "dry-run report pointer is null");
+    unsafe { &*report }.inner.is_pass()
+}
+
+#[no_mangle]
+/// Returns the rejects the order would have collected.
+///
+/// Contract:
+/// - `report` must be a valid non-null pointer;
+/// - violating the pointer contract aborts the call;
+/// - this function never fails;
+/// - always returns a caller-owned `OpenPitPretradeRejectList` (empty when the
+///   order would have passed); release it with
+///   `openpit_pretrade_destroy_reject_list`.
+///
+/// Lifetime contract:
+/// - the returned list is detached from the report state.
+pub extern "C" fn openpit_pretrade_pre_trade_dry_run_report_get_rejects(
+    report: *const OpenPitPretradePreTradeDryRunReport,
+) -> *mut OpenPitPretradeRejectList {
+    assert!(!report.is_null(), "dry-run report pointer is null");
+    let rejects = match unsafe { &*report }.inner.rejects() {
+        Some(rejects) => rejects.clone(),
+        None => Rejects::new(Vec::new()),
+    };
+    Box::into_raw(Box::new(rejects_to_list_owned(rejects)))
+}
+
+#[no_mangle]
+/// Returns a snapshot of the lock the main stage would have produced.
+///
+/// Contract:
+/// - `report` must be a valid non-null pointer;
+/// - violating the pointer contract aborts the call;
+/// - this function never fails;
+/// - the lock is empty when the start stage would have rejected (the main stage
+///   never runs in that case) or when no policy locks a price; release the
+///   returned handle with `openpit_destroy_pretrade_pre_trade_lock`.
+///
+/// Lifetime contract:
+/// - the returned snapshot is detached from the report state.
+pub extern "C" fn openpit_pretrade_pre_trade_dry_run_report_get_lock(
+    report: *const OpenPitPretradePreTradeDryRunReport,
+) -> *mut OpenPitPretradePreTradeLock {
+    assert!(!report.is_null(), "dry-run report pointer is null");
+    export_pre_trade_lock(unsafe { &*report }.inner.lock())
+}
+
+#[no_mangle]
+/// Returns the account-adjustment outcomes the main stage would have produced.
+///
+/// Contract:
+/// - `report` must be a valid non-null pointer;
+/// - violating the pointer contract aborts the call;
+/// - this function never fails;
+/// - always returns a caller-owned `OpenPitAccountAdjustmentOutcomeList`
+///   (possibly empty); release it with
+///   `openpit_destroy_account_adjustment_outcome_list`. The numbers match what a
+///   real reservation reports for the same order and engine state.
+///
+/// Lifetime contract:
+/// - the returned list is detached from the report state.
+pub extern "C" fn openpit_pretrade_pre_trade_dry_run_report_get_account_adjustments(
+    report: *const OpenPitPretradePreTradeDryRunReport,
+) -> *mut OpenPitAccountAdjustmentOutcomeList {
+    assert!(!report.is_null(), "dry-run report pointer is null");
+    let outcomes = unsafe { &*report }.inner.account_adjustments().to_vec();
+    Box::into_raw(Box::new(outcomes_to_list_owned(outcomes)))
+}
+
+#[no_mangle]
+/// Returns the account block an account-scope reject would have latched.
+///
+/// Contract:
+/// - `report` must be a valid non-null pointer;
+/// - violating the pointer contract aborts the call;
+/// - this function never fails;
+/// - always returns a caller-owned `OpenPitPretradeAccountBlockList` carrying the
+///   single would-be block, or empty when no account-scope reject would have
+///   latched one; release it with
+///   `openpit_pretrade_destroy_account_block_list`. A real call records this
+///   block in the engine's blocked-accounts registry; a dry-run reports it here
+///   without recording it.
+///
+/// Lifetime contract:
+/// - the returned list is detached from the report state.
+pub extern "C" fn openpit_pretrade_pre_trade_dry_run_report_get_account_block(
+    report: *const OpenPitPretradePreTradeDryRunReport,
+) -> *mut OpenPitPretradeAccountBlockList {
+    assert!(!report.is_null(), "dry-run report pointer is null");
+    let blocks = match unsafe { &*report }.inner.account_block() {
+        Some(block) => vec![block.clone()],
+        None => Vec::new(),
+    };
+    Box::into_raw(Box::new(blocks_to_list_owned(blocks)))
+}
+
+#[no_mangle]
+/// Releases a dry-run report pointer owned by the caller.
+///
+/// Contract:
+/// - passing null is allowed;
+/// - after this call the pointer is invalid;
+/// - this function always succeeds.
+pub extern "C" fn openpit_destroy_pretrade_pre_trade_dry_run_report(
+    report: *mut OpenPitPretradePreTradeDryRunReport,
+) {
+    if report.is_null() {
+        return;
+    }
+    unsafe { drop(Box::from_raw(report)) };
 }
 
 #[no_mangle]
@@ -1950,11 +2231,18 @@ mod tests {
         openpit_account_adjustment_batch_error_get_rejects, openpit_create_engine_builder,
         openpit_destroy_account_adjustment_batch_error, openpit_destroy_engine,
         openpit_destroy_engine_build_error, openpit_destroy_engine_builder,
+        openpit_destroy_pretrade_pre_trade_dry_run_report,
         openpit_destroy_pretrade_pre_trade_request, openpit_destroy_pretrade_pre_trade_reservation,
         openpit_engine_apply_account_adjustment, openpit_engine_apply_execution_report,
         openpit_engine_build_error_get_code, openpit_engine_build_error_get_policy_group_id,
         openpit_engine_build_error_get_policy_name, openpit_engine_builder_build,
-        openpit_engine_execute_pre_trade, openpit_engine_start_pre_trade,
+        openpit_engine_execute_pre_trade, openpit_engine_execute_pre_trade_dry_run,
+        openpit_engine_start_pre_trade, openpit_engine_start_pre_trade_dry_run,
+        openpit_pretrade_pre_trade_dry_run_report_get_account_adjustments,
+        openpit_pretrade_pre_trade_dry_run_report_get_account_block,
+        openpit_pretrade_pre_trade_dry_run_report_get_lock,
+        openpit_pretrade_pre_trade_dry_run_report_get_rejects,
+        openpit_pretrade_pre_trade_dry_run_report_is_pass,
         openpit_pretrade_pre_trade_request_execute, openpit_pretrade_pre_trade_reservation_commit,
         openpit_pretrade_pre_trade_reservation_get_lock,
         openpit_pretrade_pre_trade_reservation_rollback, OpenPitAccountAdjustmentBatchError,
@@ -3285,5 +3573,247 @@ mod tests {
             &[crate::account_adjustment::AccountAdjustment::default()],
         );
         assert!(apply.is_ok());
+    }
+
+    unsafe extern "C" fn always_reject_start_check_account_scope(
+        _ctx: *const crate::policy::OpenPitPretradeContext,
+        _order: *const crate::order::OpenPitOrder,
+        _user_data: *mut c_void,
+    ) -> *mut OpenPitPretradeRejectList {
+        let rejects = openpit_pretrade_create_reject_list(1);
+        crate::reject::openpit_pretrade_reject_list_push(
+            rejects,
+            OpenPitPretradeReject {
+                policy: OpenPitStringView::from_utf8("start.account.reject"),
+                reason: OpenPitStringView::from_utf8("blocked"),
+                details: OpenPitStringView::from_utf8("by test"),
+                user_data: std::ptr::null_mut(),
+                code: OpenPitPretradeRejectCode::AccountBlocked,
+                scope: OpenPitPretradeRejectScope::Account,
+            },
+        );
+        rejects
+    }
+
+    fn build_engine_with_start_account_reject_policy() -> *mut super::OpenPitEngine {
+        let builder =
+            openpit_create_engine_builder(OpenPitSyncPolicy::Full as u8, std::ptr::null_mut());
+        let name = OpenPitStringView::from_utf8("start.account.reject");
+        let policy = unsafe {
+            create_pre_trade_policy_with_start_hook(
+                name,
+                always_reject_start_check_account_scope,
+                null_apply_report,
+                noop_free_user_data,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+        assert!(!policy.is_null(), "failed to create policy");
+        let ok = openpit_engine_builder_add_pre_trade_policy(builder, policy, std::ptr::null_mut());
+        assert!(ok, "failed to add policy");
+        openpit_destroy_pretrade_pre_trade_policy(policy);
+        let engine =
+            openpit_engine_builder_build(builder, std::ptr::null_mut(), std::ptr::null_mut());
+        assert!(!engine.is_null(), "engine build failed");
+        engine
+    }
+
+    #[test]
+    fn start_pre_trade_dry_run_does_not_touch_out_report_on_error() {
+        let report_sentinel =
+            core::ptr::NonNull::<super::OpenPitPretradePreTradeDryRunReport>::dangling().as_ptr();
+        let mut out_report = report_sentinel;
+
+        // Null engine and null order both take the transport-error path and must
+        // leave the out-pointer untouched.
+        assert!(!openpit_engine_start_pre_trade_dry_run(
+            std::ptr::null_mut(),
+            std::ptr::null(),
+            &mut out_report,
+            std::ptr::null_mut(),
+        ));
+        assert_eq!(out_report, report_sentinel);
+
+        let engine = build_passthrough_engine();
+        assert!(!openpit_engine_start_pre_trade_dry_run(
+            engine,
+            std::ptr::null(),
+            &mut out_report,
+            std::ptr::null_mut(),
+        ));
+        assert_eq!(out_report, report_sentinel);
+        openpit_destroy_engine(engine);
+    }
+
+    #[test]
+    fn execute_pre_trade_dry_run_does_not_touch_out_report_on_error() {
+        let report_sentinel =
+            core::ptr::NonNull::<super::OpenPitPretradePreTradeDryRunReport>::dangling().as_ptr();
+        let mut out_report = report_sentinel;
+
+        assert!(!openpit_engine_execute_pre_trade_dry_run(
+            std::ptr::null_mut(),
+            std::ptr::null(),
+            &mut out_report,
+            std::ptr::null_mut(),
+        ));
+        assert_eq!(out_report, report_sentinel);
+
+        let engine = build_passthrough_engine();
+        assert!(!openpit_engine_execute_pre_trade_dry_run(
+            engine,
+            std::ptr::null(),
+            &mut out_report,
+            std::ptr::null_mut(),
+        ));
+        assert_eq!(out_report, report_sentinel);
+        openpit_destroy_engine(engine);
+    }
+
+    #[test]
+    fn execute_pre_trade_dry_run_pass_path_reports_empty_lock_and_adjustments() {
+        let engine = build_passthrough_engine();
+        let order = OpenPitOrder::default();
+        let mut out_report = std::ptr::null_mut();
+
+        assert!(openpit_engine_execute_pre_trade_dry_run(
+            engine,
+            &order,
+            &mut out_report,
+            std::ptr::null_mut(),
+        ));
+        assert!(!out_report.is_null());
+        assert!(openpit_pretrade_pre_trade_dry_run_report_is_pass(
+            out_report
+        ));
+
+        let rejects = openpit_pretrade_pre_trade_dry_run_report_get_rejects(out_report);
+        assert!(!rejects.is_null());
+        assert_eq!(openpit_pretrade_reject_list_len(rejects), 0);
+        openpit_pretrade_destroy_reject_list(rejects);
+
+        let lock = openpit_pretrade_pre_trade_dry_run_report_get_lock(out_report);
+        assert!(!lock.is_null());
+        assert_eq!(
+            crate::pre_trade_lock::openpit_pretrade_pre_trade_lock_len(lock),
+            0
+        );
+        crate::pre_trade_lock::openpit_destroy_pretrade_pre_trade_lock(lock);
+
+        let adjustments =
+            openpit_pretrade_pre_trade_dry_run_report_get_account_adjustments(out_report);
+        assert!(!adjustments.is_null());
+        assert_eq!(
+            unsafe {
+                crate::account_outcome::openpit_account_adjustment_outcome_list_len(adjustments)
+            },
+            0
+        );
+        unsafe {
+            crate::account_outcome::openpit_destroy_account_adjustment_outcome_list(adjustments)
+        };
+
+        let blocks = openpit_pretrade_pre_trade_dry_run_report_get_account_block(out_report);
+        assert!(!blocks.is_null());
+        assert_eq!(
+            crate::reject::openpit_pretrade_account_block_list_len(blocks),
+            0
+        );
+        crate::reject::openpit_pretrade_destroy_account_block_list(blocks);
+
+        openpit_destroy_pretrade_pre_trade_dry_run_report(out_report);
+        openpit_destroy_engine(engine);
+    }
+
+    #[test]
+    fn execute_pre_trade_dry_run_reject_path_reports_rejects_without_block() {
+        // An order-scope main-stage reject is reported in the rejects list, but
+        // latches no account block.
+        let engine = build_engine_with_main_reject_policy();
+        let order = OpenPitOrder::default();
+        let mut out_report = std::ptr::null_mut();
+
+        assert!(openpit_engine_execute_pre_trade_dry_run(
+            engine,
+            &order,
+            &mut out_report,
+            std::ptr::null_mut(),
+        ));
+        assert!(!out_report.is_null());
+        assert!(!openpit_pretrade_pre_trade_dry_run_report_is_pass(
+            out_report
+        ));
+
+        let rejects = openpit_pretrade_pre_trade_dry_run_report_get_rejects(out_report);
+        assert!(!rejects.is_null());
+        assert_eq!(openpit_pretrade_reject_list_len(rejects), 1);
+        openpit_pretrade_destroy_reject_list(rejects);
+
+        let blocks = openpit_pretrade_pre_trade_dry_run_report_get_account_block(out_report);
+        assert!(!blocks.is_null());
+        assert_eq!(
+            crate::reject::openpit_pretrade_account_block_list_len(blocks),
+            0
+        );
+        crate::reject::openpit_pretrade_destroy_account_block_list(blocks);
+
+        openpit_destroy_pretrade_pre_trade_dry_run_report(out_report);
+        openpit_destroy_engine(engine);
+    }
+
+    #[test]
+    fn start_pre_trade_dry_run_reject_path_reports_account_block() {
+        // A start-stage account-scope reject is reported with a would-be account
+        // block - and a dry-run reports it without recording it in the engine.
+        let engine = build_engine_with_start_account_reject_policy();
+        let order = OpenPitOrder::default();
+        let mut out_report = std::ptr::null_mut();
+
+        assert!(openpit_engine_start_pre_trade_dry_run(
+            engine,
+            &order,
+            &mut out_report,
+            std::ptr::null_mut(),
+        ));
+        assert!(!out_report.is_null());
+        assert!(!openpit_pretrade_pre_trade_dry_run_report_is_pass(
+            out_report
+        ));
+
+        let rejects = openpit_pretrade_pre_trade_dry_run_report_get_rejects(out_report);
+        assert!(!rejects.is_null());
+        assert_eq!(openpit_pretrade_reject_list_len(rejects), 1);
+        openpit_pretrade_destroy_reject_list(rejects);
+
+        let blocks = openpit_pretrade_pre_trade_dry_run_report_get_account_block(out_report);
+        assert!(!blocks.is_null());
+        assert_eq!(
+            crate::reject::openpit_pretrade_account_block_list_len(blocks),
+            1
+        );
+        let mut block = crate::reject::OpenPitPretradeAccountBlock {
+            policy: OpenPitStringView::not_set(),
+            reason: OpenPitStringView::not_set(),
+            details: OpenPitStringView::not_set(),
+            user_data: std::ptr::null_mut(),
+            code: OpenPitPretradeRejectCode::Other,
+        };
+        assert!(crate::reject::openpit_pretrade_account_block_list_get(
+            blocks, 0, &mut block
+        ));
+        assert_eq!(string_view_to_string(block.policy), "start.account.reject");
+        crate::reject::openpit_pretrade_destroy_account_block_list(blocks);
+
+        openpit_destroy_pretrade_pre_trade_dry_run_report(out_report);
+
+        // The dry-run did not record the block: a real check still reaches the
+        // policy rather than being short-circuited by a recorded block.
+        openpit_destroy_engine(engine);
+    }
+
+    #[test]
+    fn destroy_dry_run_report_is_null_safe() {
+        openpit_destroy_pretrade_pre_trade_dry_run_report(std::ptr::null_mut());
     }
 }

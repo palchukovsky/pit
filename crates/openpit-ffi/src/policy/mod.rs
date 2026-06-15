@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// Please see https://github.com/openpitkit and the OWNERS file for details.
+// Please see https://openpit.dev and the OWNERS file for details.
 
 #![allow(
     clippy::arc_with_non_send_sync,
@@ -50,7 +50,10 @@ mod rate_limit;
 mod spot_funds;
 
 #[allow(unused_imports)]
-pub use custom::openpit_create_pretrade_custom_pre_trade_policy;
+pub use custom::{
+    openpit_create_pretrade_custom_pre_trade_policy,
+    openpit_create_pretrade_custom_pre_trade_policy_with_dry_run,
+};
 pub use custom::{
     OpenPitPretradePreTradePolicy, OpenPitPretradePreTradePolicyApplyAccountAdjustmentFn,
     OpenPitPretradePreTradePolicyApplyExecutionReportFn,
@@ -334,6 +337,24 @@ impl PreTradePolicy<Order, ExecutionReport, AccountAdjustment, openpit_interop::
         self.inner.perform_pre_trade_check(ctx, order, mutations)
     }
 
+    fn check_pre_trade_start_dry_run(
+        &self,
+        ctx: &PreTradeContext<FfiStorageFactory>,
+        order: &Order,
+    ) -> Result<(), Rejects> {
+        self.inner.check_pre_trade_start_dry_run(ctx, order)
+    }
+
+    fn perform_pre_trade_check_dry_run(
+        &self,
+        ctx: &PreTradeContext<FfiStorageFactory>,
+        order: &Order,
+        mutations: &mut Mutations,
+    ) -> Result<Option<PolicyPreTradeResult>, Rejects> {
+        self.inner
+            .perform_pre_trade_check_dry_run(ctx, order, mutations)
+    }
+
     fn apply_execution_report(
         &self,
         ctx: &PostTradeContext<FfiStorageFactory>,
@@ -608,6 +629,8 @@ mod tests {
                 policy_group_id: openpit::PolicyGroupId::new(0),
                 check_pre_trade_start_fn: None,
                 perform_pre_trade_check_fn: Some(check_fn),
+                check_pre_trade_start_dry_run_fn: None,
+                perform_pre_trade_check_dry_run_fn: None,
                 apply_execution_report_fn: Some(custom_apply_report_fn),
                 apply_account_adjustment_fn: None,
                 free_user_data_fn: custom_free_user_data_fn,

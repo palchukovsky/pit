@@ -1569,6 +1569,35 @@ class ExecuteResult:
     def __bool__(self) -> bool:
         """Boolean convenience alias for ``ok``."""
 
+class DryRunReport:
+    """
+    Inert verdict of a non-mutating pre-trade dry-run.
+
+    Describes what a real pre-trade call would have produced for the same order
+    and engine state, with zero effect on that state.
+    """
+
+    @property
+    def is_pass(self) -> bool:
+        """Whether the order would have been admitted by all stages."""
+
+    @property
+    def rejects(self) -> list[Reject] | None:
+        """Reject list when checks would fail."""
+
+    def lock(self) -> Lock:
+        """Lock payload the main stage would have produced."""
+
+    def account_adjustments(self) -> list[AccountAdjustmentOutcome]:
+        """Account adjustment outcomes the main stage would have produced."""
+
+    @property
+    def account_block(self) -> AccountBlock | None:
+        """Account block a real account-scope reject would have recorded."""
+
+    def __bool__(self) -> bool:
+        """Boolean convenience alias for ``is_pass``."""
+
 class OutcomeAmount:
     """Delta and absolute values for one account position field."""
 
@@ -1838,7 +1867,9 @@ class Engine:
         """Create a new EngineBuilder."""
 
     def start_pre_trade(self, order: object) -> StartResult: ...
+    def start_pre_trade_dry_run(self, order: object) -> DryRunReport: ...
     def execute_pre_trade(self, order: object) -> ExecuteResult: ...
+    def execute_pre_trade_dry_run(self, order: object) -> DryRunReport: ...
     def apply_execution_report(self, report: object) -> PostTradeResult: ...
     def apply_account_adjustment(
         self,

@@ -795,6 +795,58 @@ fn dry_run_insufficient_funds_reports_reject_and_leaves_state_for_real_call() {
     reservation.commit();
 }
 
+#[test]
+fn spot_funds_dry_run_same_asset_negative_sell_rejects_like_real_and_leaves_state() {
+    let usd_usd = instr("USD", "USD");
+
+    let dry_run_engine = build_engine();
+    seed(&dry_run_engine, "USD", "10");
+
+    let report = dry_run_engine.execute_pre_trade_dry_run(make_order(
+        Side::Sell,
+        usd_usd.clone(),
+        TradeAmount::Quantity(qty("8")),
+        Some(px("-1")),
+    ));
+    assert!(!report.is_pass());
+    let rejects = report.rejects().expect("dry-run must report rejects");
+    assert_eq!(rejects[0].code, RejectCode::InsufficientFunds);
+    assert!(report.account_adjustments().is_empty());
+
+    let mut reservation = dry_run_engine
+        .execute_pre_trade(make_order(
+            Side::Sell,
+            usd_usd.clone(),
+            TradeAmount::Quantity(qty("5")),
+            Some(px("-1")),
+        ))
+        .expect("dry-run must leave the original USD balance available");
+    reservation.commit();
+
+    let real_engine = build_engine();
+    seed(&real_engine, "USD", "10");
+
+    let Err(rejects) = real_engine.execute_pre_trade(make_order(
+        Side::Sell,
+        usd_usd.clone(),
+        TradeAmount::Quantity(qty("8")),
+        Some(px("-1")),
+    )) else {
+        panic!("real pre-trade must reject after the first same-asset hold")
+    };
+    assert_eq!(rejects[0].code, RejectCode::InsufficientFunds);
+
+    let mut reservation = real_engine
+        .execute_pre_trade(make_order(
+            Side::Sell,
+            usd_usd,
+            TradeAmount::Quantity(qty("5")),
+            Some(px("-1")),
+        ))
+        .expect("real rejection rollback must restore the USD balance");
+    reservation.commit();
+}
+
 // ── realized PnL / average entry price outcomes (public API) ───────────────────
 
 // Happy path: an adjustment that force-sets both the average entry price and

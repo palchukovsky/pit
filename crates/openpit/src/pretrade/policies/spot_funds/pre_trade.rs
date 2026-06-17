@@ -336,13 +336,12 @@ where
     /// Read-only twin of [`Self::perform_pre_trade_check_impl`] for dry-runs.
     ///
     /// Reuses [`Self::read_order_request`] and
-    /// [`Self::compute_reservation_legs`], then for each leg reads the current
-    /// holdings and computes the would-be hold through the pure
-    /// [`Holdings::try_hold`] - **without** writing it back. It pushes nothing to
-    /// storage and nothing to `mutations`, so a dry-run never moves engine
-    /// state. The reject and outcome it produces match the normal path byte for
-    /// byte for the same order and holdings, because both derive them from the
-    /// same `try_hold` result.
+    /// [`Self::compute_reservation_legs`], then computes the would-be holds
+    /// through the pure [`Holdings::try_hold`] - **without** writing them back.
+    /// A temporary per-call view carries the first leg into the second when
+    /// both legs touch the same account/asset key, matching the mutating path's
+    /// ordered checks while leaving engine state untouched. It pushes nothing
+    /// to storage and nothing to `mutations`.
     pub(super) fn perform_pre_trade_check_dry_run_impl<Order>(
         &self,
         account_info: &impl AccountInfo,
@@ -370,16 +369,23 @@ where
         let mut outcome =
             PolicyPreTradeResult::with_capacity(2, legs.lock_price.is_some() as usize);
 
-        self.reserve_leg_dry_run(
+        let underlying_after = self.reserve_leg_dry_run(
             request.account_id,
             &underlying_asset,
             legs.underlying,
+            None,
             &mut outcome,
         )?;
+        let settlement_current = if underlying_asset == settlement_asset {
+            underlying_after
+        } else {
+            None
+        };
         self.reserve_leg_dry_run(
             request.account_id,
             &settlement_asset,
             legs.settlement,
+            settlement_current,
             &mut outcome,
         )?;
 
@@ -393,24 +399,27 @@ where
     /// Read-only twin of [`Self::reserve_leg`].
     ///
     /// Computes the would-be hold of `amount` for one asset leg through the pure
-    /// [`Holdings::try_hold`] on the current (or zero) holdings, emits the same
-    /// outcome entry and the same rejects as [`Self::reserve_leg`], and mutates
-    /// nothing. A zero `amount` is a clean no-op, identical to the normal path.
+    /// [`Holdings::try_hold`] on the supplied temporary holdings or current
+    /// storage holdings, emits the same outcome entry and the same rejects as
+    /// [`Self::reserve_leg`], and mutates nothing. A zero `amount` is a clean
+    /// no-op, identical to the normal path.
     fn reserve_leg_dry_run(
         &self,
         account_id: AccountId,
         asset: &Asset,
         amount: PositionSize,
+        current: Option<Holdings>,
         outcome: &mut PolicyPreTradeResult,
-    ) -> Result<(), Rejects> {
+    ) -> Result<Option<Holdings>, Rejects> {
         if amount.is_zero() {
-            return Ok(());
+            return Ok(current);
         }
 
-        let current = self
-            .holdings
-            .get(&(account_id, asset.clone()))
-            .unwrap_or_else(Holdings::zero);
+        let current = current.unwrap_or_else(|| {
+            self.holdings
+                .get(&(account_id, asset.clone()))
+                .unwrap_or_else(Holdings::zero)
+        });
         let new_holdings = current.try_hold(amount).map_err(|err| {
             Rejects::from(match err {
                 HoldError::ArithmeticOverflow => arithmetic_overflow_reject(
@@ -444,7 +453,7 @@ where
             realized_pnl: None,
             average_entry_price: None,
         });
-        Ok(())
+        Ok(Some(new_holdings))
     }
 
     /// Holds `amount` from `available` to `held` for one asset leg, pushes the

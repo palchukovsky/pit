@@ -117,6 +117,9 @@ test-python python=python: (python-develop python)
     just _pytest bindings/python/tests {{ python }}
     for d in examples/python/*/; do
       [ -f "${d}main.py" ] || continue
+      if [[ -f "${d}requirements.txt" ]]; then
+        {{ python }} -m pip install -r "${d}requirements.txt"
+      fi
       just _pytest "$d" {{ python }}
     done
 # Python unit tests only.

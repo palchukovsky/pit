@@ -20,3 +20,5 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	golang.org/x/sys v0.33.0 // indirect
 )
+
+replace go.openpit.dev/openpit => ../../../bindings/go

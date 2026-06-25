@@ -88,11 +88,14 @@ pub(super) struct ExecutionRequestView<'i> {
 /// the realized PnL across this report's tracked underlying-leg fills, or is
 /// `None` when PnL was not tracked; the current average entry price is read
 /// back from `final_holdings` rather than tracked separately, since every
-/// holdings mutation carries it through.
+/// holdings mutation carries it through. `incoming_delta` accumulates the
+/// projected inflow consumed on fills or released on cancels for the acquiring
+/// leg (negative as it drains toward zero).
 #[derive(Clone, Copy)]
 pub(super) struct LegDelta {
     pub(super) held_delta: PositionSize,
     pub(super) balance_delta: PositionSize,
+    pub(super) incoming_delta: PositionSize,
     pub(super) pnl_delta: Option<Pnl>,
     pub(super) final_holdings: Option<Holdings>,
 }
@@ -102,6 +105,7 @@ impl LegDelta {
         Self {
             held_delta: PositionSize::ZERO,
             balance_delta: PositionSize::ZERO,
+            incoming_delta: PositionSize::ZERO,
             pnl_delta: None,
             final_holdings: None,
         }

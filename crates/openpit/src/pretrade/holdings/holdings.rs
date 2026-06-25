@@ -27,7 +27,12 @@ use super::error::{AdjustmentOverflowError, HoldError};
 /// `available` is free to be locked by new pre-trade reservations. `held`
 /// is locked by pending reservations and is released back to `available`
 /// on cancel or consumed on fill. `incoming` tracks expected future inflows
-/// not yet settled and is managed exclusively through account adjustments.
+/// not yet settled: a pre-trade reservation projects the acquiring leg's
+/// expected inflow into it ([`Holdings::reserve_incoming`]), a fill or cancel
+/// drains the consumed/released portion ([`Holdings::consume_incoming`]), and
+/// account adjustments may force it directly. `incoming` is purely
+/// informational: it is never part of spendable capacity and never gates a
+/// reservation (see [`Holdings::try_hold`]).
 ///
 /// `avg_entry_price` is the average entry price of the current net owned
 /// position (`available + held`), denominated in the account currency; it is
@@ -295,6 +300,62 @@ impl Holdings {
             available,
             held: self.held,
             incoming: self.incoming,
+            realized_pnl: self.realized_pnl,
+        })
+    }
+
+    /// Adds `amount` to `incoming`, projecting an acquiring leg's expected
+    /// inflow alongside the existing `held` outflow leg.
+    ///
+    /// Used by the pre-trade reserve path (a buy's base leg, a priced sell's
+    /// quote leg). `incoming` is purely informational and has no solvency gate,
+    /// so this never rejects on insufficiency - the only failure is decimal-range
+    /// overflow, which the pre-trade caller maps to a reject. `available` and
+    /// `held` are untouched, so spendable capacity is unchanged.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AdjustmentOverflowError::ArithmeticOverflow`] when the
+    /// underlying decimal addition overflows the value range.
+    pub fn reserve_incoming(&self, amount: PositionSize) -> Result<Self, AdjustmentOverflowError> {
+        let incoming = self
+            .incoming
+            .checked_add(amount)
+            .map_err(|_| AdjustmentOverflowError::ArithmeticOverflow)?;
+        Ok(Self {
+            avg_entry_price: self.avg_entry_price,
+            available: self.available,
+            held: self.held,
+            incoming,
+            realized_pnl: self.realized_pnl,
+        })
+    }
+
+    /// Subtracts `amount` from `incoming`, draining the projected inflow as a
+    /// fill consumes it or a cancel releases the unfilled remainder.
+    ///
+    /// `amount` may carry any sign and the result may go negative when the venue
+    /// fill diverges from the reservation estimate (mirroring how
+    /// [`Holdings::apply_fill_outflow`] allows a negative `held`); the engine
+    /// accepts this as informational divergence. `available` and `held` are
+    /// untouched, so this never feeds the available credit and never changes
+    /// spendable capacity. The execution path maps an overflow to an account
+    /// block.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AdjustmentOverflowError::ArithmeticOverflow`] when the
+    /// underlying decimal subtraction overflows the value range.
+    pub fn consume_incoming(&self, amount: PositionSize) -> Result<Self, AdjustmentOverflowError> {
+        let incoming = self
+            .incoming
+            .checked_sub(amount)
+            .map_err(|_| AdjustmentOverflowError::ArithmeticOverflow)?;
+        Ok(Self {
+            avg_entry_price: self.avg_entry_price,
+            available: self.available,
+            held: self.held,
+            incoming,
             realized_pnl: self.realized_pnl,
         })
     }
@@ -1177,6 +1238,115 @@ mod tests {
                 .expect("must inflow")
                 .incoming(),
             ps("7")
+        );
+    }
+
+    #[test]
+    fn reserve_incoming_adds_only_incoming() {
+        let base = holdings("10", "5")
+            .with_avg_entry_price(Some(px("100")))
+            .with_realized_pnl(pnl("7"));
+        let updated = base.reserve_incoming(ps("3")).expect("must reserve");
+
+        assert_eq!(updated.incoming(), ps("3"));
+        assert_eq!(updated.available(), ps("10"));
+        assert_eq!(updated.held(), ps("5"));
+        assert_eq!(updated.avg_entry_price(), Some(px("100")));
+        assert_eq!(updated.realized_pnl(), Some(pnl("7")));
+    }
+
+    #[test]
+    fn reserve_incoming_accumulates() {
+        let base = holdings("0", "0")
+            .reserve_incoming(ps("4"))
+            .expect("first reserve");
+        let updated = base.reserve_incoming(ps("6")).expect("second reserve");
+
+        assert_eq!(updated.incoming(), ps("10"));
+    }
+
+    #[test]
+    fn reserve_incoming_reports_arithmetic_overflow() {
+        let mut value = Holdings::zero();
+        value = value.reserve_incoming(max_ps()).expect("seed must succeed");
+        let err = value.reserve_incoming(max_ps()).expect_err("must overflow");
+
+        assert_eq!(err, AdjustmentOverflowError::ArithmeticOverflow);
+    }
+
+    #[test]
+    fn consume_incoming_subtracts_only_incoming() {
+        let base = holdings("10", "5")
+            .reserve_incoming(ps("8"))
+            .expect("seed must succeed");
+        let updated = base.consume_incoming(ps("3")).expect("must consume");
+
+        assert_eq!(updated.incoming(), ps("5"));
+        assert_eq!(updated.available(), ps("10"));
+        assert_eq!(updated.held(), ps("5"));
+    }
+
+    #[test]
+    fn consume_incoming_can_drive_incoming_negative() {
+        let base = holdings("10", "5")
+            .reserve_incoming(ps("2"))
+            .expect("seed must succeed");
+        let updated = base.consume_incoming(ps("5")).expect("must consume");
+
+        assert_eq!(updated.incoming(), ps("-3"));
+        assert_eq!(updated.available(), ps("10"));
+        assert_eq!(updated.held(), ps("5"));
+    }
+
+    #[test]
+    fn consume_incoming_reports_arithmetic_overflow() {
+        // incoming - amount overflows when amount is very negative and incoming
+        // is near the positive end of the value range.
+        let mut value = Holdings::zero();
+        value = value.reserve_incoming(max_ps()).expect("seed must succeed");
+        let err = value.consume_incoming(min_ps()).expect_err("must overflow");
+
+        assert_eq!(err, AdjustmentOverflowError::ArithmeticOverflow);
+    }
+
+    #[test]
+    fn incoming_operations_do_not_touch_available_held_or_pnl() {
+        let base = holdings("10", "5")
+            .with_avg_entry_price(Some(px("100")))
+            .with_realized_pnl(pnl("7"));
+
+        let reserved = base.reserve_incoming(ps("4")).expect("must reserve");
+        assert_eq!(reserved.available(), ps("10"));
+        assert_eq!(reserved.held(), ps("5"));
+        assert_eq!(reserved.avg_entry_price(), Some(px("100")));
+        assert_eq!(reserved.realized_pnl(), Some(pnl("7")));
+
+        let consumed = reserved.consume_incoming(ps("4")).expect("must consume");
+        assert_eq!(consumed.incoming(), PositionSize::ZERO);
+        assert_eq!(consumed.available(), ps("10"));
+        assert_eq!(consumed.held(), ps("5"));
+        assert_eq!(consumed.avg_entry_price(), Some(px("100")));
+        assert_eq!(consumed.realized_pnl(), Some(pnl("7")));
+    }
+
+    #[test]
+    fn try_hold_spendable_ignores_incoming() {
+        // Reserved incoming must never enter spendable capacity: a slot with
+        // available 10 and incoming 1000 still rejects a hold above 10.
+        let base = holdings("10", "0")
+            .reserve_incoming(ps("1000"))
+            .expect("seed must succeed");
+
+        base.try_hold(ps("10")).expect("must hold within available");
+        let err = base
+            .try_hold(ps("11"))
+            .expect_err("must reject over available");
+        assert_eq!(
+            err,
+            HoldError::InsufficientAvailable {
+                available: ps("10"),
+                requested: ps("11"),
+            }
         );
     }
 

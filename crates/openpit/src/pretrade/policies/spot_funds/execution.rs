@@ -76,20 +76,6 @@ where
         Ok(result)
     }
 
-    /// Releases `amount` from `held` (moving it to `available`). Creates
-    /// the slot on demand. Prunes the slot when the result is all-zero.
-    pub(super) fn release_held(
-        &self,
-        account_id: AccountId,
-        asset: &Asset,
-        amount: PositionSize,
-    ) -> Result<Holdings, AdjustmentOverflowError>
-    where
-        <<Sync as SyncMode>::StorageLockingPolicyFactory as crate::storage::LockingPolicyFactory>::Policy: 'static,
-    {
-        self.mutate_slot((account_id, asset.clone()), |h| h.release(amount))
-    }
-
     fn accounting_quote(
         &self,
         account_id: AccountId,
@@ -204,8 +190,8 @@ where
     /// (e.g. the settlement of a buy at a negative price) simply credits the
     /// inflow to `available`.
     ///
-    /// Any [`AccountBlock`] returned (e.g. overflow, or a missing buy lock
-    /// price) is propagated up to [`Self::apply_execution_report_impl`] and
+    /// Any [`AccountBlock`] returned (e.g. overflow, or a missing lock price on
+    /// either side) is propagated up to [`Self::apply_execution_report_impl`] and
     /// collected into [`PostTradeResult::account_blocks`]; the engine's
     /// [`BlockedAccounts`](crate::core::BlockedAccounts) records the first
     /// block for the account, so policy code does not need to wire a
@@ -274,6 +260,19 @@ where
             Side::Sell => settlement_notional,
         };
 
+        // Incoming reconciliation: the acquiring leg drains the projected inflow
+        // for this fill. A buy acquires base units, so the underlying leg drains
+        // `filled_q` (quantity-based, no price); a priced sell acquires quote
+        // proceeds, so the settlement leg drains `max(0, lock*filled_q)`. The
+        // non-acquiring leg drains nothing. `incoming` never feeds the available
+        // credit - it is reconciled independently.
+        let underlying_incoming_consume = match side {
+            Side::Buy => qty_pos,
+            Side::Sell => PositionSize::ZERO,
+        };
+        let settlement_incoming_consume =
+            self.settlement_incoming_amount(account_id, settlement_asset, side, trade, lock)?;
+
         // Process the charge leg (the one consuming reserved `held`) before the
         // credit leg, so that if the credit leg overflows the already-applied
         // charge mutation is still reported (the non-atomicity contract). The
@@ -288,6 +287,7 @@ where
             underlying_asset,
             underlying_consume,
             underlying_flow,
+            underlying_incoming_consume,
             account_currency_price,
         );
         let settlement_leg = (
@@ -295,19 +295,21 @@ where
             settlement_asset,
             settlement_consume,
             settlement_flow,
+            settlement_incoming_consume,
             None,
         );
         let ordered = match side {
             Side::Buy => [settlement_leg, underlying_leg],
             Side::Sell => [underlying_leg, settlement_leg],
         };
-        for (kind, asset, consume, flow, realize_price) in ordered {
+        for (kind, asset, consume, flow, incoming_consume, realize_price) in ordered {
             self.settle_fill_leg(
                 account_id,
                 asset,
                 kind,
                 consume,
                 flow,
+                incoming_consume,
                 realize_price,
                 deltas,
             )?;
@@ -315,13 +317,15 @@ where
         Ok(())
     }
 
-    /// Reconciles one asset leg of a fill: `held -= consume` and
-    /// `available += consume + flow_received`, recorded into `deltas`.
+    /// Reconciles one asset leg of a fill: `held -= consume`,
+    /// `available += consume + flow_received`, and `incoming -= incoming_consume`,
+    /// recorded into `deltas`.
     ///
     /// `consume` is the (non-negative) reserved portion this fill releases from
     /// `held`; `flow_received` is the signed cash/asset flow into `available`
-    /// (positive inflow, negative outflow). When both are zero the leg is left
-    /// untouched and no outcome is emitted.
+    /// (positive inflow, negative outflow); `incoming_consume` drains the
+    /// acquiring leg's projected inflow (never folded into `available`). When all
+    /// three are zero the leg is left untouched and no outcome is emitted.
     #[allow(clippy::too_many_arguments)]
     fn settle_fill_leg(
         &self,
@@ -330,6 +334,7 @@ where
         kind: LegKind,
         consume: PositionSize,
         flow_received: PositionSize,
+        incoming_consume: PositionSize,
         realize_price: Option<Price>,
         deltas: &mut FillCancelDeltas,
     ) -> Result<(), AccountBlock>
@@ -340,6 +345,7 @@ where
         // available: the reservation handed back, plus (or minus) the real
         // signed flow. For a fully reserved outflow this is the price-
         // improvement savings; for an unreserved inflow it is the whole flow.
+        // `incoming_consume` is reconciled separately and never enters this sum.
         let balance_credit = consume.checked_add(flow_received).map_err(|_| {
             arithmetic_overflow_account_block(
                 Self::NAME,
@@ -349,7 +355,7 @@ where
                 ),
             )
         })?;
-        if consume.is_zero() && balance_credit.is_zero() {
+        if consume.is_zero() && balance_credit.is_zero() && incoming_consume.is_zero() {
             return Ok(());
         }
 
@@ -379,10 +385,17 @@ where
                     (LegKind::Settlement, _) => h,
                 };
                 let after_outflow = realized.apply_fill_outflow(consume)?;
-                if balance_credit.is_zero() {
-                    Ok(after_outflow)
+                let after_credit = if balance_credit.is_zero() {
+                    after_outflow
                 } else {
-                    after_outflow.apply_fill_inflow(balance_credit)
+                    after_outflow.apply_fill_inflow(balance_credit)?
+                };
+                // Drain the projected inflow independently of the available
+                // credit; this never adds back to available.
+                if incoming_consume.is_zero() {
+                    Ok(after_credit)
+                } else {
+                    after_credit.consume_incoming(incoming_consume)
                 }
             })
             .map_err(|_| {
@@ -405,6 +418,18 @@ where
                 ),
             )
         })?;
+        leg.incoming_delta = leg
+            .incoming_delta
+            .checked_sub(incoming_consume)
+            .map_err(|_| {
+                arithmetic_overflow_account_block(
+                    Self::NAME,
+                    format!(
+                        "fill incoming delta overflow: account {account_id}, asset {asset}, \
+                     incoming {incoming_consume}"
+                    ),
+                )
+            })?;
         leg.balance_delta = leg.balance_delta.checked_add(balance_credit).map_err(|_| {
             arithmetic_overflow_account_block(
                 Self::NAME,
@@ -434,11 +459,10 @@ where
 
     /// Computes the settlement `held` consumed by one fill.
     ///
-    /// Returns `max(0, settlement_outflow_at_lock)` for the fill quantity. A buy
-    /// requires a single lock price (a missing or duplicate price is an
-    /// account-blocking error). A sell consults the lock only when a price is
-    /// present (the negative-price case that reserved settlement); without a
-    /// price it reserved no settlement, so it consumes zero.
+    /// Returns `max(0, settlement_outflow_at_lock)` for the fill quantity. Both
+    /// sides require a single lock price (a missing or duplicate price is an
+    /// account-blocking error); a sell's `held` outflow is positive only at a
+    /// negative price, zero otherwise.
     fn settlement_fill_consume(
         &self,
         account_id: AccountId,
@@ -448,8 +472,31 @@ where
         lock: &PreTradeLock,
     ) -> Result<PositionSize, AccountBlock> {
         let lock_price =
-            settlement_lock_price(Self::NAME, side, lock, self.group_id(), "buy fill")?;
+            settlement_lock_price(Self::NAME, lock, self.group_id(), "settlement fill")?;
         settlement_reserved_amount(
+            Self::NAME,
+            side,
+            lock_price,
+            trade.quantity,
+            account_id,
+            settlement_asset,
+        )
+    }
+
+    /// Computes the settlement `incoming` consumed by one fill: the projected
+    /// proceeds `max(0, lock_price * fill_qty)` for a sell, zero for a buy. Lock
+    /// handling mirrors [`Self::settlement_fill_consume`] - the lock price is
+    /// mandatory, and a missing lock blocks the account.
+    fn settlement_incoming_amount(
+        &self,
+        account_id: AccountId,
+        settlement_asset: &Asset,
+        side: Side,
+        trade: Trade,
+        lock: &PreTradeLock,
+    ) -> Result<PositionSize, AccountBlock> {
+        let lock_price = settlement_lock_price(Self::NAME, lock, self.group_id(), "sell fill")?;
+        settlement_incoming_proceeds(
             Self::NAME,
             side,
             lock_price,
@@ -479,27 +526,50 @@ where
     where
         <<Sync as SyncMode>::StorageLockingPolicyFactory as crate::storage::LockingPolicyFactory>::Policy: 'static,
     {
-        // Underlying release: only sells reserved underlying, by quantity.
-        let underlying_release = match side {
+        // Resolve the settlement lock up-front, before any leg mutation, so a
+        // missing lock blocks the account with no holdings touched - symmetric to
+        // the fill path. The settlement release amounts depend on the mandatory
+        // lock price; computing them first keeps the block ahead of the
+        // underlying mutation below.
+        let settlement_held_release =
+            self.settlement_release(account_id, settlement_asset, side, leaves_quantity, lock)?;
+        let settlement_incoming_release = self.settlement_incoming_release(
+            account_id,
+            settlement_asset,
+            side,
+            leaves_quantity,
+            lock,
+        )?;
+
+        // Underlying release: only sells reserved underlying held, by quantity;
+        // only buys projected base incoming, by quantity. The unfilled remainder
+        // of each is released here.
+        let underlying_held_release = match side {
             Side::Buy => PositionSize::ZERO,
             Side::Sell => leaves_quantity.to_position_size(),
+        };
+        let underlying_incoming_release = match side {
+            Side::Buy => leaves_quantity.to_position_size(),
+            Side::Sell => PositionSize::ZERO,
         };
         self.release_leg(
             account_id,
             underlying_asset,
             LegKind::Underlying,
-            underlying_release,
+            underlying_held_release,
+            underlying_incoming_release,
             deltas,
         )?;
 
-        // Settlement release: the unfilled reserved settlement remainder.
-        let settlement_release =
-            self.settlement_release(account_id, settlement_asset, side, leaves_quantity, lock)?;
+        // Settlement release: the unfilled reserved settlement held remainder
+        // (negative-price case) and the projected quote-incoming remainder
+        // (priced sell).
         self.release_leg(
             account_id,
             settlement_asset,
             LegKind::Settlement,
-            settlement_release,
+            settlement_held_release,
+            settlement_incoming_release,
             deltas,
         )?;
         Ok(())
@@ -517,7 +587,7 @@ where
         lock: &PreTradeLock,
     ) -> Result<PositionSize, AccountBlock> {
         let lock_price =
-            settlement_lock_price(Self::NAME, side, lock, self.group_id(), "buy release")?;
+            settlement_lock_price(Self::NAME, lock, self.group_id(), "settlement release")?;
         settlement_reserved_amount(
             Self::NAME,
             side,
@@ -528,51 +598,97 @@ where
         )
     }
 
-    /// Reconciles one asset leg of a cancel: `held -= release` and
-    /// `available += release`, recorded into `deltas`. A zero release is a
-    /// no-op.
+    /// Computes the settlement `incoming` released on cancel: the projected
+    /// proceeds remainder `max(0, lock_price * leaves_quantity)` for a priced
+    /// sell, zero otherwise. Mirrors [`Self::settlement_incoming_amount`].
+    fn settlement_incoming_release(
+        &self,
+        account_id: AccountId,
+        settlement_asset: &Asset,
+        side: Side,
+        leaves_quantity: Quantity,
+        lock: &PreTradeLock,
+    ) -> Result<PositionSize, AccountBlock> {
+        let lock_price = settlement_lock_price(Self::NAME, lock, self.group_id(), "sell release")?;
+        settlement_incoming_proceeds(
+            Self::NAME,
+            side,
+            lock_price,
+            leaves_quantity,
+            account_id,
+            settlement_asset,
+        )
+    }
+
+    /// Reconciles one asset leg of a cancel: `held -= held_release`,
+    /// `available += held_release`, and `incoming -= incoming_release`, recorded
+    /// into `deltas`. When both releases are zero the leg is a no-op. Held and
+    /// incoming are folded into a single slot mutation so no concurrent check
+    /// observes a half-released leg.
     fn release_leg(
         &self,
         account_id: AccountId,
         asset: &Asset,
         kind: LegKind,
-        release: PositionSize,
+        held_release: PositionSize,
+        incoming_release: PositionSize,
         deltas: &mut FillCancelDeltas,
     ) -> Result<(), AccountBlock>
     where
         <<Sync as SyncMode>::StorageLockingPolicyFactory as crate::storage::LockingPolicyFactory>::Policy: 'static,
     {
-        if release.is_zero() {
+        if held_release.is_zero() && incoming_release.is_zero() {
             return Ok(());
         }
-        let new_h = self.release_held(account_id, asset, release).map_err(|_| {
-            arithmetic_overflow_account_block(
-                Self::NAME,
-                format!(
-                    "cancel release overflow: account {account_id}, asset {asset}, \
-                         requested {release}"
-                ),
-            )
-        })?;
+        let new_h = self
+            .mutate_slot((account_id, asset.clone()), |h| {
+                let after_held = h.release(held_release)?;
+                if incoming_release.is_zero() {
+                    Ok(after_held)
+                } else {
+                    after_held.consume_incoming(incoming_release)
+                }
+            })
+            .map_err(|_| {
+                arithmetic_overflow_account_block(
+                    Self::NAME,
+                    format!(
+                        "cancel release overflow: account {account_id}, asset {asset}, \
+                         held {held_release}, incoming {incoming_release}"
+                    ),
+                )
+            })?;
         let leg = deltas.leg_mut(kind);
-        leg.held_delta = leg.held_delta.checked_sub(release).map_err(|_| {
+        leg.held_delta = leg.held_delta.checked_sub(held_release).map_err(|_| {
             arithmetic_overflow_account_block(
                 Self::NAME,
                 format!(
                     "cancel held delta overflow: account {account_id}, asset {asset}, \
-                     release {release}"
+                     release {held_release}"
                 ),
             )
         })?;
-        leg.balance_delta = leg.balance_delta.checked_add(release).map_err(|_| {
+        leg.balance_delta = leg.balance_delta.checked_add(held_release).map_err(|_| {
             arithmetic_overflow_account_block(
                 Self::NAME,
                 format!(
                     "cancel balance delta overflow: account {account_id}, asset {asset}, \
-                     release {release}"
+                     release {held_release}"
                 ),
             )
         })?;
+        leg.incoming_delta = leg
+            .incoming_delta
+            .checked_sub(incoming_release)
+            .map_err(|_| {
+                arithmetic_overflow_account_block(
+                    Self::NAME,
+                    format!(
+                        "cancel incoming delta overflow: account {account_id}, asset {asset}, \
+                     release {incoming_release}"
+                    ),
+                )
+            })?;
         leg.final_holdings = Some(new_h);
         Ok(())
     }
@@ -707,27 +823,27 @@ pub(super) fn optional_lock_price(
 
 /// Resolves the lock price governing the settlement leg of a fill or cancel.
 ///
-/// A buy requires a lock price and blocks if it is missing; a sell consults the
-/// lock only when a price was stored (the negative-price case that reserved
-/// settlement) and returns `None` otherwise. The caller converts the price into
-/// a signed per-unit outflow via the side.
+/// Both sides require a lock price and block with
+/// [`RejectCode::MissingRequiredField`] if it is missing. A buy reserved
+/// settlement `held` and base `incoming`; a sell reserved settlement `incoming`
+/// (or `held` at a negative price); both can only be reconciled at the recorded
+/// price. Pre-trade records a lock price for every accepted order, so a missing
+/// lock here is a reconciliation error, not a valid price-less order. The
+/// caller converts the price into a signed per-unit outflow via the side.
 fn settlement_lock_price(
     policy: &str,
-    side: Side,
     lock: &PreTradeLock,
     group_id: PolicyGroupId,
     purpose: &str,
 ) -> Result<Option<Price>, AccountBlock> {
-    match side {
-        Side::Buy => Ok(Some(single_lock_price(policy, lock, group_id, purpose)?)),
-        Side::Sell => optional_lock_price(policy, lock, group_id, purpose),
-    }
+    Ok(Some(single_lock_price(policy, lock, group_id, purpose)?))
 }
 
 /// Computes the reserved settlement `held` amount for `quantity`, given the lock
 /// price and side: `max(0, settlement_outflow)`, where the outflow is
-/// `+price*qty` for a buy and `-price*qty` for a sell. Returns zero when no lock
-/// price governs the leg (a sell that reserved no settlement).
+/// `+price*qty` for a buy and `-price*qty` for a sell. The lock price is
+/// mandatory for every accepted order; the `None` guard is a defensive zero that
+/// the strict lock resolution upstream no longer reaches.
 fn settlement_reserved_amount(
     policy: &str,
     side: Side,
@@ -753,6 +869,37 @@ fn settlement_reserved_amount(
         Side::Sell => neg(notional),
     };
     Ok(non_negative(outflow))
+}
+
+/// Computes the projected settlement `incoming` for `quantity` given the lock
+/// price and side: `max(0, +price*qty)`, the expected proceeds. Positive only
+/// for a sell with a non-negative price; a buy reserves no settlement incoming.
+/// The lock price is mandatory for every accepted order; the `None` guard is a
+/// defensive zero that the strict lock resolution upstream no longer reaches.
+fn settlement_incoming_proceeds(
+    policy: &str,
+    side: Side,
+    lock_price: Option<Price>,
+    quantity: Quantity,
+    account_id: AccountId,
+    settlement_asset: &Asset,
+) -> Result<PositionSize, AccountBlock> {
+    let Side::Sell = side else {
+        return Ok(PositionSize::ZERO);
+    };
+    let Some(price) = lock_price else {
+        return Ok(PositionSize::ZERO);
+    };
+    let notional = price.calculate_position_size(quantity).map_err(|_| {
+        arithmetic_overflow_account_block(
+            policy,
+            format!(
+                "settlement proceeds overflow: account {account_id}, \
+                 asset {settlement_asset}, lock_px {price}, qty {quantity}"
+            ),
+        )
+    })?;
+    Ok(non_negative(notional))
 }
 
 /// Returns `max(0, value)`: the non-negative portion of a signed outflow.
@@ -815,7 +962,7 @@ fn push_leg_outcome(
                 asset,
                 balance: nonzero_outcome(leg.balance_delta, h.available()),
                 held: nonzero_outcome(leg.held_delta, h.held()),
-                incoming: None,
+                incoming: nonzero_outcome(leg.incoming_delta, h.incoming()),
                 realized_pnl,
                 average_entry_price,
             },

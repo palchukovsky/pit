@@ -270,6 +270,16 @@ fn build_policy_with_market_data(
     SpotFundsPolicy::new(settings(slip_bps), Some(bundle), b.storage_builder())
 }
 
+/// Builds a policy with market-order support and a registered instrument, but
+/// no quote for it.
+fn build_policy_with_market_data_no_quote(instrument: Instrument) -> TestPolicy {
+    let b = engine_builder();
+    let svc = MarketDataBuilder::<FullSync>::new(QuoteTtl::Infinite).build();
+    svc.register(instrument).expect("register must succeed");
+    let bundle = SpotFundsMarketData::new(Arc::clone(&svc));
+    SpotFundsPolicy::new(settings(0), Some(bundle), b.storage_builder())
+}
+
 // ── request builders ──────────────────────────────────────────────────────
 
 fn make_order(
@@ -825,8 +835,10 @@ fn dry_run_buy_reports_outcome_and_leaves_holdings_untouched() {
         .expect("dry-run must report an outcome");
 
     // The would-be settlement leg matches a real reservation: held +2000 to
-    // absolute 2000, balance -2000 to absolute 8000, lock price 200.
-    assert_eq!(outcome.account_adjustments.len(), 1);
+    // absolute 2000, balance -2000 to absolute 8000, lock price 200; plus the
+    // base incoming projection. Dry-run mirrors the mutating path byte for
+    // byte, including the [settlement, base] order.
+    assert_eq!(outcome.account_adjustments.len(), 2);
     let entry = &outcome.account_adjustments[0];
     assert_eq!(entry.asset, asset("USD"));
     let held = entry.held.expect("held outcome present");
@@ -835,6 +847,15 @@ fn dry_run_buy_reports_outcome_and_leaves_holdings_untouched() {
     let balance = entry.balance.expect("balance outcome present");
     assert_eq!(balance.delta, ps("-2000"));
     assert_eq!(balance.absolute, ps("8000"));
+    assert!(entry.incoming.is_none());
+
+    let base = &outcome.account_adjustments[1];
+    assert_eq!(base.asset, asset("AAPL"));
+    assert!(base.balance.is_none());
+    assert!(base.held.is_none());
+    let incoming = base.incoming.expect("base incoming outcome present");
+    assert_eq!(incoming.delta, ps("10"));
+    assert_eq!(incoming.absolute, ps("10"));
     assert_eq!(outcome.lock_prices.to_vec(), vec![px("200")]);
 
     // Holdings are untouched by the dry-run.
@@ -914,13 +935,57 @@ fn dry_run_sell_reports_underlying_hold_and_leaves_holdings_untouched() {
     let outcome = dry_run_check(&policy, &order)
         .expect("dry-run must pass")
         .expect("dry-run must report an outcome");
-    assert_eq!(outcome.account_adjustments.len(), 1);
+    // A priced sell now also projects its settlement incoming (proceeds =
+    // 4 * 200 = 800) and records the lock, in [underlying, settlement] order.
+    assert_eq!(outcome.account_adjustments.len(), 2);
     let entry = &outcome.account_adjustments[0];
     assert_eq!(entry.asset, asset("AAPL"));
     let held = entry.held.expect("held outcome present");
     assert_eq!(held.delta, ps("4"));
     assert_eq!(held.absolute, ps("4"));
+    assert!(entry.incoming.is_none());
 
+    let settlement = &outcome.account_adjustments[1];
+    assert_eq!(settlement.asset, asset("USD"));
+    assert!(settlement.balance.is_none());
+    assert!(settlement.held.is_none());
+    let incoming = settlement.incoming.expect("settlement incoming present");
+    assert_eq!(incoming.delta, ps("800"));
+    assert_eq!(incoming.absolute, ps("800"));
+    assert_eq!(outcome.lock_prices.to_vec(), vec![px("200")]);
+
+    let h = holdings_of(&policy, acc, &asset("AAPL")).expect("must exist");
+    assert_eq!(h.available(), ps("10"));
+    assert_eq!(h.held(), ps("0"));
+}
+
+#[test]
+fn dry_run_priceless_sell_without_market_data_bundle_rejects_like_the_mutating_path() {
+    // A sell with no order price in limit-only mode rejects identically in the
+    // dry-run twin and the mutating path: both route through the shared
+    // compute_reservation_legs and emit UnsupportedOrderType. The dry-run
+    // touches no holdings.
+    let acc = account(99224416);
+    let policy = build_policy(None, None);
+    seed(&policy, acc, asset("AAPL"), "10");
+
+    let order = make_order(
+        acc,
+        instr("AAPL", "USD"),
+        Side::Sell,
+        TradeAmount::Quantity(qty("4")),
+        None,
+    );
+
+    let dry_rejects = dry_run_check(&policy, &order).expect_err("dry-run must reject");
+    assert_eq!(dry_rejects[0].code, RejectCode::UnsupportedOrderType);
+
+    let mut mutations = Mutations::new();
+    let real_rejects = pre_trade_check(&policy, &order, &mut mutations).expect_err("must reject");
+    assert_eq!(real_rejects[0].code, RejectCode::UnsupportedOrderType);
+    assert!(mutations.is_empty());
+
+    // Neither path moved the underlying holdings.
     let h = holdings_of(&policy, acc, &asset("AAPL")).expect("must exist");
     assert_eq!(h.available(), ps("10"));
     assert_eq!(h.held(), ps("0"));
@@ -1037,14 +1102,17 @@ fn sell_qty_sufficient_holds_underlying() {
     let policy = build_policy(None, None);
     seed(&policy, acc, asset("AAPL"), "10");
 
+    // Every accepted sell must resolve a price; the underlying-coverage gate is
+    // exercised with a limit price so the order reserves rather than rejecting
+    // as unpriceable.
     let order = make_order(
         acc,
         instr("AAPL", "USD"),
         Side::Sell,
         TradeAmount::Quantity(qty("4")),
-        None,
+        Some(px("200")),
     );
-    let mut mutations = Mutations::with_capacity(1);
+    let mut mutations = Mutations::with_capacity(2);
     assert!(pre_trade_check(&policy, &order, &mut mutations).is_ok());
 
     let h = holdings_of(&policy, acc, &asset("AAPL")).expect("must exist");
@@ -1058,12 +1126,14 @@ fn sell_qty_insufficient_rejects() {
     let policy = build_policy(None, None);
     seed(&policy, acc, asset("AAPL"), "3");
 
+    // Priced so the order is past the unpriceable gate; the underlying-coverage
+    // gate is what must reject here.
     let order = make_order(
         acc,
         instr("AAPL", "USD"),
         Side::Sell,
         TradeAmount::Quantity(qty("4")),
-        None,
+        Some(px("200")),
     );
     let mut mutations = Mutations::new();
     let rejects = pre_trade_check(&policy, &order, &mut mutations).expect_err("must reject");
@@ -1117,6 +1187,30 @@ fn sell_volume_limit_insufficient_rejects() {
 }
 
 // ── Sell Volume + mark ────────────────────────────────────────────────────
+
+#[test]
+fn sell_qty_market_registered_without_quote_rejects_mark_price_unavailable() {
+    let acc = account(99224416);
+    let aapl_usd = instr("AAPL", "USD");
+    let policy = build_policy_with_market_data_no_quote(aapl_usd.clone());
+    seed(&policy, acc, asset("AAPL"), "10");
+
+    let order = make_order(
+        acc,
+        aapl_usd,
+        Side::Sell,
+        TradeAmount::Quantity(qty("4")),
+        None,
+    );
+    let mut mutations = Mutations::new();
+    let rejects = pre_trade_check(&policy, &order, &mut mutations).expect_err("must reject");
+    assert_eq!(rejects[0].code, RejectCode::MarkPriceUnavailable);
+    assert!(mutations.is_empty());
+
+    let h = holdings_of(&policy, acc, &asset("AAPL")).expect("must exist");
+    assert_eq!(h.available(), ps("10"));
+    assert_eq!(h.held(), ps("0"));
+}
 
 #[test]
 fn sell_volume_market_zero_slip_holds_correct_quantity() {
@@ -1379,18 +1473,22 @@ fn sell_partial_fill_consumes_held_underlying_and_credits_settlement() {
     let policy = build_policy(None, None);
     seed(&policy, acc, asset("AAPL"), "10");
 
+    // A priced sell reserves the AAPL underlying as held and projects the
+    // expected proceeds (200 * 10 = 2000 USD) as settlement incoming.
     let order = make_order(
         acc,
         aapl_usd.clone(),
         Side::Sell,
         TradeAmount::Quantity(qty("10")),
-        None,
+        Some(px("200")),
     );
-    let mut mutations = Mutations::with_capacity(1);
+    let mut mutations = Mutations::with_capacity(2);
     pre_trade_check(&policy, &order, &mut mutations).expect("must succeed");
     mutations.commit_all();
-    // held(AAPL)=10, available(AAPL)=0
+    // held(AAPL)=10, available(AAPL)=0; incoming(USD)=2000
 
+    // The fill carries the lock so the settlement leg reconciles; a sell fill
+    // without it would block the account like a buy.
     let report = make_report(
         acc,
         aapl_usd,
@@ -1401,9 +1499,12 @@ fn sell_partial_fill_consumes_held_underlying_and_credits_settlement() {
         }),
         qty("6"),
         false,
-        None,
+        Some(PreTradeLock::from_entries([(
+            DEFAULT_POLICY_GROUP_ID,
+            px("200"),
+        )])),
     );
-    report_blocks(&policy, &report);
+    assert!(report_blocks(&policy, &report).is_empty());
 
     let aapl = holdings_of(&policy, acc, &asset("AAPL")).expect("must exist");
     assert_eq!(aapl.held(), ps("6")); // 10 - 4
@@ -1411,6 +1512,7 @@ fn sell_partial_fill_consumes_held_underlying_and_credits_settlement() {
 
     let usd = holdings_of(&policy, acc, &asset("USD")).expect("USD entry created");
     assert_eq!(usd.available(), ps("800")); // 4 * 200
+    assert_eq!(usd.incoming(), ps("1200")); // 2000 - 200 * 4
 }
 
 // ── Buy fill - missing lock price ─────────────────────────────────────────
@@ -1455,6 +1557,90 @@ fn buy_fill_without_lock_price_blocks_account() {
     let usd = holdings_of(&policy, acc, &asset("USD")).expect("must exist");
     assert_eq!(usd.held(), ps("2000"));
     assert_eq!(usd.available(), ps("8000"));
+}
+
+// ── Sell fill - missing lock price ────────────────────────────────────────
+
+#[test]
+fn sell_fill_without_lock_price_blocks_account() {
+    let acc = account(99224416);
+    let aapl_usd = instr("AAPL", "USD");
+    let policy = build_policy(None, None);
+    seed(&policy, acc, asset("AAPL"), "10");
+
+    // Priced sell: reserves the underlying held and projects the settlement
+    // incoming (10 * 200 = 2000 USD), recording a lock.
+    let order = make_order(
+        acc,
+        aapl_usd.clone(),
+        Side::Sell,
+        TradeAmount::Quantity(qty("10")),
+        Some(px("200")),
+    );
+    let mut mutations = Mutations::with_capacity(2);
+    pre_trade_check(&policy, &order, &mut mutations).expect("must succeed");
+    mutations.commit_all();
+    // held(AAPL)=10, available(AAPL)=0, incoming(USD)=2000.
+
+    // The fill arrives without its lock: the settlement leg cannot reconcile, so
+    // the account is blocked exactly like a buy, before any holdings mutation.
+    let fill = make_report(
+        acc,
+        aapl_usd,
+        Side::Sell,
+        Some(Trade {
+            price: px("200"),
+            quantity: qty("4"),
+        }),
+        qty("6"),
+        false,
+        None,
+    );
+    let blocks = report_blocks(&policy, &fill);
+    assert_eq!(blocks.len(), 1);
+    assert_eq!(blocks[0].code, RejectCode::MissingRequiredField);
+
+    // No mutation/leak: the underlying held and the settlement incoming are
+    // untouched - the block fired before any leg moved.
+    let aapl = holdings_of(&policy, acc, &asset("AAPL")).expect("must exist");
+    assert_eq!(aapl.held(), ps("10"));
+    assert_eq!(aapl.available(), ps("0"));
+    assert_eq!(incoming_of(&policy, acc, "USD"), ps("2000"));
+}
+
+// ── Sell cancel - missing lock price ──────────────────────────────────────
+
+#[test]
+fn sell_cancel_without_lock_price_blocks_account() {
+    let acc = account(99224416);
+    let aapl_usd = instr("AAPL", "USD");
+    let policy = build_policy(None, None);
+    seed(&policy, acc, asset("AAPL"), "10");
+
+    let order = make_order(
+        acc,
+        aapl_usd.clone(),
+        Side::Sell,
+        TradeAmount::Quantity(qty("10")),
+        Some(px("200")),
+    );
+    let mut mutations = Mutations::with_capacity(2);
+    pre_trade_check(&policy, &order, &mut mutations).expect("must succeed");
+    mutations.commit_all();
+    // held(AAPL)=10, available(AAPL)=0, incoming(USD)=2000.
+
+    // The final cancel arrives without its lock: the settlement release cannot
+    // be priced, so the account is blocked before any leg is released.
+    let cancel = make_report(acc, aapl_usd, Side::Sell, None, qty("10"), true, None);
+    let blocks = report_blocks(&policy, &cancel);
+    assert_eq!(blocks.len(), 1);
+    assert_eq!(blocks[0].code, RejectCode::MissingRequiredField);
+
+    // No mutation/leak: both legs are left exactly as reserved.
+    let aapl = holdings_of(&policy, acc, &asset("AAPL")).expect("must exist");
+    assert_eq!(aapl.held(), ps("10"));
+    assert_eq!(aapl.available(), ps("0"));
+    assert_eq!(incoming_of(&policy, acc, "USD"), ps("2000"));
 }
 
 // ── Buy fill - multiple lock prices ──────────────────────────────────────
@@ -1770,19 +1956,20 @@ fn sell_cancel_leftover_releases_underlying_held() {
     let policy = build_policy(None, None);
     seed(&policy, acc, asset("AAPL"), "10");
 
-    // Reserve Sell 10 → held(AAPL)=10, available(AAPL)=0
+    // Reserve a priced Sell 10 @ 200 → held(AAPL)=10, available(AAPL)=0,
+    // incoming(USD)=2000.
     let order = make_order(
         acc,
         aapl_usd.clone(),
         Side::Sell,
         TradeAmount::Quantity(qty("10")),
-        None,
+        Some(px("200")),
     );
-    let mut mutations = Mutations::with_capacity(1);
+    let mut mutations = Mutations::with_capacity(2);
     pre_trade_check(&policy, &order, &mut mutations).expect("must succeed");
     mutations.commit_all();
 
-    // Partial fill 4@200: consume(4) from held → held=6
+    // Partial fill 4@200 (lock replayed): consume(4) from held → held=6
     let fill = make_report(
         acc,
         aapl_usd.clone(),
@@ -1793,17 +1980,34 @@ fn sell_cancel_leftover_releases_underlying_held() {
         }),
         qty("6"),
         false,
-        None,
+        Some(PreTradeLock::from_entries([(
+            DEFAULT_POLICY_GROUP_ID,
+            px("200"),
+        )])),
     );
-    report_blocks(&policy, &fill);
+    assert!(report_blocks(&policy, &fill).is_empty());
 
-    // Cancel leaves=6: Side::Sell → release=6 directly; held=0; available=6
-    let cancel = make_report(acc, aapl_usd, Side::Sell, None, qty("6"), true, None);
-    report_blocks(&policy, &cancel);
+    // Cancel leaves=6 (lock replayed): Side::Sell → release=6 directly; held=0;
+    // available=6. The settlement incoming drains to zero too. A sell cancel
+    // missing its lock would block the account like a buy.
+    let cancel = make_report(
+        acc,
+        aapl_usd,
+        Side::Sell,
+        None,
+        qty("6"),
+        true,
+        Some(PreTradeLock::from_entries([(
+            DEFAULT_POLICY_GROUP_ID,
+            px("200"),
+        )])),
+    );
+    assert!(report_blocks(&policy, &cancel).is_empty());
 
     let aapl = holdings_of(&policy, acc, &asset("AAPL")).expect("must exist");
     assert_eq!(aapl.held(), ps("0"));
     assert_eq!(aapl.available(), ps("6"));
+    assert_eq!(incoming_of(&policy, acc, "USD"), ps("0"));
 }
 
 // ── is_final + leaves=0 ───────────────────────────────────────────────────
@@ -1869,7 +2073,12 @@ fn buy_fill_creates_underlying_entry_in_holdings() {
     pre_trade_check(&policy, &order, &mut mutations).expect("must succeed");
     mutations.commit_all();
 
-    assert!(holdings_of(&policy, acc, &asset("AAPL")).is_none());
+    // The reservation now projects the acquired base quantity as `incoming`, so
+    // the AAPL slot exists carrying only `incoming`, with no available or held.
+    let reserved = holdings_of(&policy, acc, &asset("AAPL")).expect("incoming slot must exist");
+    assert_eq!(reserved.available(), ps("0"));
+    assert_eq!(reserved.held(), ps("0"));
+    assert_eq!(reserved.incoming(), ps("1"));
 
     let fill = make_report(
         acc,
@@ -1890,6 +2099,7 @@ fn buy_fill_creates_underlying_entry_in_holdings() {
 
     let aapl = holdings_of(&policy, acc, &asset("AAPL")).expect("entry must be created");
     assert_eq!(aapl.available(), ps("1"));
+    assert_eq!(aapl.incoming(), ps("0"));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2690,19 +2900,35 @@ fn pre_trade_check_buy_returns_charge_outcome_and_lock_price() {
     let mut mutations = Mutations::with_capacity(1);
     let outcome = run_pre_trade(&policy, &order, &mut mutations);
 
-    assert_eq!(outcome.account_adjustments.len(), 1);
-    let entry = &outcome.account_adjustments[0];
-    assert_eq!(entry.asset, asset("USD"));
-    let balance = entry
+    // A buy now emits two entries: the settlement held leg and the base
+    // incoming projection, in [settlement, base] order.
+    assert_eq!(outcome.account_adjustments.len(), 2);
+    let settlement = &outcome.account_adjustments[0];
+    assert_eq!(settlement.asset, asset("USD"));
+    let balance = settlement
         .balance
         .as_ref()
         .expect("balance delta must be present");
     assert_eq!(balance.delta, ps("-2000"));
     assert_eq!(balance.absolute, ps("8000"));
-    let held = entry.held.as_ref().expect("held delta must be present");
+    let held = settlement
+        .held
+        .as_ref()
+        .expect("held delta must be present");
     assert_eq!(held.delta, ps("2000"));
     assert_eq!(held.absolute, ps("2000"));
-    assert!(entry.incoming.is_none());
+    assert!(settlement.incoming.is_none());
+
+    let base = &outcome.account_adjustments[1];
+    assert_eq!(base.asset, asset("AAPL"));
+    assert!(base.balance.is_none());
+    assert!(base.held.is_none());
+    let incoming = base
+        .incoming
+        .as_ref()
+        .expect("base incoming projection must be present");
+    assert_eq!(incoming.delta, ps("10"));
+    assert_eq!(incoming.absolute, ps("10"));
 
     assert_eq!(outcome.lock_prices.as_slice(), &[px("200")]);
 }
@@ -2733,7 +2959,7 @@ fn pre_trade_check_buy_market_lock_price_is_effective_price() {
 }
 
 #[test]
-fn pre_trade_check_sell_returns_charge_outcome_and_no_lock_price() {
+fn pre_trade_check_sell_returns_charge_outcome_and_lock_price() {
     let acc = account(99224416);
     let aapl_usd = instr("AAPL", "USD");
     let policy = build_policy(None, None);
@@ -2746,17 +2972,35 @@ fn pre_trade_check_sell_returns_charge_outcome_and_no_lock_price() {
         TradeAmount::Quantity(qty("3")),
         Some(px("200")),
     );
-    let mut mutations = Mutations::with_capacity(1);
+    let mut mutations = Mutations::with_capacity(2);
     let outcome = run_pre_trade(&policy, &order, &mut mutations);
 
-    assert_eq!(outcome.account_adjustments.len(), 1);
-    let entry = &outcome.account_adjustments[0];
-    assert_eq!(entry.asset, asset("AAPL"));
-    let held = entry.held.as_ref().expect("held delta must be present");
+    // A priced sell now emits the underlying held leg and the settlement
+    // incoming projection (proceeds = 3 * 200 = 600), in [underlying,
+    // settlement] order, and records its lock price.
+    assert_eq!(outcome.account_adjustments.len(), 2);
+    let underlying = &outcome.account_adjustments[0];
+    assert_eq!(underlying.asset, asset("AAPL"));
+    let held = underlying
+        .held
+        .as_ref()
+        .expect("held delta must be present");
     assert_eq!(held.delta, ps("3"));
     assert_eq!(held.absolute, ps("3"));
+    assert!(underlying.incoming.is_none());
 
-    assert!(outcome.lock_prices.is_empty());
+    let settlement = &outcome.account_adjustments[1];
+    assert_eq!(settlement.asset, asset("USD"));
+    assert!(settlement.balance.is_none());
+    assert!(settlement.held.is_none());
+    let incoming = settlement
+        .incoming
+        .as_ref()
+        .expect("settlement incoming projection must be present");
+    assert_eq!(incoming.delta, ps("600"));
+    assert_eq!(incoming.absolute, ps("600"));
+
+    assert_eq!(outcome.lock_prices.as_slice(), &[px("200")]);
 }
 
 // ── Outcomes from apply_account_adjustment ────────────────────────────────
@@ -3018,12 +3262,14 @@ fn execution_report_buy_release_with_multiple_lock_prices_emits_block() {
 }
 
 #[test]
-fn execution_report_sell_final_release_does_not_consult_lock() {
+fn execution_report_sell_final_release_consults_lock_for_settlement_incoming() {
     let acc = account(99224416);
     let aapl_usd = instr("AAPL", "USD");
     let policy = build_policy(None, None);
     seed(&policy, acc, asset("AAPL"), "100");
 
+    // A priced sell reserves the AAPL underlying as held and projects the
+    // expected proceeds (200 * 10 = 2000 USD) as settlement incoming.
     let order = make_order(
         acc,
         aapl_usd.clone(),
@@ -3034,8 +3280,22 @@ fn execution_report_sell_final_release_does_not_consult_lock() {
     let mut mutations = Mutations::with_capacity(1);
     pre_trade_check(&policy, &order, &mut mutations).expect("pretrade must succeed");
     mutations.commit_all();
+    assert_eq!(incoming_of(&policy, acc, "USD"), ps("2000"));
 
-    let cancel = make_report(acc, aapl_usd, Side::Sell, None, qty("10"), true, None);
+    // The cancel replays the lock, so the full underlying held releases and the
+    // reserved USD settlement incoming drains back to zero (no leak).
+    let cancel = make_report(
+        acc,
+        aapl_usd,
+        Side::Sell,
+        None,
+        qty("10"),
+        true,
+        Some(PreTradeLock::from_entries([(
+            DEFAULT_POLICY_GROUP_ID,
+            px("200"),
+        )])),
+    );
     let result = run_report(&policy, &cancel);
 
     assert!(result.account_blocks.is_empty());
@@ -3058,6 +3318,22 @@ fn execution_report_sell_final_release_does_not_consult_lock() {
         .expect("AAPL balance delta must be present");
     assert_eq!(balance.delta, ps("10"));
     assert_eq!(balance.absolute, ps("100"));
+
+    // The USD settlement incoming is released by the lock-priced cancel and
+    // converges to zero - the priced-sell cancel must consult the lock.
+    let usd_entry = result
+        .account_adjustments
+        .iter()
+        .find(|o| o.entry.asset == asset("USD"))
+        .expect("USD incoming entry must exist");
+    let incoming = usd_entry
+        .entry
+        .incoming
+        .as_ref()
+        .expect("USD incoming delta must be present");
+    assert_eq!(incoming.delta, ps("-2000"));
+    assert_eq!(incoming.absolute, ps("0"));
+    assert_eq!(incoming_of(&policy, acc, "USD"), ps("0"));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -3352,6 +3628,8 @@ fn sell_fill_missing_charge_slot_records_negative_held_and_credits_counter() {
     let policy = build_policy(None, None);
     // No AAPL slot seeded intentionally.
 
+    // A sell fill must carry its lock; the settlement leg reconciles the
+    // projected incoming at the lock price (a missing lock would block).
     let report = make_report(
         acc,
         aapl_usd,
@@ -3362,7 +3640,10 @@ fn sell_fill_missing_charge_slot_records_negative_held_and_credits_counter() {
         }),
         qty("0"),
         true,
-        None,
+        Some(PreTradeLock::from_entries([(
+            DEFAULT_POLICY_GROUP_ID,
+            px("200"),
+        )])),
     );
     let blocks = report_blocks(&policy, &report);
     assert!(blocks.is_empty());
@@ -3374,10 +3655,13 @@ fn sell_fill_missing_charge_slot_records_negative_held_and_credits_counter() {
     let usd = holdings_of(&policy, acc, &asset("USD")).expect("USD slot must be created");
     assert_eq!(usd.available(), ps("2000"));
     assert_eq!(usd.held(), ps("0"));
+    // No reservation ran, so draining the projected proceeds drives the
+    // counter-leg incoming negative (200 * 10 = 2000).
+    assert_eq!(usd.incoming(), ps("-2000"));
 }
 
 // Final-cancel execution report where the charge-side (USD) slot is absent:
-// release_held must create the slot and reflect the authoritative delta.
+// the release path must create the slot and reflect the authoritative delta.
 #[test]
 fn cancel_release_missing_charge_slot_applies_release_delta() {
     let acc = account(99224416);
@@ -4205,10 +4489,16 @@ fn buy_qty_zero_price_reserves_nothing_and_settles() {
     let mut mutations = Mutations::with_capacity(1);
     let result = pre_trade_full(&policy, &order, &mut mutations).expect("must pass");
     mutations.commit_all();
-    assert!(
-        result.account_adjustments.is_empty(),
-        "zero-reservation buy emits no leg adjustments",
-    );
+    // A zero-price buy owes no settlement held, but the base inflow is still
+    // projected: incoming = order quantity (10), regardless of price sign.
+    assert_eq!(result.account_adjustments.len(), 1);
+    let base = &result.account_adjustments[0];
+    assert_eq!(base.asset, asset("AAPL"));
+    assert!(base.balance.is_none());
+    assert!(base.held.is_none());
+    let incoming = base.incoming.as_ref().expect("base incoming present");
+    assert_eq!(incoming.delta, ps("10"));
+    assert_eq!(incoming.absolute, ps("10"));
     assert_eq!(result.lock_prices.as_slice(), &[px("0")]);
     assert!(maybe_holdings(&policy, acc, "USD").is_none());
 
@@ -4304,7 +4594,16 @@ fn buy_qty_negative_price_reserves_nothing_and_receives_cash_on_fill() {
     let mut mutations = Mutations::with_capacity(1);
     let result = pre_trade_full(&policy, &order, &mut mutations).expect("must pass");
     mutations.commit_all();
-    assert!(result.account_adjustments.is_empty());
+    // A negative-price buy owes no settlement held, but the base inflow is
+    // still projected: incoming = order quantity (10).
+    assert_eq!(result.account_adjustments.len(), 1);
+    let base = &result.account_adjustments[0];
+    assert_eq!(base.asset, asset("AAPL"));
+    assert!(base.balance.is_none());
+    assert!(base.held.is_none());
+    let incoming = base.incoming.as_ref().expect("base incoming present");
+    assert_eq!(incoming.delta, ps("10"));
+    assert_eq!(incoming.absolute, ps("10"));
     assert_eq!(result.lock_prices.as_slice(), &[px("-50")]);
     assert!(maybe_holdings(&policy, acc, "USD").is_none());
 
@@ -4461,12 +4760,15 @@ fn sell_qty_zero_price_reserves_only_underlying() {
     let mut mutations = Mutations::with_capacity(1);
     let result = pre_trade_full(&policy, &order, &mut mutations).expect("must pass");
     mutations.commit_all();
-    // Only the underlying leg is reserved; no settlement leg, no lock price.
+    // Only the underlying leg is reserved (both settlement legs are zero at a
+    // zero price), but the resolved zero price is still recorded as the lock:
+    // every accepted sell records a lock_price.
     assert_eq!(result.account_adjustments.len(), 1);
-    assert!(result.lock_prices.is_empty());
+    assert_eq!(result.lock_prices.as_slice(), &[px("0")]);
     assert_balance(&policy, acc, "AAPL", "0", "10");
 
-    // Fill 4 @ 0: gives 4 AAPL, receives 0 USD.
+    // Fill 4 @ 0 (lock replayed): gives 4 AAPL, receives 0 USD. The zero lock
+    // is mandatory - a fill without it would block the account.
     let partial = make_report(
         acc,
         aapl_usd.clone(),
@@ -4477,7 +4779,10 @@ fn sell_qty_zero_price_reserves_only_underlying() {
         }),
         qty("6"),
         false,
-        None,
+        Some(PreTradeLock::from_entries([(
+            DEFAULT_POLICY_GROUP_ID,
+            px("0"),
+        )])),
     );
     assert!(report_blocks(&policy, &partial).is_empty());
     assert_balance(&policy, acc, "AAPL", "0", "6");
@@ -4493,7 +4798,10 @@ fn sell_qty_zero_price_reserves_only_underlying() {
         }),
         qty("0"),
         true,
-        None,
+        Some(PreTradeLock::from_entries([(
+            DEFAULT_POLICY_GROUP_ID,
+            px("0"),
+        )])),
     );
     assert!(report_blocks(&policy, &final_fill).is_empty());
     assert_balance(&policy, acc, "AAPL", "0", "0");
@@ -4516,7 +4824,20 @@ fn sell_qty_zero_price_cancel_releases_underlying() {
     pre_trade_full(&policy, &order, &mut mutations).expect("must pass");
     mutations.commit_all();
 
-    let cancel = make_report(acc, aapl_usd, Side::Sell, None, qty("10"), true, None);
+    // The zero lock is mandatory on the cancel too - a sell cancel without it
+    // would block the account.
+    let cancel = make_report(
+        acc,
+        aapl_usd,
+        Side::Sell,
+        None,
+        qty("10"),
+        true,
+        Some(PreTradeLock::from_entries([(
+            DEFAULT_POLICY_GROUP_ID,
+            px("0"),
+        )])),
+    );
     assert!(report_blocks(&policy, &cancel).is_empty());
     assert_balance(&policy, acc, "AAPL", "10", "0");
 }
@@ -4783,12 +5104,12 @@ fn buy_qty_positive_price_held_returns_to_zero_after_full_settlement() {
 }
 
 #[test]
-fn sell_volume_positive_price_reserves_only_underlying_and_settles() {
+fn sell_volume_positive_price_reserves_underlying_held_and_settlement_incoming() {
     let acc = account(99224416);
     let aapl_usd = instr("AAPL", "USD");
     let policy = build_policy(None, None);
-    // Volume 2000 @ 200 -> quantity = 10 AAPL; settlement leg = 0 (sell
-    // receives cash, owes none).
+    // Volume 2000 @ 200 -> quantity = 10 AAPL; settlement held = 0 (sell
+    // receives cash, owes none) but settlement incoming = 10 * 200 = 2000.
     seed(&policy, acc, asset("AAPL"), "10");
     let order = make_order(
         acc,
@@ -4797,13 +5118,24 @@ fn sell_volume_positive_price_reserves_only_underlying_and_settles() {
         TradeAmount::Volume(vol("2000")),
         Some(px("200")),
     );
-    let mut mutations = Mutations::with_capacity(1);
+    let mut mutations = Mutations::with_capacity(2);
     let result = pre_trade_full(&policy, &order, &mut mutations).expect("must pass");
     mutations.commit_all();
-    assert_eq!(result.account_adjustments.len(), 1);
-    assert!(result.lock_prices.is_empty());
+    // Underlying held leg plus settlement incoming projection; a priced sell
+    // now records its lock.
+    assert_eq!(result.account_adjustments.len(), 2);
+    let settlement = &result.account_adjustments[1];
+    assert_eq!(settlement.asset, asset("USD"));
+    let incoming = settlement
+        .incoming
+        .as_ref()
+        .expect("settlement incoming present");
+    assert_eq!(incoming.delta, ps("2000"));
+    assert_eq!(incoming.absolute, ps("2000"));
+    assert_eq!(result.lock_prices.as_slice(), &[px("200")]);
     assert_balance(&policy, acc, "AAPL", "0", "10");
 
+    // The fill carries the lock so the settlement incoming drains to zero.
     let final_fill = make_report(
         acc,
         aapl_usd,
@@ -4814,11 +5146,16 @@ fn sell_volume_positive_price_reserves_only_underlying_and_settles() {
         }),
         qty("0"),
         true,
-        None,
+        Some(PreTradeLock::from_entries([(
+            DEFAULT_POLICY_GROUP_ID,
+            px("200"),
+        )])),
     );
     assert!(report_blocks(&policy, &final_fill).is_empty());
     assert_balance(&policy, acc, "AAPL", "0", "0");
     assert_balance(&policy, acc, "USD", "2000", "0");
+    let usd = holdings_of(&policy, acc, &asset("USD")).expect("USD entry");
+    assert_eq!(usd.incoming(), ps("0"), "settlement incoming must drain");
 }
 
 // ── Two-leg rollback and partial-reservation atomicity ────────────────────
@@ -4894,6 +5231,484 @@ fn sell_negative_price_settlement_insufficient_rolls_back_underlying_leg() {
         .execute_pre_trade(probe)
         .expect("a positive-price sell of the full 10 AAPL must still fit");
     reservation.rollback();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Incoming projection: the acquiring leg's expected inflow is reserved into
+// the `incoming` bucket in parallel with the existing `held` outflow leg,
+// consumed on fills, released on cancels, reversed on rollback, and converges
+// to zero. `incoming` is purely informational and gates nothing.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Reads an asset's `incoming` bucket, treating an absent slot as zero.
+fn incoming_of(policy: &TestPolicy, acc: AccountId, asset_code: &str) -> PositionSize {
+    maybe_holdings(policy, acc, asset_code)
+        .map(|h| h.incoming())
+        .unwrap_or(PositionSize::ZERO)
+}
+
+#[test]
+fn buy_reservation_projects_base_incoming_and_settlement_held() {
+    let acc = account(99224416);
+    let aapl_usd = instr("AAPL", "USD");
+    let policy = build_policy(None, None);
+    seed(&policy, acc, asset("USD"), "10000");
+
+    let order = make_order(
+        acc,
+        aapl_usd,
+        Side::Buy,
+        TradeAmount::Quantity(qty("10")),
+        Some(px("200")),
+    );
+    let mut mutations = Mutations::with_capacity(2);
+    let result = pre_trade_full(&policy, &order, &mut mutations).expect("must pass");
+    mutations.commit_all();
+
+    // Settlement held leg (USD) and base incoming projection (AAPL),
+    // [settlement, base] order.
+    assert_eq!(result.account_adjustments.len(), 2);
+    let settlement = &result.account_adjustments[0];
+    assert_eq!(settlement.asset, asset("USD"));
+    assert_eq!(
+        settlement.held.as_ref().expect("held present").delta,
+        ps("2000")
+    );
+    assert!(settlement.incoming.is_none());
+
+    let base = &result.account_adjustments[1];
+    assert_eq!(base.asset, asset("AAPL"));
+    assert!(base.balance.is_none());
+    assert!(base.held.is_none());
+    let incoming = base.incoming.as_ref().expect("base incoming present");
+    assert_eq!(incoming.delta, ps("10"));
+    assert_eq!(incoming.absolute, ps("10"));
+
+    // The slot the projection lives in carries only incoming.
+    assert_eq!(incoming_of(&policy, acc, "AAPL"), ps("10"));
+    let aapl = holdings_of(&policy, acc, &asset("AAPL")).expect("slot must exist");
+    assert_eq!(aapl.available(), ps("0"));
+    assert_eq!(aapl.held(), ps("0"));
+}
+
+#[test]
+fn sell_reservation_projects_settlement_incoming_and_underlying_held() {
+    let acc = account(99224416);
+    let aapl_usd = instr("AAPL", "USD");
+    let policy = build_policy(None, None);
+    seed(&policy, acc, asset("AAPL"), "10");
+
+    let order = make_order(
+        acc,
+        aapl_usd,
+        Side::Sell,
+        TradeAmount::Quantity(qty("4")),
+        Some(px("200")),
+    );
+    let mut mutations = Mutations::with_capacity(2);
+    let result = pre_trade_full(&policy, &order, &mut mutations).expect("must pass");
+    mutations.commit_all();
+
+    // Underlying held leg (AAPL) and settlement incoming projection (USD =
+    // proceeds 4 * 200 = 800), [underlying, settlement] order.
+    assert_eq!(result.account_adjustments.len(), 2);
+    let underlying = &result.account_adjustments[0];
+    assert_eq!(underlying.asset, asset("AAPL"));
+    assert_eq!(
+        underlying.held.as_ref().expect("held present").delta,
+        ps("4")
+    );
+    assert!(underlying.incoming.is_none());
+
+    let settlement = &result.account_adjustments[1];
+    assert_eq!(settlement.asset, asset("USD"));
+    assert!(settlement.balance.is_none());
+    assert!(settlement.held.is_none());
+    let incoming = settlement.incoming.as_ref().expect("incoming present");
+    assert_eq!(incoming.delta, ps("800"));
+    assert_eq!(incoming.absolute, ps("800"));
+
+    assert_eq!(incoming_of(&policy, acc, "USD"), ps("800"));
+    assert_eq!(result.lock_prices.as_slice(), &[px("200")]);
+}
+
+#[test]
+fn price_less_sell_without_market_data_bundle_rejects_as_unsupported() {
+    // No order price in limit-only mode: the sell cannot resolve a price, so it
+    // is rejected as an unsupported market order rather than accepted without a
+    // lock. No holdings are touched.
+    let acc = account(99224416);
+    let aapl_usd = instr("AAPL", "USD");
+    let policy = build_policy(None, None);
+    seed(&policy, acc, asset("AAPL"), "10");
+
+    let order = make_order(
+        acc,
+        aapl_usd,
+        Side::Sell,
+        TradeAmount::Quantity(qty("4")),
+        None,
+    );
+    let mut mutations = Mutations::new();
+    let rejects = pre_trade_full(&policy, &order, &mut mutations).expect_err("must reject");
+    assert_eq!(rejects[0].code, RejectCode::UnsupportedOrderType);
+    assert!(mutations.is_empty());
+    // The underlying gate never ran: the AAPL holdings are untouched and no
+    // settlement slot was created.
+    assert_balance(&policy, acc, "AAPL", "10", "0");
+    assert!(maybe_holdings(&policy, acc, "USD").is_none());
+}
+
+#[test]
+fn buy_full_fill_drains_base_incoming_and_credits_available() {
+    let acc = account(99224416);
+    let aapl_usd = instr("AAPL", "USD");
+    let policy = build_policy(None, None);
+    seed(&policy, acc, asset("USD"), "10000");
+
+    let order = make_order(
+        acc,
+        aapl_usd.clone(),
+        Side::Buy,
+        TradeAmount::Quantity(qty("10")),
+        Some(px("200")),
+    );
+    let mut mutations = Mutations::with_capacity(2);
+    pre_trade_full(&policy, &order, &mut mutations).expect("must pass");
+    mutations.commit_all();
+    assert_eq!(incoming_of(&policy, acc, "AAPL"), ps("10"));
+
+    let fill = make_report(
+        acc,
+        aapl_usd,
+        Side::Buy,
+        Some(Trade {
+            price: px("200"),
+            quantity: qty("10"),
+        }),
+        qty("0"),
+        true,
+        Some(PreTradeLock::from_entries([(
+            DEFAULT_POLICY_GROUP_ID,
+            px("200"),
+        )])),
+    );
+    let result = run_report(&policy, &fill);
+    assert!(result.account_blocks.is_empty());
+
+    // The acquiring leg emits both the available credit and the incoming
+    // drain; available is credited exactly once (no double-credit).
+    let aapl_entry = result
+        .account_adjustments
+        .iter()
+        .find(|o| o.entry.asset == asset("AAPL"))
+        .expect("AAPL entry must exist");
+    let balance = aapl_entry
+        .entry
+        .balance
+        .as_ref()
+        .expect("balance delta present");
+    assert_eq!(balance.delta, ps("10"));
+    let drained = aapl_entry
+        .entry
+        .incoming
+        .as_ref()
+        .expect("incoming delta present");
+    assert_eq!(drained.delta, ps("-10"));
+    assert_eq!(drained.absolute, ps("0"));
+
+    // Available credited once to 10, incoming fully drained.
+    assert_balance(&policy, acc, "AAPL", "10", "0");
+    assert_eq!(incoming_of(&policy, acc, "AAPL"), ps("0"));
+}
+
+#[test]
+fn buy_partial_fill_drains_base_incoming_proportionally() {
+    let acc = account(99224416);
+    let aapl_usd = instr("AAPL", "USD");
+    let policy = build_policy(None, None);
+    seed(&policy, acc, asset("USD"), "10000");
+
+    let order = make_order(
+        acc,
+        aapl_usd.clone(),
+        Side::Buy,
+        TradeAmount::Quantity(qty("10")),
+        Some(px("200")),
+    );
+    let mut mutations = Mutations::with_capacity(2);
+    pre_trade_full(&policy, &order, &mut mutations).expect("must pass");
+    mutations.commit_all();
+
+    let partial = make_report(
+        acc,
+        aapl_usd,
+        Side::Buy,
+        Some(Trade {
+            price: px("200"),
+            quantity: qty("4"),
+        }),
+        qty("6"),
+        false,
+        Some(PreTradeLock::from_entries([(
+            DEFAULT_POLICY_GROUP_ID,
+            px("200"),
+        )])),
+    );
+    assert!(report_blocks(&policy, &partial).is_empty());
+
+    // incoming consumed by filled quantity (4), 6 remains projected; available
+    // credited the 4 acquired units.
+    assert_balance(&policy, acc, "AAPL", "4", "0");
+    assert_eq!(incoming_of(&policy, acc, "AAPL"), ps("6"));
+}
+
+#[test]
+fn sell_fill_drains_settlement_incoming_by_lock_price() {
+    let acc = account(99224416);
+    let aapl_usd = instr("AAPL", "USD");
+    let policy = build_policy(None, None);
+    seed(&policy, acc, asset("AAPL"), "10");
+
+    let order = make_order(
+        acc,
+        aapl_usd.clone(),
+        Side::Sell,
+        TradeAmount::Quantity(qty("10")),
+        Some(px("200")),
+    );
+    let mut mutations = Mutations::with_capacity(2);
+    pre_trade_full(&policy, &order, &mut mutations).expect("must pass");
+    mutations.commit_all();
+    // proceeds projection = 10 * 200 = 2000.
+    assert_eq!(incoming_of(&policy, acc, "USD"), ps("2000"));
+
+    let partial = make_report(
+        acc,
+        aapl_usd,
+        Side::Sell,
+        Some(Trade {
+            price: px("200"),
+            quantity: qty("4"),
+        }),
+        qty("6"),
+        false,
+        Some(PreTradeLock::from_entries([(
+            DEFAULT_POLICY_GROUP_ID,
+            px("200"),
+        )])),
+    );
+    assert!(report_blocks(&policy, &partial).is_empty());
+
+    // incoming drained by lock_price * filled = 200 * 4 = 800, leaving 1200;
+    // available credited the 800 proceeds independently.
+    assert_balance(&policy, acc, "USD", "800", "0");
+    assert_eq!(incoming_of(&policy, acc, "USD"), ps("1200"));
+}
+
+#[test]
+fn buy_cancel_releases_unfilled_base_incoming() {
+    let acc = account(99224416);
+    let aapl_usd = instr("AAPL", "USD");
+    let policy = build_policy(None, None);
+    seed(&policy, acc, asset("USD"), "10000");
+
+    let order = make_order(
+        acc,
+        aapl_usd.clone(),
+        Side::Buy,
+        TradeAmount::Quantity(qty("10")),
+        Some(px("200")),
+    );
+    let mut mutations = Mutations::with_capacity(2);
+    pre_trade_full(&policy, &order, &mut mutations).expect("must pass");
+    mutations.commit_all();
+
+    // Fill 4, then cancel the unfilled 6.
+    let partial = make_report(
+        acc,
+        aapl_usd.clone(),
+        Side::Buy,
+        Some(Trade {
+            price: px("200"),
+            quantity: qty("4"),
+        }),
+        qty("6"),
+        false,
+        Some(PreTradeLock::from_entries([(
+            DEFAULT_POLICY_GROUP_ID,
+            px("200"),
+        )])),
+    );
+    assert!(report_blocks(&policy, &partial).is_empty());
+    assert_eq!(incoming_of(&policy, acc, "AAPL"), ps("6"));
+
+    let cancel = make_report(
+        acc,
+        aapl_usd,
+        Side::Buy,
+        None,
+        qty("6"),
+        true,
+        Some(PreTradeLock::from_entries([(
+            DEFAULT_POLICY_GROUP_ID,
+            px("200"),
+        )])),
+    );
+    assert!(report_blocks(&policy, &cancel).is_empty());
+
+    // Convergence: consumed 4 + released 6 == reserved 10, no residual.
+    assert_eq!(incoming_of(&policy, acc, "AAPL"), ps("0"));
+    assert_balance(&policy, acc, "AAPL", "4", "0");
+}
+
+#[test]
+fn sell_cancel_releases_unfilled_settlement_incoming_by_lock_price() {
+    let acc = account(99224416);
+    let aapl_usd = instr("AAPL", "USD");
+    let policy = build_policy(None, None);
+    seed(&policy, acc, asset("AAPL"), "10");
+
+    let order = make_order(
+        acc,
+        aapl_usd.clone(),
+        Side::Sell,
+        TradeAmount::Quantity(qty("10")),
+        Some(px("200")),
+    );
+    let mut mutations = Mutations::with_capacity(2);
+    pre_trade_full(&policy, &order, &mut mutations).expect("must pass");
+    mutations.commit_all();
+    assert_eq!(incoming_of(&policy, acc, "USD"), ps("2000"));
+
+    // Fill 4 (drains 800), cancel the unfilled 6 (releases 200 * 6 = 1200).
+    let partial = make_report(
+        acc,
+        aapl_usd.clone(),
+        Side::Sell,
+        Some(Trade {
+            price: px("200"),
+            quantity: qty("4"),
+        }),
+        qty("6"),
+        false,
+        Some(PreTradeLock::from_entries([(
+            DEFAULT_POLICY_GROUP_ID,
+            px("200"),
+        )])),
+    );
+    assert!(report_blocks(&policy, &partial).is_empty());
+
+    let cancel = make_report(
+        acc,
+        aapl_usd,
+        Side::Sell,
+        None,
+        qty("6"),
+        true,
+        Some(PreTradeLock::from_entries([(
+            DEFAULT_POLICY_GROUP_ID,
+            px("200"),
+        )])),
+    );
+    assert!(report_blocks(&policy, &cancel).is_empty());
+
+    // Convergence: drained 800 + released 1200 == reserved 2000, no residual.
+    assert_eq!(incoming_of(&policy, acc, "USD"), ps("0"));
+    assert_balance(&policy, acc, "USD", "800", "0");
+}
+
+#[test]
+fn buy_reservation_rollback_restores_held_and_incoming() {
+    let acc = account(99224416);
+    let aapl_usd = instr("AAPL", "USD");
+    let policy = build_policy(None, None);
+    seed(&policy, acc, asset("USD"), "10000");
+
+    let order = make_order(
+        acc,
+        aapl_usd,
+        Side::Buy,
+        TradeAmount::Quantity(qty("10")),
+        Some(px("200")),
+    );
+    let mut mutations = Mutations::with_capacity(2);
+    pre_trade_full(&policy, &order, &mut mutations).expect("must pass");
+    // Reserved synchronously: USD held 2000, AAPL incoming 10.
+    assert_balance(&policy, acc, "USD", "8000", "2000");
+    assert_eq!(incoming_of(&policy, acc, "AAPL"), ps("10"));
+
+    // Rolling back must reverse BOTH the held leg and the incoming projection.
+    mutations.rollback_all();
+    assert_balance(&policy, acc, "USD", "10000", "0");
+    assert_eq!(incoming_of(&policy, acc, "AAPL"), ps("0"));
+    assert!(
+        maybe_holdings(&policy, acc, "AAPL").is_none(),
+        "the incoming-only slot must be pruned on rollback"
+    );
+}
+
+#[test]
+fn sell_reservation_rollback_restores_held_and_settlement_incoming() {
+    let acc = account(99224416);
+    let aapl_usd = instr("AAPL", "USD");
+    let policy = build_policy(None, None);
+    seed(&policy, acc, asset("AAPL"), "10");
+
+    let order = make_order(
+        acc,
+        aapl_usd,
+        Side::Sell,
+        TradeAmount::Quantity(qty("10")),
+        Some(px("200")),
+    );
+    let mut mutations = Mutations::with_capacity(2);
+    pre_trade_full(&policy, &order, &mut mutations).expect("must pass");
+    assert_balance(&policy, acc, "AAPL", "0", "10");
+    assert_eq!(incoming_of(&policy, acc, "USD"), ps("2000"));
+
+    mutations.rollback_all();
+    assert_balance(&policy, acc, "AAPL", "10", "0");
+    assert_eq!(incoming_of(&policy, acc, "USD"), ps("0"));
+    assert!(
+        maybe_holdings(&policy, acc, "USD").is_none(),
+        "the settlement incoming-only slot must be pruned on rollback"
+    );
+}
+
+#[test]
+fn incoming_projection_does_not_gate_any_order() {
+    // `incoming` is purely informational: it is never part of spendable
+    // capacity. A buy of an asset the account already holds only as projected
+    // incoming must reuse that exact spendable budget and reject identically
+    // whether or not a prior projection inflated the incoming bucket.
+    let acc = account(99224416);
+    let aapl_usd = instr("AAPL", "USD");
+    let policy = build_policy(None, None);
+    // Exactly enough USD for one reservation of 2000.
+    seed(&policy, acc, asset("USD"), "2000");
+
+    let order = make_order(
+        acc,
+        aapl_usd.clone(),
+        Side::Buy,
+        TradeAmount::Quantity(qty("10")),
+        Some(px("200")),
+    );
+    let mut first = Mutations::with_capacity(2);
+    pre_trade_full(&policy, &order, &mut first).expect("first must pass");
+    first.commit_all();
+    // AAPL now carries incoming 10, but that must not become spendable.
+    assert_eq!(incoming_of(&policy, acc, "AAPL"), ps("10"));
+
+    // A second identical buy must reject for insufficient funds: the USD
+    // available is exhausted and the AAPL incoming projection grants no
+    // spendable capacity.
+    let mut second = Mutations::new();
+    let rejects = pre_trade_check(&policy, &order, &mut second)
+        .expect_err("second buy must reject - incoming is not spendable");
+    assert_eq!(rejects[0].code, RejectCode::InsufficientFunds);
+    assert!(second.is_empty());
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -5562,7 +6377,10 @@ fn fresh_fx_tracks_average_and_realized_pnl_in_account_currency() {
         }),
         qty("0"),
         true,
-        None,
+        Some(PreTradeLock::from_entries([(
+            DEFAULT_POLICY_GROUP_ID,
+            px("120"),
+        )])),
     );
     let sell_result = run_report_with_currency(&policy, &sell_fill, asset("EUR"));
     assert!(sell_result.account_blocks.is_empty());
@@ -5755,7 +6573,10 @@ fn force_set_revives_reset_slot_then_missing_fx_resets_again() {
         }),
         qty("0"),
         true,
-        None,
+        Some(PreTradeLock::from_entries([(
+            DEFAULT_POLICY_GROUP_ID,
+            px("120"),
+        )])),
     );
     let result = run_report_with_currency(&policy, &sell_fill, asset("EUR"));
     assert!(result.account_blocks.is_empty());
@@ -5803,7 +6624,10 @@ fn sell_fill_against_seeded_long_realizes_pnl() {
         }),
         qty("6"),
         false,
-        None,
+        Some(PreTradeLock::from_entries([(
+            DEFAULT_POLICY_GROUP_ID,
+            px("200"),
+        )])),
     );
     let result = run_report(&policy, &fill);
 
@@ -5982,7 +6806,10 @@ fn exact_close_fill_resets_average_to_none_and_keeps_realized_pnl() {
         }),
         qty("0"),
         true,
-        None,
+        Some(PreTradeLock::from_entries([(
+            DEFAULT_POLICY_GROUP_ID,
+            px("130"),
+        )])),
     );
     let result = run_report(&policy, &fill);
 
@@ -6028,8 +6855,20 @@ fn reservation_then_cancel_leaves_average_and_pnl_untouched() {
     pre_trade_check(&policy, &order, &mut mutations).expect("pretrade must succeed");
     mutations.commit_all();
 
-    // A final report with no fill and a leftover quantity cancels the reservation.
-    let cancel = make_report(acc, aapl_usd, Side::Sell, None, qty("10"), true, None);
+    // A final report with no fill and a leftover quantity cancels the
+    // reservation; the priced sell's cancel must replay its lock.
+    let cancel = make_report(
+        acc,
+        aapl_usd,
+        Side::Sell,
+        None,
+        qty("10"),
+        true,
+        Some(PreTradeLock::from_entries([(
+            DEFAULT_POLICY_GROUP_ID,
+            px("130"),
+        )])),
+    );
     let _ = run_report(&policy, &cancel);
 
     let aapl = holdings_of(&policy, acc, &asset("AAPL")).expect("must exist");
@@ -6533,7 +7372,10 @@ fn sell_fill_flipping_long_to_short_realizes_and_reopens_at_price() {
         }),
         qty("0"),
         true,
-        None,
+        Some(PreTradeLock::from_entries([(
+            DEFAULT_POLICY_GROUP_ID,
+            px("130"),
+        )])),
     );
     let result = run_report(&policy, &fill);
 

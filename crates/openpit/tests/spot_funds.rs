@@ -407,7 +407,7 @@ fn buy_limit_full_fill_reduces_settlement_and_credits_underlying() {
                 Side::Sell,
                 aapl_usd.clone(),
                 TradeAmount::Quantity(qty("10")),
-                None,
+                Some(px("200")),
             ))
             .is_ok(),
         "Sell 10 AAPL must fit available = 10"
@@ -420,7 +420,7 @@ fn buy_limit_full_fill_reduces_settlement_and_credits_underlying() {
                 Side::Sell,
                 aapl_usd,
                 TradeAmount::Quantity(qty("11")),
-                None,
+                Some(px("200")),
             ))
             .is_err(),
         "Sell 11 AAPL must exceed available = 10"
@@ -542,7 +542,7 @@ fn cancel_with_leftover_releases_unfilled_held() {
                 Side::Sell,
                 aapl_usd.clone(),
                 TradeAmount::Quantity(qty("4")),
-                None,
+                Some(px("200")),
             ))
             .is_ok(),
         "AAPL available must be 4 from partial fill"
@@ -555,7 +555,7 @@ fn cancel_with_leftover_releases_unfilled_held() {
                 Side::Sell,
                 aapl_usd,
                 TradeAmount::Quantity(qty("5")),
-                None,
+                Some(px("200")),
             ))
             .is_err(),
         "Sell 5 AAPL must exceed available = 4"
@@ -731,8 +731,9 @@ fn dry_run_does_not_spend_rate_limit_budget_or_reserve_spot_funds() {
         ));
         assert!(report.is_pass(), "dry-run of a valid order must pass");
         assert!(report.account_block().is_none());
-        // The would-be settlement hold is reported without being applied.
-        assert_eq!(report.account_adjustments().len(), 1);
+        // The would-be settlement hold and base incoming are reported without
+        // being applied.
+        assert_eq!(report.account_adjustments().len(), 2);
     }
 
     // The broker limit is 1, so if the five dry-runs had each consumed a slot,

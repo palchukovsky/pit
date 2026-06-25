@@ -103,12 +103,25 @@ where
     Sync::StorageLockingPolicyFactory: crate::storage::LockingPolicyFactory,
     MarketDataSyncMode: MarketDataSync,
 {
+    /// Registers the rollback that reverses one reserved asset leg.
+    ///
+    /// A reservation moves `available -= held_amount`, `held += held_amount`,
+    /// and `incoming += incoming_amount` for the asset. To reverse it the
+    /// rollback applies the inverse deltas through
+    /// [`Holdings::apply_delta_rollback`], which subtracts each forward delta
+    /// from the current slot. The forward deltas are therefore
+    /// `available_delta = -held_amount` (available went down), `held_delta =
+    /// +held_amount`, and `incoming_delta = +incoming_amount`; subtracting them
+    /// restores available up, held down, and incoming down. Reversing inverse
+    /// deltas (rather than a snapshot) keeps any concurrent change on the same
+    /// slot intact.
     pub(super) fn register_hold_rollback(
         &self,
         mutations: &mut Mutations,
         account_control: Option<AccountControl<<Sync as SyncMode>::StorageLockingPolicyFactory>>,
         key: HoldingsKey,
-        amount: PositionSize,
+        held_amount: PositionSize,
+        incoming_amount: PositionSize,
     ) where
         <<Sync as SyncMode>::StorageLockingPolicyFactory as crate::storage::LockingPolicyFactory>::Policy: 'static,
     {
@@ -128,7 +141,7 @@ where
                 // concurrent adjustment may have driven the slot to zero and
                 // pruned it between hold and rollback; without re-insertion
                 // the rollback would silently lose the funds that the hold
-                // moved into held. Releasing the recorded amount from a
+                // moved into held/incoming. Applying the inverse deltas to a
                 // freshly created zero placeholder restores exactly the
                 // pre-hold state when no concurrent change happened, and
                 // undoes only our delta otherwise.
@@ -136,7 +149,7 @@ where
                 let account_id = key.0;
                 let asset_for_diagnostic = key.1.clone();
                 let became_zero = holdings_arc.with_mut(key, Holdings::zero, |slot, _| {
-                    match slot.release(amount) {
+                    match slot.apply_delta_rollback(-held_amount, held_amount, incoming_amount) {
                         Ok(undone) => {
                             *slot = undone;
                             undone.is_zero()
@@ -150,8 +163,8 @@ where
                             record_rollback_overflow(&account_control, || {
                                 format!(
                                     "hold rollback overflow: account {account_id}, \
-                                     asset {asset_for_diagnostic}, release {amount}, \
-                                     slot {slot:?}",
+                                     asset {asset_for_diagnostic}, held {held_amount}, \
+                                     incoming {incoming_amount}, slot {slot:?}",
                                 )
                             });
                             slot.is_zero()

@@ -49,16 +49,18 @@ jobs:
         run: |
           python -m venv .venv
           echo "VIRTUAL_ENV=$GITHUB_WORKSPACE/.venv" >> "$GITHUB_ENV"
+          echo "PYTHON_PATH=$GITHUB_WORKSPACE/.venv/bin/python" >> "$GITHUB_ENV"
+          echo "PYO3_PYTHON=$GITHUB_WORKSPACE/.venv/bin/python" >> "$GITHUB_ENV"
           echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Install documentation dependencies
         working-directory: bindings/python
         run: |
-          pip install --upgrade pip
-          pip install -r docs/requirements.txt
+          "$PYTHON_PATH" -m pip install --upgrade pip
+          "$PYTHON_PATH" -m pip install -r docs/requirements.txt
 
       - name: Install maturin and Python build dependencies
-        run: pip install -r requirements.txt
+        run: "$PYTHON_PATH" -m pip install -r requirements.txt
 
       - name: Setup just
         uses: extractions/setup-just@v3

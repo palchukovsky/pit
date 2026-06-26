@@ -228,8 +228,8 @@ verify-wheel-version mode version base_version:
     PY
 
 # Run the wheel test suite against a pre-installed wheel (no rebuild).
-test-wheel python="python":
-    just _pytest bindings/python/tests {{ python }}
+test-wheel:
+    just _pytest bindings/python/tests
 
 # Validate wheel metadata with twine.
 check-wheel path:
@@ -296,6 +296,8 @@ smoke-sdist mode version base_version:
     export BASE_VERSION="{{ base_version }}"
     python -m venv /tmp/openpit-sdist-smoke
     source /tmp/openpit-sdist-smoke/bin/activate
+    export PYTHON_PATH=/tmp/openpit-sdist-smoke/bin/python
+    export PYO3_PYTHON="${PYTHON_PATH}"
     python -m pip install --upgrade pip
     python -m pip install maturin
     python -m pip install dist/*.tar.gz

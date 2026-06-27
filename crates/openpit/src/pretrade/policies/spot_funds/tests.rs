@@ -4724,10 +4724,14 @@ fn buy_volume_zero_price_reserves_nothing() {
 }
 
 #[test]
-fn buy_volume_negative_price_reserves_nothing() {
+fn buy_volume_negative_price_projects_base_incoming() {
     let acc = account(99224416);
     let aapl_usd = instr("AAPL", "USD");
     let policy = build_policy(None, None);
+    // A negative-price Volume buy owes no settlement (it receives cash), but
+    // the acquired base quantity is well-defined: v / |p| = 2000 / 50 = 40.
+    // That inflow must still be projected, exactly like the Quantity case and
+    // the sell path, which size the quantity through the same |p| division.
     let order = make_order(
         acc,
         aapl_usd,
@@ -4738,8 +4742,124 @@ fn buy_volume_negative_price_reserves_nothing() {
     let mut mutations = Mutations::with_capacity(1);
     let result = pre_trade_full(&policy, &order, &mut mutations).expect("must pass");
     mutations.commit_all();
-    assert!(result.account_adjustments.is_empty());
+
+    // Only the base inflow projection is emitted: no settlement held, no
+    // settlement slot, just AAPL incoming = 40.
+    assert_eq!(result.account_adjustments.len(), 1);
+    let base = &result.account_adjustments[0];
+    assert_eq!(base.asset, asset("AAPL"));
+    assert!(base.balance.is_none());
+    assert!(base.held.is_none());
+    let incoming = base.incoming.as_ref().expect("base incoming present");
+    assert_eq!(incoming.delta, ps("40"));
+    assert_eq!(incoming.absolute, ps("40"));
+    assert_eq!(result.lock_prices.as_slice(), &[px("-50")]);
     assert!(maybe_holdings(&policy, acc, "USD").is_none());
+
+    assert_eq!(incoming_of(&policy, acc, "AAPL"), ps("40"));
+    let aapl = holdings_of(&policy, acc, &asset("AAPL")).expect("slot must exist");
+    assert_eq!(aapl.available(), ps("0"));
+    assert_eq!(aapl.held(), ps("0"));
+}
+
+#[test]
+fn buy_volume_negative_price_reserve_fill_lifecycle_nets_incoming_to_zero() {
+    let acc = account(99224416);
+    let aapl_usd = instr("AAPL", "USD");
+    let policy = build_policy(None, None);
+    // Reserve projects base incoming = v / |p| = 2000 / 50 = 40.
+    let order = make_order(
+        acc,
+        aapl_usd.clone(),
+        Side::Buy,
+        TradeAmount::Volume(vol("2000")),
+        Some(px("-50")),
+    );
+    let mut mutations = Mutations::with_capacity(1);
+    pre_trade_full(&policy, &order, &mut mutations).expect("must pass");
+    mutations.commit_all();
+    assert_eq!(incoming_of(&policy, acc, "AAPL"), ps("40"));
+
+    // Full fill of 40 @ -50: receive 40 AAPL and 40 * 50 = 2000 USD. The fill
+    // drains the projected incoming by the full filled quantity, so it nets
+    // back to zero - not to a spurious -40.
+    let fill = make_report(
+        acc,
+        aapl_usd,
+        Side::Buy,
+        Some(Trade {
+            price: px("-50"),
+            quantity: qty("40"),
+        }),
+        qty("0"),
+        true,
+        Some(PreTradeLock::from_entries([(
+            DEFAULT_POLICY_GROUP_ID,
+            px("-50"),
+        )])),
+    );
+    assert!(report_blocks(&policy, &fill).is_empty());
+    assert_balance(&policy, acc, "AAPL", "40", "0");
+    assert_balance(&policy, acc, "USD", "2000", "0");
+    assert_eq!(incoming_of(&policy, acc, "AAPL"), PositionSize::ZERO);
+}
+
+#[test]
+fn buy_volume_negative_price_partial_fill_then_cancel_nets_incoming_to_zero() {
+    let acc = account(99224416);
+    let aapl_usd = instr("AAPL", "USD");
+    let policy = build_policy(None, None);
+    // Reserve projects base incoming = v / |p| = 2000 / 50 = 40.
+    let order = make_order(
+        acc,
+        aapl_usd.clone(),
+        Side::Buy,
+        TradeAmount::Volume(vol("2000")),
+        Some(px("-50")),
+    );
+    let mut mutations = Mutations::with_capacity(1);
+    pre_trade_full(&policy, &order, &mut mutations).expect("must pass");
+    mutations.commit_all();
+
+    // Partial fill 16 @ -50 drains incoming by 16 (40 -> 24); receive 16 AAPL
+    // and 16 * 50 = 800 USD.
+    let partial = make_report(
+        acc,
+        aapl_usd.clone(),
+        Side::Buy,
+        Some(Trade {
+            price: px("-50"),
+            quantity: qty("16"),
+        }),
+        qty("24"),
+        false,
+        Some(PreTradeLock::from_entries([(
+            DEFAULT_POLICY_GROUP_ID,
+            px("-50"),
+        )])),
+    );
+    assert!(report_blocks(&policy, &partial).is_empty());
+    assert_eq!(incoming_of(&policy, acc, "AAPL"), ps("24"));
+
+    // Cancel the unfilled 24 drains the remaining incoming (24 -> 0). Fill and
+    // cancel together drain exactly the projected 40, so incoming nets to zero
+    // and no balance is touched by the cancel.
+    let cancel = make_report(
+        acc,
+        aapl_usd,
+        Side::Buy,
+        None,
+        qty("24"),
+        true,
+        Some(PreTradeLock::from_entries([(
+            DEFAULT_POLICY_GROUP_ID,
+            px("-50"),
+        )])),
+    );
+    assert!(report_blocks(&policy, &cancel).is_empty());
+    assert_balance(&policy, acc, "AAPL", "16", "0");
+    assert_balance(&policy, acc, "USD", "800", "0");
+    assert_eq!(incoming_of(&policy, acc, "AAPL"), PositionSize::ZERO);
 }
 
 // ── Sell Quantity @ price = 0 ─────────────────────────────────────────────
@@ -5018,11 +5138,10 @@ fn sell_volume_negative_price_reserves_both_legs() {
 }
 
 #[test]
-fn sell_volume_zero_price_calc_failure_not_sign_reject() {
-    // A Volume sell at price 0 cannot be sized (quantity = volume / 0 is
-    // undefined). This is a calculation failure, NOT a price-sign rejection:
-    // the engine still treats zero/negative prices as legitimate everywhere a
-    // quantity is determinable.
+fn sell_volume_zero_price_reserves_nothing() {
+    // A Volume sell at price 0 cannot size its quantity (volume / 0 is
+    // undefined), so it reserves nothing - but the order still passes. A zero
+    // price is treated like any other price, never as an error.
     let acc = account(99224416);
     let policy = build_policy(None, None);
     seed(&policy, acc, asset("AAPL"), "100");
@@ -5034,14 +5153,14 @@ fn sell_volume_zero_price_calc_failure_not_sign_reject() {
         Some(px("0")),
     );
     let mut mutations = Mutations::with_capacity(1);
-    let err = pre_trade_check(&policy, &order, &mut mutations).unwrap_err();
-    assert!(
-        err.iter()
-            .any(|r| r.code == RejectCode::OrderValueCalculationFailed),
-        "zero-price volume sell is a sizing calc failure: {err:?}",
-    );
-    assert!(mutations.is_empty());
+    let result = pre_trade_full(&policy, &order, &mut mutations).expect("must pass");
+    mutations.commit_all();
+    // Nothing reserved on either leg, but the resolved zero price is still
+    // recorded as the lock, like every accepted sell.
+    assert!(result.account_adjustments.is_empty());
+    assert_eq!(result.lock_prices.as_slice(), &[px("0")]);
     assert_balance(&policy, acc, "AAPL", "100", "0");
+    assert!(maybe_holdings(&policy, acc, "USD").is_none());
 }
 
 // ── Buy/Sell at positive price: held returns to pre-reservation level ──────

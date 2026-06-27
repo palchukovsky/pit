@@ -28,7 +28,7 @@ use crate::marketdata::{AccountInfo, MarketDataSync};
 
 use super::market_data::SpotFundsPriceError;
 use super::SpotFundsLimitMode;
-use crate::param::{AccountId, Asset, PositionSize, Price, Side, TradeAmount};
+use crate::param::{AccountId, Asset, PositionSize, Price, Quantity, Side, TradeAmount};
 use crate::pretrade::holdings::{HoldError, Holdings};
 use crate::pretrade::policy::missing_required_field_reject;
 use crate::pretrade::{PolicyPreTradeResult, Reject, RejectCode, RejectScope, Rejects};
@@ -220,18 +220,18 @@ where
                     }
                     // A Volume buy spends `v` of settlement, carrying the price
                     // sign: positive price pays `v`, negative price receives it.
-                    // The acquired base quantity is `v / p`, well-defined only for
-                    // a positive price; a non-positive price cannot size a base
-                    // quantity, so the base inflow projection is left empty
-                    // (informational only, gates nothing) without introducing a
-                    // new reject.
+                    // The acquired base quantity is `v / |p|`, well-defined
+                    // for any non-zero price; only a zero price leaves it
+                    // undefined, so the base inflow projection is then empty
+                    // (informational only, gates nothing) without introducing
+                    // a new reject.
                     TradeAmount::Volume(v) => {
-                        let base_incoming = if buy_price > Price::ZERO {
+                        let base_incoming = if buy_price.is_zero() {
+                            PositionSize::ZERO
+                        } else {
                             v.calculate_quantity(buy_price)
                                 .map_err(|_| order_value_calculation_failed_reject(Self::NAME, ""))?
                                 .to_position_size()
-                        } else {
-                            PositionSize::ZERO
                         };
                         (signed_volume(v, buy_price), base_incoming)
                     }
@@ -261,11 +261,18 @@ where
                 let quantity = match trade_amount {
                     TradeAmount::Quantity(q) => q,
                     TradeAmount::Volume(v) => {
-                        // Sizing a Volume sell needs `v / |p|`; a zero price
-                        // leaves the quantity undefined (division by zero) and
-                        // surfaces as a calculation failure, not a sign reject.
-                        v.calculate_quantity(sell_price)
-                            .map_err(|_| order_value_calculation_failed_reject(Self::NAME, ""))?
+                        // Sizing a Volume sell needs `v / |p|`, well-defined for
+                        // any non-zero price. A zero price cannot size the
+                        // quantity (`v / 0`), so the sell reserves nothing and
+                        // still passes - a zero price is treated like any other,
+                        // never as an error.
+                        if sell_price.is_zero() {
+                            Quantity::ZERO
+                        } else {
+                            v.calculate_quantity(sell_price).map_err(|_| {
+                                order_value_calculation_failed_reject(Self::NAME, "")
+                            })?
+                        }
                     }
                 };
                 let notional = sell_price

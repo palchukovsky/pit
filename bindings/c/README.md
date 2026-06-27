@@ -1,7 +1,7 @@
 # OpenPit (Pre-trade Integrity Toolkit) for C
 
 <!-- markdownlint-disable MD013 -->
-[![Verify](https://github.com/openpitkit/pit/actions/workflows/verify.yml/badge.svg)](https://github.com/openpitkit/pit/actions/workflows/verify.yml) [![Release](https://github.com/openpitkit/pit/actions/workflows/release.yml/badge.svg)](https://github.com/openpitkit/pit/actions/workflows/release.yml) [![C API](https://img.shields.io/badge/C%20API-header%20%2B%20docs-4b5563)](../../docs/c-api/index.md) [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](../../LICENSE)
+[![Verify](https://github.com/openpitkit/pit/actions/workflows/verify.yml/badge.svg)](https://github.com/openpitkit/pit/actions/workflows/verify.yml) [![Release](https://github.com/openpitkit/pit/actions/workflows/release.yml/badge.svg)](https://github.com/openpitkit/pit/actions/workflows/release.yml) [![C API](https://img.shields.io/badge/C%20API-blue)](../../docs/c-api/index.md) [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](../../LICENSE)
 <!-- markdownlint-enable MD013 -->
 
 `openpit.h` is an embeddable pre-trade risk SDK entrypoint for integrating
@@ -112,7 +112,7 @@ Built-in policies:
 - plus your own via the [policy SDK](https://github.com/openpitkit/pit/wiki/Policy-API).
 
 The primary integration model is to build project-specific policies against the
-public C API: [the C API docs](https://github.com/openpitkit/pit/blob/main/docs/c-api/index.md).
+public C API: [the C API docs](../../docs/c-api/index.md).
 
 Two types of rejections are supported: a full kill switch for the account and a
 rejection of only the current request. Kill switches are intended for
@@ -493,7 +493,7 @@ Example flow:
 7. apply one execution report built as a POD payload
 8. inspect whether post-trade state triggered a kill switch
 
-For the full type and ownership reference, use the generated C manual:
+For the full type and ownership reference, use the C manual:
 [docs/c-api/index.md](https://github.com/openpitkit/pit/blob/main/docs/c-api/index.md).
 
 ## Errors
@@ -510,8 +510,7 @@ Input validation errors and API misuse are reported through two channels:
   message with `openpit_shared_string_view()`, then release with
   `openpit_destroy_shared_string()`
 - read `OpenPitPretradeRejectCode` for stable machine-readable business reject categories
-- use the generated C docs for ownership and lifetime rules of every returned
-  pointer
+- use the C docs for ownership and lifetime rules of every returned pointer
 
 The example above uses both channels:
 

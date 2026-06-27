@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Please see https://github.com/openpitkit and the OWNERS file for details.
+# Please see https://openpit.dev and the OWNERS file for details.
 
 # CI/CD pipeline-only recipes (release + pit-go mirror). Invoked from
 # .github/workflows/* via: just --justfile pipeline.just <recipe>
@@ -322,7 +322,14 @@ smoke-sdist mode version base_version:
 build-ffi-target target:
     #!/usr/bin/env bash
     set -euo pipefail
-    export RUSTFLAGS="--remap-path-prefix=$(pwd)=."
+    rustflags="${RUSTFLAGS:-}"
+    rustflags="${rustflags:+${rustflags} }--remap-path-prefix=$(pwd)=."
+    case "{{ target }}" in
+      *-pc-windows-msvc)
+        rustflags="${rustflags} -C target-feature=+crt-static"
+        ;;
+    esac
+    export RUSTFLAGS="${rustflags}"
     cargo build -p openpit-ffi --release --locked --target "{{ target }}"
 
 # Package the built runtime library into dist/ with a sha256 sidecar (unix).
@@ -351,6 +358,34 @@ package-runtime target goos goarch lib_name:
     else
       shasum -a 256 "${DST}" | awk '{print $1}' > "${DST}.sha256"
     fi
+
+# Package the C++ binding distributable into dist/ with a sha256 sidecar.
+# Bundles: public headers, generated C ABI header, CMake config-file package
+# (OpenPitConfig, OpenPitConfigVersion, OpenPitTargets, OpenPitDownloadRuntime),
+# LICENSE, and OWNERS. The cmake install tree is expected at CPP_INSTALL_DIR.
+package-cpp cpp_install_dir:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    VERSION="$(grep -m1 '^version[[:space:]]*=' crates/openpit/Cargo.toml | sed 's/^version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/')"
+    : "${VERSION:?could not read version from crates/openpit/Cargo.toml}"
+
+    INSTALL_DIR="{{ cpp_install_dir }}"
+    ARCHIVE_NAME="openpit-cpp--${VERSION}.tar.gz"
+    mkdir -p dist
+
+    tar -czf "dist/${ARCHIVE_NAME}" \
+      -C "${INSTALL_DIR}" \
+      include \
+      lib \
+      LICENSE \
+      OWNERS
+
+    if command -v sha256sum >/dev/null 2>&1; then
+      sha256sum "dist/${ARCHIVE_NAME}" | awk '{print $1}' > "dist/${ARCHIVE_NAME}.sha256"
+    else
+      shasum -a 256 "dist/${ARCHIVE_NAME}" | awk '{print $1}' > "dist/${ARCHIVE_NAME}.sha256"
+    fi
+    echo "Packaged dist/${ARCHIVE_NAME}"
 
 # Run Go tests in an in-worktree split dir without the embedded-runtime env.
 test-go-split dir:

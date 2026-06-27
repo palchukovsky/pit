@@ -25,6 +25,7 @@ import _generate_api_c_h as header
 ROOT = Path(__file__).resolve().parents[1]
 DOCS_DIR = ROOT / "docs"
 C_API_DIR = DOCS_DIR / "c-api"
+CPP_API_DIR = DOCS_DIR / "cpp-api"
 SITEMAP_PATH = DOCS_DIR / "sitemap.xml"
 SITE_BASE = "https://openpit.dev"
 
@@ -37,6 +38,7 @@ PAGE_SUFFIX = ".html"
 STATIC_URLS: tuple[str, ...] = (
     f"{SITE_BASE}/",
     f"{SITE_BASE}/c-api/",
+    f"{SITE_BASE}/cpp-api/",
 )
 
 
@@ -65,11 +67,83 @@ def discover_section_slugs() -> list[str]:
     return sorted(set(slugs), key=sort_key)
 
 
+# Doxygen navigation/index pages that aggregate other pages rather than
+# documenting a single entity. These must never enter the sitemap even when
+# their name happens to match a content prefix (e.g. "namespaces.html" vs the
+# "namespace*" allowlist, or "classes.html" vs "class*").
+_DOXYGEN_NAV_PAGES: frozenset[str] = frozenset(
+    {
+        "annotated.html",
+        "classes.html",
+        "namespaces.html",
+        "files.html",
+        "hierarchy.html",
+        "index.html",
+    }
+)
+
+# Prefixes of Doxygen letter-indexed member listings (one page per letter) and
+# global-symbol indexes. Excluded as navigation, not content.
+_DOXYGEN_NAV_PREFIXES: tuple[str, ...] = (
+    "namespacemembers",
+    "functions",
+    "globals",
+)
+
+
+def _is_cpp_content_page(name: str) -> bool:
+    """Return True only for canonical Doxygen content pages.
+
+    A content page documents one entity: a class, struct, union, namespace, or
+    file. Everything Doxygen emits for navigation (index/listing pages, the
+    per-class member rosters, and directory pages) is rejected.
+    """
+    if not name.endswith(".html"):
+        return False
+    # Per-class member roster, never a standalone content page.
+    if name.endswith("-members.html"):
+        return False
+    # Directory pages ("dir_<hash>.html").
+    if name.startswith("dir_"):
+        return False
+    if name in _DOXYGEN_NAV_PAGES:
+        return False
+    if name.startswith(_DOXYGEN_NAV_PREFIXES):
+        return False
+    # Class / struct / union / namespace documentation pages. The nav pages
+    # that share these prefixes (classes.html, namespaces.html,
+    # namespacemembers*.html) are already rejected above.
+    if name.startswith(("class", "struct", "union", "namespace")):
+        return True
+    # File-documentation pages: Doxygen encodes the source name and mangles the
+    # extension dot to "_8" (".hpp" -> "_8hpp", ".h" -> "_8h", ".md" -> "_8md").
+    return name.endswith(("_8hpp.html", "_8h.html", "_8md.html"))
+
+
+def discover_cpp_api_paths() -> list[str]:
+    if not CPP_API_DIR.is_dir():
+        return []
+    # Filesystem-driven and top-level only: subdirectories (e.g. "search/")
+    # hold Doxygen assets, never content pages, so we deliberately skip them.
+    paths = [
+        path.name
+        for path in CPP_API_DIR.glob("*.html")
+        if path.is_file() and _is_cpp_content_page(path.name)
+    ]
+    return sorted(paths)
+
+
 def build_canonical_urls() -> list[str]:
     urls = list(STATIC_URLS)
     seen: set[str] = set(urls)
     for slug in discover_section_slugs():
         url = f"{SITE_BASE}/c-api/{slug}{PAGE_SUFFIX}"
+        if url in seen:
+            continue
+        seen.add(url)
+        urls.append(url)
+    for rel in discover_cpp_api_paths():
+        url = f"{SITE_BASE}/cpp-api/{rel}"
         if url in seen:
             continue
         seen.add(url)

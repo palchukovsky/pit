@@ -217,14 +217,26 @@ jobs:
           python-version: ${{ env.CI_PYTHON }}
 
       - name: Create virtual environment
+        shell: bash
         run: |
+          set -euo pipefail
           python -m venv .venv
-          echo "VIRTUAL_ENV=$GITHUB_WORKSPACE/.venv" >> "$GITHUB_ENV"
-          echo "PYTHON_PATH=$GITHUB_WORKSPACE/.venv/bin/python" >> "$GITHUB_ENV"
-          echo "PYO3_PYTHON=$GITHUB_WORKSPACE/.venv/bin/python" >> "$GITHUB_ENV"
-          echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
+          if [[ "${RUNNER_OS}" == "Windows" ]]; then
+            venv_path="$(cygpath -m "$PWD/.venv")"
+            python_path="$(cygpath -m "$PWD/.venv/Scripts/python.exe")"
+            python_bin="$(cygpath -m "$PWD/.venv/Scripts")"
+          else
+            venv_path="$PWD/.venv"
+            python_path="$PWD/.venv/bin/python"
+            python_bin="$PWD/.venv/bin"
+          fi
+          echo "VIRTUAL_ENV=$venv_path" >> "$GITHUB_ENV"
+          echo "PYTHON_PATH=$python_path" >> "$GITHUB_ENV"
+          echo "PYO3_PYTHON=$python_path" >> "$GITHUB_ENV"
+          echo "$python_bin" >> "$GITHUB_PATH"
 
       - name: Install Python test dependencies
+        shell: bash
         run: |
           "$PYTHON_PATH" -m pip install --upgrade pip
           "$PYTHON_PATH" -m pip install -r requirements.txt
@@ -240,6 +252,11 @@ jobs:
       - name: Copy monorepo LICENSE and OWNERS into Python package
         shell: bash
         run: just --justfile "$JUSTFILE" copy-python-metadata
+
+      - name: Use static MSVC CRT for Windows wheel
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        shell: bash
+        run: echo "RUSTFLAGS=-C target-feature=+crt-static" >> "$GITHUB_ENV"
 
       - name: Build Linux wheel
         if: startsWith(matrix.os, 'ubuntu')
@@ -271,15 +288,13 @@ jobs:
           echo "WHEEL_PATH=${WHEEL_PATH}" >> "$GITHUB_ENV"
 
       - name: Install built wheel
-        if:
-          matrix.name == 'linux-x86_64-manylinux2014' || !startsWith(matrix.os,
-          'ubuntu')
-        run: "$PYTHON_PATH" -m pip install --force-reinstall --no-deps "${{ env.WHEEL_PATH }}"
+        if: matrix.name == 'linux-x86_64-manylinux2014' || !startsWith(matrix.os, 'ubuntu')
+        shell: bash
+        run: |
+          "$PYTHON_PATH" -m pip install --force-reinstall --no-deps "${{ env.WHEEL_PATH }}"
 
       - name: Verify wheel import and version
-        if:
-          matrix.name == 'linux-x86_64-manylinux2014' || !startsWith(matrix.os,
-          'ubuntu')
+        if: matrix.name == 'linux-x86_64-manylinux2014' || !startsWith(matrix.os, 'ubuntu')
         shell: bash
         env:
           BASE_VERSION: ${{ needs.verify-tag.outputs.base_version }}
@@ -288,9 +303,7 @@ jobs:
         run: just --justfile "$JUSTFILE" verify-wheel-version "$RELEASE_MODE" "$VERSION" "$BASE_VERSION"
 
       - name: Run wheel tests
-        if:
-          matrix.name == 'linux-x86_64-manylinux2014' || !startsWith(matrix.os,
-          'ubuntu')
+        if: matrix.name == 'linux-x86_64-manylinux2014' || !startsWith(matrix.os, 'ubuntu')
         shell: bash
         run: just --justfile "$JUSTFILE" test-wheel
 
@@ -356,6 +369,7 @@ jobs:
           python-version: ${{ env.CI_PYTHON }}
 
       - name: Create virtual environment
+        shell: bash
         run: |
           python -m venv .venv
           echo "VIRTUAL_ENV=$GITHUB_WORKSPACE/.venv" >> "$GITHUB_ENV"
@@ -364,6 +378,7 @@ jobs:
           echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Install requirements
+        shell: bash
         run: |
           "$PYTHON_PATH" -m pip install --upgrade pip
           "$PYTHON_PATH" -m pip install -r requirements.txt
@@ -381,6 +396,7 @@ jobs:
         run: just --justfile "$JUSTFILE" copy-python-metadata
 
       - name: Build sdist
+        shell: bash
         run: just --justfile "$JUSTFILE" build-sdist
 
       - name: Validate sdist license files
@@ -493,6 +509,7 @@ jobs:
 
       - name: Install Linux cross-compiler for arm64
         if: matrix.target == 'aarch64-unknown-linux-gnu'
+        shell: bash
         run: |
           sudo apt-get update
           sudo apt-get install --yes gcc-aarch64-linux-gnu
@@ -520,11 +537,19 @@ jobs:
           $src = "target/${{ matrix.target }}/release/${{ matrix.lib_name }}"
           $dst = "dist/openpit-ffi--${{ matrix.goos }}-${{ matrix.goarch }}-${{ matrix.lib_name }}"
           Copy-Item $src $dst -Force
+          $implibSrc = "$src.lib"
+          if (!(Test-Path $implibSrc)) {
+            throw "MSVC import library not found at $implibSrc"
+          }
+          $implibDst = "$dst.lib"
+          Copy-Item $implibSrc $implibDst -Force
           Copy-Item bindings/c/openpit.h dist/openpit.h -Force
           Copy-Item LICENSE dist/LICENSE -Force
           Copy-Item OWNERS dist/OWNERS -Force
           $hash = (Get-FileHash -Path $dst -Algorithm SHA256).Hash.ToLower()
           Set-Content -Path "$dst.sha256" -Value $hash
+          $implibHash = (Get-FileHash -Path $implibDst -Algorithm SHA256).Hash.ToLower()
+          Set-Content -Path "$implibDst.sha256" -Value $implibHash
 
       - name: Upload runtime artifacts
         if: ${{ needs.verify-tag.outputs.release_mode == 'production' }}
@@ -543,12 +568,82 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  build-cpp-distributable:
+    name: Build C++ distributable
+    needs:
+      - verify
+      - verify-tag
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Load CI versions
+        shell: bash
+        run: cat "$GITHUB_WORKSPACE/.github/ci-versions.env" >> "$GITHUB_ENV"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.CI_RUST }}
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Setup CMake
+        uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: "3.28"
+
+      - name: Setup just
+        uses: extractions/setup-just@v3
+
+      - name: Build C++ binding
+        shell: bash
+        run: just build-cpp
+
+      - name: Install C++ binding into staging prefix
+        shell: bash
+        env:
+          VERSION: ${{ needs.verify-tag.outputs.version }}
+        run: |
+          set -euo pipefail
+          cmake --install bindings/cpp/build \
+            --prefix /tmp/openpit-cpp-install \
+            --config Release
+          cp LICENSE /tmp/openpit-cpp-install/LICENSE
+          cp OWNERS  /tmp/openpit-cpp-install/OWNERS
+
+      - name: Package C++ distributable
+        shell: bash
+        env:
+          VERSION: ${{ needs.verify-tag.outputs.version }}
+        run: just --justfile "$JUSTFILE" package-cpp /tmp/openpit-cpp-install
+
+      - name: Upload C++ artifact
+        if: ${{ needs.verify-tag.outputs.release_mode == 'production' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpp-distributable
+          path: dist/openpit-cpp--*.tar.gz*
+          if-no-files-found: error
+
+      - name: Upload C++ artifact (dry-run)
+        if: ${{ needs.verify-tag.outputs.release_mode == 'dry-run' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpp-distributable
+          path: dist/openpit-cpp--*.tar.gz*
+          if-no-files-found: error
+          retention-days: 1
+
   publish-go-sources:
     name: Publish pit-go sources
     needs:
       - publish-rust
       - publish-sdist
       - build-runtime-artifacts
+      - build-cpp-distributable
       - verify-tag
     runs-on: ubuntu-22.04
     permissions:
@@ -708,6 +803,7 @@ jobs:
       - publish-rust
       - publish-sdist
       - build-runtime-artifacts
+      - build-cpp-distributable
       - verify-tag
     if: ${{ needs.verify-tag.outputs.release_mode == 'production' }}
     runs-on: ubuntu-22.04
@@ -724,6 +820,12 @@ jobs:
           path: release-assets
           merge-multiple: true
 
+      - name: Download C++ distributable artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: cpp-distributable
+          path: release-assets
+
       - name: Create GitHub Release with runtime assets
         shell: bash
         run: |
@@ -736,8 +838,12 @@ jobs:
           - crates.io: https://crates.io/crates/openpit
           - PyPI: https://pypi.org/project/openpit/${{ needs.verify-tag.outputs.version }}/
 
-          Runtime artifacts for Go SDK delivery are attached to this release
-          (`.so`, `.dylib`, `.dll` and `.sha256` files per target).
+          Runtime artifacts for SDK delivery are attached to this release
+          (\`.so\`, \`.dylib\`, \`.dll\`, Windows \`.dll.lib\`, and
+          \`.sha256\` files per target).
+
+          The C++ distributable (\`openpit-cpp--${{ needs.verify-tag.outputs.version }}.tar.gz\`)
+          contains the public headers and CMake config-file package.
           EOF
 
           mapfile -t ASSETS < <(find release-assets -type f | sort)

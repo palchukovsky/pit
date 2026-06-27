@@ -2,9 +2,9 @@
 
 Docker-based end-to-end checks that verify the **published** OpenPit artifacts
 work for a real downstream consumer. For a given version, each scenario pulls
-the released artifact from its public registry (crates.io, PyPI, the Go module
-proxy), builds a minimal consumer and the workspace examples against it, and
-runs their tests — exactly what an SDK user sees when they add the dependency.
+the released artifact from its public registry or release asset set, builds a
+minimal consumer and the workspace examples against it, and runs their tests -
+exactly what an SDK user sees when they add the dependency.
 
 ## Layout
 
@@ -26,7 +26,7 @@ just test-release-e2e 0.4.0
 
 The suite builds and checks these scenarios, then prints a pass/fail summary:
 `rust-amd64`, `rust-arm64`, `python-wheel-amd64`, `python-wheel-arm64`,
-`python-source-arm64`, `go-amd64`.
+`python-source-arm64`, `go-amd64`, `cpp-amd64`.
 
 ## How to run the tests
 

@@ -13,10 +13,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// Please see https://github.com/openpitkit and the OWNERS file for details.
+// Please see https://openpit.dev and the OWNERS file for details.
 
 #pragma once
 
+#include "openpit/reject.hpp"
+
+#include <cstdint>
 #include <optional>
 #include <string_view>
 #include <typeinfo>
@@ -36,9 +39,6 @@ namespace openpit::pretrade {
 
 class Context;
 struct PolicyDecision;
-struct Reject;
-enum class RejectScope;
-enum class RejectCode;
 
 // Implemented by binding layer.
 [[nodiscard]] Reject MakeTypeMismatchReject(
@@ -64,11 +64,13 @@ void PushReject(PolicyDecision& decision, Reject reject);
 // - Avoids runtime RTTI checks.
 // - Wrong wiring is undefined behavior.
 // - Risk profile: only for closed systems with compile-time pairing guarantees.
-enum class CastMode {
+enum class CastMode : std::uint8_t {
   SafeSlow,
   UnsafeFast,
 };
 
+/// \brief Adapts a client start-stage policy to the engine callback seam.
+//
 // Start-stage adapter for client policy object.
 //
 // Why this adapter exists:
@@ -108,9 +110,10 @@ class StartPolicyAdapter {
                                       typeid(ClientOrder).name());
       }
       return m_policy.CheckPreTradeStart(*concrete_order);
+    } else {
+      return m_policy.CheckPreTradeStart(
+          static_cast<const ClientOrder&>(order));
     }
-    return m_policy.CheckPreTradeStart(
-        static_cast<const ClientOrder&>(order));
   }
 
   // Adapts execution-report callback to client report type.
@@ -128,9 +131,10 @@ class StartPolicyAdapter {
         return false;
       }
       return m_policy.ApplyExecutionReport(*concrete_report);
+    } else {
+      return m_policy.ApplyExecutionReport(
+          static_cast<const ClientReport&>(report));
     }
-    return m_policy.ApplyExecutionReport(
-        static_cast<const ClientReport&>(report));
   }
 
  private:
@@ -151,8 +155,7 @@ template <typename ClientPolicy, typename ClientOrder, typename ClientReport,
 class PolicyAdapter {
  public:
   // Creates adapter around a client main-stage policy instance.
-  explicit PolicyAdapter(ClientPolicy policy)
-      : m_policy(std::move(policy)) {}
+  explicit PolicyAdapter(ClientPolicy policy) : m_policy(std::move(policy)) {}
 
   // Returns stable policy name forwarded from client policy object.
   [[nodiscard]] std::string_view Name() const noexcept {
@@ -173,17 +176,16 @@ class PolicyAdapter {
       const auto* concrete_order = dynamic_cast<const ClientOrder*>(&order);
       if (concrete_order == nullptr) {
         PushReject(decision,
-                   MakeTypeMismatchReject(Name(), RejectScope::Order,
-                                          RejectCode::Other,
-                                          "order type mismatch",
-                                          typeid(ClientOrder).name()));
+                   MakeTypeMismatchReject(
+                       Name(), RejectScope::Order, RejectCode::Other,
+                       "order type mismatch", typeid(ClientOrder).name()));
         return;
       }
       m_policy.PerformPreTradeCheck(*concrete_order, context, decision);
-      return;
+    } else {
+      m_policy.PerformPreTradeCheck(static_cast<const ClientOrder&>(order),
+                                    context, decision);
     }
-    m_policy.PerformPreTradeCheck(static_cast<const ClientOrder&>(order),
-                                  context, decision);
   }
 
   // Adapts execution-report callback to client report type.
@@ -201,9 +203,10 @@ class PolicyAdapter {
         return false;
       }
       return m_policy.ApplyExecutionReport(*concrete_report);
+    } else {
+      return m_policy.ApplyExecutionReport(
+          static_cast<const ClientReport&>(report));
     }
-    return m_policy.ApplyExecutionReport(
-        static_cast<const ClientReport&>(report));
   }
 
  private:
@@ -225,7 +228,8 @@ using PolicyAdapterWithSafeSlowArgType =
     PolicyAdapter<ClientPolicy, ClientOrder, ClientReport, CastMode::SafeSlow>;
 
 template <typename ClientPolicy, typename ClientOrder, typename ClientReport>
-using PolicyAdapterWithUnsafeFastArgType = PolicyAdapter<
-    ClientPolicy, ClientOrder, ClientReport, CastMode::UnsafeFast>;
+using PolicyAdapterWithUnsafeFastArgType =
+    PolicyAdapter<ClientPolicy, ClientOrder, ClientReport,
+                  CastMode::UnsafeFast>;
 
 }  // namespace openpit::pretrade

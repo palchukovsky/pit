@@ -60,7 +60,8 @@ jobs:
           "$PYTHON_PATH" -m pip install -r docs/requirements.txt
 
       - name: Install maturin and Python build dependencies
-        run: "$PYTHON_PATH" -m pip install -r requirements.txt
+        run: |
+          "$PYTHON_PATH" -m pip install -r requirements.txt
 
       - name: Setup just
         uses: extractions/setup-just@v3

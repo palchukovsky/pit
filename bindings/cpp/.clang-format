@@ -1,0 +1,36 @@
+# Copyright The Pit Project Owners. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# Please see https://openpit.dev and the OWNERS file for details.
+---
+BasedOnStyle: Google
+SortIncludes: CaseInsensitive
+IncludeBlocks: Regroup
+# Include order: local project headers first, third-party libraries next,
+# system/stdlib angle-bracket headers last. Lower Priority sorts earlier.
+IncludeCategories:
+  # Local same-project C++ headers: "openpit/..." and other quoted includes.
+  - Regex: '^"openpit/'
+    Priority: 1
+  - Regex: '^"'
+    Priority: 2
+  # Third-party / underlying-library headers in angle brackets: the generated C
+  # ABI header (<openpit.h>, <openpit/...>) this binding wraps, plus test libs
+  # (<gtest/...>, <gmock/...>). Sort after local but before bare system headers.
+  - Regex: '^<(openpit\.h|openpit/|gtest/|gmock/)'
+    Priority: 3
+  # System / stdlib angle-bracket headers sort last.
+  - Regex: '^<'
+    Priority: 4

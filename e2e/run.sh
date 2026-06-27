@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Please see https://github.com/openpitkit and the OWNERS file for details.
+# Please see https://openpit.dev and the OWNERS file for details.
 
 set -euo pipefail
 
@@ -91,6 +91,7 @@ run_or_record "python-wheel-amd64" "${ROOT_DIR}/e2e/env/docker/python-wheel/Dock
 run_or_record "python-wheel-arm64" "${ROOT_DIR}/e2e/env/docker/python-wheel/Dockerfile" "linux/arm64"
 run_or_record "python-source-arm64" "${ROOT_DIR}/e2e/env/docker/python-sdist/Dockerfile" "linux/arm64"
 run_or_record "go-amd64" "${ROOT_DIR}/e2e/env/docker/go-module/Dockerfile" "linux/amd64"
+run_or_record "cpp-amd64" "${ROOT_DIR}/e2e/env/docker/cpp-distributable/Dockerfile" "linux/amd64"
 
 if [[ "${failures}" -ne 0 ]]; then
   print_banner "RELEASE E2E FAILED"

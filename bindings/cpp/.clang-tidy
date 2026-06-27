@@ -1,0 +1,49 @@
+# Copyright The Pit Project Owners. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# Please see https://openpit.dev and the OWNERS file for details.
+---
+Checks: >
+  bugprone-*,
+  performance-*,
+  modernize-*,
+  -modernize-use-trailing-return-type,
+  -modernize-avoid-c-arrays,
+  -modernize-concat-nested-namespaces,
+  -modernize-return-braced-init-list,
+  -modernize-raw-string-literal,
+  -modernize-use-auto,
+  -modernize-use-equals-default,
+  -modernize-use-scoped-lock,
+  -bugprone-argument-comment,
+  -bugprone-command-processor,
+  -bugprone-derived-method-shadowing-base-method,
+  -bugprone-empty-catch,
+  -bugprone-exception-copy-constructor-throws,
+  -bugprone-exception-escape,
+  -bugprone-macro-parentheses,
+  -bugprone-throwing-static-initialization,
+  -bugprone-unchecked-optional-access,
+  -performance-enum-size,
+  -performance-inefficient-string-concatenation,
+  -performance-no-int-to-ptr,
+  -performance-unnecessary-value-param,
+  -bugprone-easily-swappable-parameters
+WarningsAsErrors: '*'
+HeaderFilterRegex: 'openpit/.*\.hpp$'
+FormatStyle: file
+CheckOptions:
+  - key: modernize-use-nullptr.NullMacros
+    value: 'NULL'

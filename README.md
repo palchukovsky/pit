@@ -5,8 +5,9 @@
 [![Verify](https://github.com/openpitkit/pit/actions/workflows/verify.yml/badge.svg)](https://github.com/openpitkit/pit/actions/workflows/verify.yml) [![Release](https://github.com/openpitkit/pit/actions/workflows/release.yml/badge.svg)](https://github.com/openpitkit/pit/actions/workflows/release.yml) [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 [![Go version](https://img.shields.io/badge/go-1.22%2B-00ADD8)](https://pkg.go.dev/go.openpit.dev/openpit) [![Module](https://img.shields.io/badge/module-go.openpit.dev%2Fopenpit-00ADD8)](https://pkg.go.dev/go.openpit.dev/openpit)
 [![Python versions](https://img.shields.io/pypi/pyversions/openpit)](https://pypi.org/project/openpit/) [![PyPI](https://img.shields.io/pypi/v/openpit)](https://pypi.org/project/openpit/)
+[![C++17](https://img.shields.io/badge/C%2B%2B-17-00599C)](bindings/cpp/README.md)
 [![Rust](https://img.shields.io/badge/rust-1.75+-orange)](https://crates.io/crates/openpit) [![crates.io](https://img.shields.io/crates/v/openpit)](https://crates.io/crates/openpit)
-[![C API](https://img.shields.io/badge/C%20API-header%20%2B%20docs-4b5563)](docs/c-api/index.md)
+[![C API](https://img.shields.io/badge/C%20API-blue)](bindings/c/README.md)
 <!-- markdownlint-enable MD013 -->
 
 OpenPit is a workspace for embeddable pre-trade risk components. Before an
@@ -67,6 +68,7 @@ policy APIs:
 
 - [Go custom policies](https://github.com/openpitkit/pit/wiki/Policy-API#go-interface)
 - [Python custom policies](https://github.com/openpitkit/pit/wiki/Policy-API#python-interface)
+- [C++ custom policies](https://github.com/openpitkit/pit/wiki/Policy-API#c-interface)
 - [Rust custom policies](https://github.com/openpitkit/pit/wiki/Policy-API#rust-interface)
 
 ## Versioning Policy (Pre‑1.0)
@@ -87,9 +89,10 @@ constraints that tolerate API evolution during the pre-stable phase.
 - [Go SDK README](bindings/go/README.md) - integrate OpenPit from Go.
 - [Python SDK README](bindings/python/README.md) - the `openpit` Python
   package.
+- [C++ SDK README](bindings/cpp/README.md) - C++17 CMake package.
 - [`openpit` crate README](crates/openpit/README.md) - Rust interface with a
   runnable example.
-- [C SDK README](bindings/c/README.md) - C ABI for environments that
+- [C SDK README](bindings/c/README.md) - C interface for environments that
   integrate through C.
 - [examples/](examples/) - end-to-end runnable scenarios.
 - [Wiki](https://github.com/openpitkit/pit/wiki) - conceptual pages and
@@ -103,6 +106,9 @@ constraints that tolerate API evolution during the pre-stable phase.
 - Python `>=3.10` if you build or test Python bindings
 - `maturin` and `pytest` if you build or test Python bindings
 - Go `1.22` if you build or test Go bindings
+- CMake `>=3.21`, a C++17 compiler, `clang-format`, `clang-tidy`, and
+  `doxygen` if you build, test, format, lint, or generate C++ bindings,
+  examples, and reference docs
 
 ```bash
 python3.10 -m venv .venv
@@ -159,6 +165,28 @@ Go tests then expect the path to that library through
 development inside the `pit` repository - consumers installing the SDK with
 `go get` do not need to set it.
 
+#### C++
+
+The C++ binding is a header-only C++17 SDK. In-repo builds link it against the
+locally built native runtime:
+
+```bash
+just build-cpp
+just build-examples-cpp
+```
+
+Manual:
+
+```bash
+cargo build -p openpit-ffi --release --locked
+cmake -S bindings/cpp -B bindings/cpp/build \
+  -DOPENPIT_RUNTIME_LIBRARY="$PWD/target/release/libopenpit_ffi.dylib"
+cmake --build bindings/cpp/build
+```
+
+On Linux, use `libopenpit_ffi.so` instead of `libopenpit_ffi.dylib`. On
+Windows, use `openpit_ffi.dll`.
+
 ### Tests
 
 With [Just](https://just.systems/):
@@ -178,6 +206,10 @@ just test-python-integration
 # Go:
 just test-go
 just test-go-race
+
+# C++:
+just test-cpp
+just test-examples-cpp
 ```
 
 Manual:
@@ -205,4 +237,12 @@ export OPENPIT_RUNTIME_LIBRARY_PATH="$(pwd)/../../target/release/libopenpit_ffi.
 # macOS: use libopenpit_ffi.dylib instead.
 go test ./...
 go test -race ./...
+
+# C++:
+cd ../..
+cargo build -p openpit-ffi --release --locked
+cmake -S bindings/cpp -B bindings/cpp/build \
+  -DOPENPIT_RUNTIME_LIBRARY="$PWD/target/release/libopenpit_ffi.dylib"
+cmake --build bindings/cpp/build
+ctest --test-dir bindings/cpp/build --output-on-failure
 ```

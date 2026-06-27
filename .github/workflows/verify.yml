@@ -128,6 +128,111 @@ jobs:
       - name: Check C
         run: just --justfile "$JUSTFILE" test-c-examples
 
+  cpp:
+    name: C++ checks (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-gcc
+            os: ubuntu-22.04
+            cc: gcc
+            cxx: g++
+          - name: linux-clang
+            os: ubuntu-22.04
+            cc: clang
+            cxx: clang++
+          - name: macos-appleclang
+            os: macos-14
+            cc: clang
+            cxx: clang++
+          - name: windows-msvc
+            os: windows-2022
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Load CI versions
+        shell: bash
+        run: cat "$GITHUB_WORKSPACE/.github/ci-versions.env" >> "$GITHUB_ENV"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.CI_RUST }}
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Setup CMake
+        uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: "3.28"
+
+      - name: Setup just
+        uses: extractions/setup-just@v3
+
+      - name: Install C++ tooling (Linux)
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes clang-tidy doxygen graphviz
+
+      - name: Install C++ tooling (macOS)
+        if: startsWith(matrix.os, 'macos')
+        run: brew install doxygen graphviz
+
+      # clang-format ships a per-OS-divergent format from apt/brew, so pin one
+      # wheel-packaged build across every runner to keep fmt-check deterministic.
+      - name: Install pinned clang-format
+        if: ${{ matrix.os != 'windows-2022' }}
+        shell: bash
+        run: |
+          pipx install "clang-format==${CI_CLANG_FORMAT}"
+          # Prepend pipx's bin dir so the pinned build shadows any clang-format
+          # already baked into the runner image (e.g. /usr/bin/clang-format).
+          CF_BIN_DIR="$(pipx environment --value PIPX_BIN_DIR)"
+          echo "$CF_BIN_DIR" >> "$GITHUB_PATH"
+          "$CF_BIN_DIR/clang-format" --version
+
+      - name: Build C++ binding
+        shell: bash
+        run: |
+          if [[ -n "${{ matrix.cc }}" ]]; then
+            export CC="${{ matrix.cc }}"
+            export CXX="${{ matrix.cxx }}"
+          fi
+          just build-cpp
+
+      - name: Test C++ binding
+        shell: bash
+        run: just test-cpp
+
+      - name: Build and test C++ examples
+        shell: bash
+        run: |
+          if [[ -n "${{ matrix.cc }}" ]]; then
+            export CC="${{ matrix.cc }}"
+            export CXX="${{ matrix.cxx }}"
+          fi
+          just test-examples-cpp
+
+      - name: Check C++ formatting
+        if: ${{ matrix.os != 'windows-2022' }}
+        shell: bash
+        run: just fmt-check-cpp
+
+      - name: Generate C++ API reference
+        if: ${{ matrix.os != 'windows-2022' }}
+        shell: bash
+        run: just gen-docs-cpp
+
+      - name: Lint C++ sources
+        if: startsWith(matrix.os, 'ubuntu')
+        shell: bash
+        run: just lint-cpp
+
   go:
     name: Go checks
     runs-on: ubuntu-22.04

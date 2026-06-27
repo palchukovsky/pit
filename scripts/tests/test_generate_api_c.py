@@ -312,12 +312,110 @@ def test_sitemap_build_canonical_urls_includes_static_and_section_pages() -> Non
 
     assert urls[0] == f"{module.SITE_BASE}/"
     assert urls[1] == f"{module.SITE_BASE}/c-api/"
-    section_urls = urls[2:]
+    assert urls[2] == f"{module.SITE_BASE}/cpp-api/"
+    section_urls = urls[3:]
     expected_prefix = f"{module.SITE_BASE}/c-api/"
-    for url in section_urls:
+    for url in [url for url in section_urls if "/c-api/" in url]:
         assert url.startswith(expected_prefix)
         assert url.endswith(module.PAGE_SUFFIX)
     assert len(urls) == len(set(urls))
+
+
+def _write_cpp_api_fixture(cpp_api_dir: Path) -> None:
+    """Populate a cpp-api tree mixing content and Doxygen navigation pages."""
+    (cpp_api_dir / "search").mkdir(parents=True)
+    names = [
+        # Content pages that MUST be included.
+        "classopenpit_1_1Engine.html",
+        "structopenpit_1_1Order.html",
+        "unionopenpit_1_1Value.html",
+        "namespaceopenpit.html",
+        "engine_8hpp.html",
+        "openpit_8h.html",
+        "DoxygenMainPage_8md.html",
+        # Per-class member roster and directory page: excluded.
+        "classopenpit_1_1Engine-members.html",
+        "dir_abc123.html",
+        # Navigation/index pages: excluded even though they share a prefix.
+        "annotated.html",
+        "classes.html",
+        "namespaces.html",
+        "namespacemembers.html",
+        "namespacemembers_func.html",
+        "functions.html",
+        "functions_func_a.html",
+        "globals.html",
+        "files.html",
+        "hierarchy.html",
+        "index.html",
+    ]
+    for name in names:
+        (cpp_api_dir / name).write_text("", encoding="utf-8")
+    # Subdirectory asset page: excluded (top-level discovery only).
+    (cpp_api_dir / "search" / "search.html").write_text("", encoding="utf-8")
+
+
+def test_sitemap_includes_only_curated_cpp_content_pages(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = load_sitemap_module()
+    cpp_api_dir = tmp_path / "cpp-api"
+    _write_cpp_api_fixture(cpp_api_dir)
+    monkeypatch.setattr(module, "CPP_API_DIR", cpp_api_dir)
+
+    urls = module.build_canonical_urls()
+
+    def url(name: str) -> str:
+        return f"{module.SITE_BASE}/cpp-api/{name}"
+
+    assert f"{module.SITE_BASE}/cpp-api/" in urls
+    # Content pages: class, struct, union, namespace, and file docs.
+    assert url("classopenpit_1_1Engine.html") in urls
+    assert url("structopenpit_1_1Order.html") in urls
+    assert url("unionopenpit_1_1Value.html") in urls
+    assert url("namespaceopenpit.html") in urls
+    assert url("engine_8hpp.html") in urls
+    assert url("openpit_8h.html") in urls
+    assert url("DoxygenMainPage_8md.html") in urls
+    # Member rosters and directory pages are dropped.
+    assert url("classopenpit_1_1Engine-members.html") not in urls
+    assert url("dir_abc123.html") not in urls
+    # Navigation/index pages are dropped, including prefix-colliding ones.
+    assert url("annotated.html") not in urls
+    assert url("classes.html") not in urls
+    assert url("namespaces.html") not in urls
+    assert url("namespacemembers.html") not in urls
+    assert url("namespacemembers_func.html") not in urls
+    assert url("functions.html") not in urls
+    assert url("functions_func_a.html") not in urls
+    assert url("globals.html") not in urls
+    assert url("files.html") not in urls
+    assert url("hierarchy.html") not in urls
+    assert url("index.html") not in urls
+    # Subdirectory pages are dropped.
+    assert url("search/search.html") not in urls
+
+
+def test_sitemap_cpp_curation_drops_and_adds_pages(tmp_path: Path, monkeypatch) -> None:
+    module = load_sitemap_module()
+    cpp_api_dir = tmp_path / "cpp-api"
+    cpp_api_dir.mkdir(parents=True)
+    (cpp_api_dir / "classopenpit_1_1Engine.html").write_text("", encoding="utf-8")
+    monkeypatch.setattr(module, "CPP_API_DIR", cpp_api_dir)
+
+    before = module.build_canonical_urls()
+    # Regeneration over the same tree is idempotent.
+    assert module.build_canonical_urls() == before
+    assert f"{module.SITE_BASE}/cpp-api/classopenpit_1_1Engine.html" in before
+
+    # A page that disappears is dropped; a new page is added.
+    (cpp_api_dir / "classopenpit_1_1Engine.html").unlink()
+    (cpp_api_dir / "structopenpit_1_1Order.html").write_text("", encoding="utf-8")
+
+    after = module.build_canonical_urls()
+
+    assert f"{module.SITE_BASE}/cpp-api/classopenpit_1_1Engine.html" not in after
+    assert f"{module.SITE_BASE}/cpp-api/structopenpit_1_1Order.html" in after
 
 
 def test_sitemap_parse_existing_urls_extracts_loc_values() -> None:

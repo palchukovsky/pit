@@ -1,0 +1,5 @@
+# CMake build trees produced by the examples aggregator and the per-example
+# `cmake -B build` recipes (see each example's README and `just build-examples-cpp`).
+/build/
+build/
+build-*/

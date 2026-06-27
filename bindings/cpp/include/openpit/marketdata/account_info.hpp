@@ -1,0 +1,57 @@
+// Copyright The Pit Project Owners. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// Please see https://openpit.dev and the OWNERS file for details.
+
+#pragma once
+
+#include "openpit/account_id.hpp"
+
+#include <openpit.h>
+
+#include <optional>
+
+namespace openpit::marketdata {
+
+// `AccountInfo` supplies the reading account's group on demand.
+//
+// `Service::Get` accepts any object exposing
+//   std::optional<param::AccountGroupId> AccountGroup() const;
+// The core invokes it lazily, only when the fallback chain reaches the
+// per-group bucket; an empty optional means the account belongs to no group.
+// In policy code the pre-trade context already satisfies this shape.
+
+namespace detail {
+
+// The native runtime account-group resolver trampoline, instantiated per
+// concrete `AccountInfo` type. The matching `user_data` is a borrowed `const
+// Info*` that stays alive for the single `Service::Get` call; this never takes
+// ownership.
+template <typename Info>
+bool AccountGroupResolverTrampoline(
+    void* user_data,
+    OpenPitParamAccountGroupId* out_account_group_id) noexcept {
+  const auto* info = static_cast<const Info*>(user_data);
+  const std::optional<param::AccountGroupId> group = info->AccountGroup();
+  if (!group.has_value()) {
+    return false;
+  }
+  *out_account_group_id = group->Raw();
+  return true;
+}
+
+}  // namespace detail
+
+}  // namespace openpit::marketdata

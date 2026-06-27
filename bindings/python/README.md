@@ -7,14 +7,10 @@
 `openpit` is an embeddable pre-trade risk SDK for integrating policy-driven
 risk checks into trading systems from Python.
 
-For an overview and links to all resources, see
-the project website [openpit.dev](https://openpit.dev/).
-For the Python API guide and generated reference, see
-[openpit.readthedocs.io](https://openpit.readthedocs.io/en/stable/).
-For full project documentation, see
-[the repository README](https://github.com/openpitkit/pit/blob/main/README.md).
-For conceptual and architectural pages, see
-[the project wiki](https://github.com/openpitkit/pit/wiki).
+For an overview and links to all resources, see the project website [openpit.dev](https://openpit.dev/).
+For the Python API guide and reference, see [openpit.readthedocs.io](https://openpit.readthedocs.io/en/stable/).
+For full project documentation, see [the repository README](https://github.com/openpitkit/pit/blob/main/README.md).
+For conceptual and architectural pages, see [the project wiki](https://github.com/openpitkit/pit/wiki).
 
 ## Versioning Policy (Pre‑1.0)
 
